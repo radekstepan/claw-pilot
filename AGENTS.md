@@ -11,22 +11,58 @@ Read these rules carefully before writing or modifying any code.
   - *Note on LowDB:* Use the modern ESM version of LowDB. Ensure `tsconfig.json` and `package.json` are set up for ESM (`"type": "module"`). Do NOT use SQL or ORMs.
 - **`apps/frontend`**: React (Vite), TypeScript, TailwindCSS, Zustand. A mock UI already exists; your job is often to wire this UI to the backend and Zustand state.
 
-## 2. The OpenClaw CLI Bridge (CRITICAL)
-- **DO NOT** attempt to import an `openclaw` npm package. OpenClaw is a Python CLI tool.
-- Claw-Pilot interacts with OpenClaw EXCLUSIVELY via Node's `child_process`.
-- Use `import { execFile } from 'child_process'; import { promisify } from 'util'; const execFileAsync = promisify(execFile);`. Always use `execFile` (not `exec`) to prevent shell-injection attacks.
+## 2. The OpenClaw Gateway Client (CRITICAL)
+- **DO NOT** attempt to import an `openclaw` npm package. OpenClaw is a Python CLI tool with a **WebSocket RPC gateway**.
+- Claw-Pilot communicates with OpenClaw EXCLUSIVELY via WebSocket JSON-RPC, using the `gatewayCall` helper in `apps/backend/src/openclaw/cli.ts`.
+- **Never use `child_process` / `execFile`** to shell out to the `openclaw` binary. All communication goes through the gateway socket.
 
-**Exact Command Patterns:**
-- **Spawn a Task Session (Fresh Context):**
-  `await execFileAsync('openclaw', ['sessions', 'spawn', '--agent', agentId, '--label', `task-${taskId}`, '--message', prompt]);`
-- **Route Chat to Agent (Expect JSON back):**
-  `const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', agentId, '--message', msg, '--json']);`
-- **Discover Agents:** Parse the physical file at `path.join(env.OPENCLAW_HOME, 'openclaw.json')`. **Never hardcode `os.homedir()`** — always use `env.OPENCLAW_HOME` from `apps/backend/src/config/env.ts`.
+**Core helper:**
+```typescript
+import { gatewayCall } from '../openclaw/cli.js';
+// Opens a fresh WS connection, authenticates (Mode B / control_ui), fires one RPC method, closes.
+const payload = await gatewayCall('sessions.list', {});
+const payload = await gatewayCall('chat.send', { sessionKey, message, deliver: false, idempotencyKey });
+```
 
-**Async CLI Rule (CRITICAL):** AI generation calls (`routeChatToAgent`, `generateAgentConfig`, `spawnTaskSession`) can take minutes. **Never `await` these in an HTTP handler.** Instead:
+**Authentication — Mode B (control_ui):**
+- The gateway must have `disable_device_pairing: true`.
+- Claw-Pilot identifies as `openclaw-control-ui` / `ui`; no Ed25519 key pair management required.
+- A bearer token is sent as `?token=<OPENCLAW_GATEWAY_TOKEN>` when the env var is set.
+
+**Gateway environment variables (in `apps/backend/src/config/env.ts`):**
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `OPENCLAW_GATEWAY_URL` | `ws://localhost:18789` | WebSocket URL of the OpenClaw gateway |
+| `OPENCLAW_GATEWAY_TOKEN` | _(optional)_ | Bearer token appended as `?token=…` |
+| `OPENCLAW_GATEWAY_ID` | `gateway` | Used to build the main-agent session key |
+| `OPENCLAW_WS_TIMEOUT` | `15000` | Timeout (ms) for fast RPC calls |
+| `OPENCLAW_AI_TIMEOUT` | `120000` | Timeout (ms) for heavy AI calls |
+
+**Key RPC methods used:**
+
+| Higher-level function | RPC method(s) called |
+| :--- | :--- |
+| `getAgents()` | `config.get` → reads `payload.config.agents` |
+| `getLiveSessions()` | `sessions.list` |
+| `routeChatToAgent(agentId, msg)` | `sessions.patch` then `chat.send` |
+| `generateAgentConfig(prompt)` | `sessions.patch` then `chat.send` (main session) |
+| `getModels()` | `models.list` |
+| `spawnTaskSession(agentId, taskId, prompt)` | `sessions.patch` then `chat.send` with `deliver: true` |
+
+**Session key conventions:**
+
+| Agent | Session key |
+| :--- | :--- |
+| Gateway main agent (`'main'`) | `mc-gateway:{OPENCLAW_GATEWAY_ID}:main` |
+| Any other agent | `mc:mc-{agentId}:main` |
+
+**Agent file management** (`GET/PUT /api/agents/:id/files`) uses `agents.files.get` / `agents.files.set` RPC — **not** local disk reads.
+
+**Async RPC Rule (CRITICAL):** AI generation calls (`routeChatToAgent`, `generateAgentConfig`, `spawnTaskSession`) can take minutes. **Never `await` these in an HTTP handler.** Instead:
 1. Validate input and persist any user-initiated state.
 2. Return **`202 Accepted`** immediately with `{ id, status: 'pending' }`.
-3. Run the CLI call in a detached `void (async () => { ... })()`.
+3. Run the RPC call in a detached `void (async () => { ... })()`.
 4. On success/error, emit the result via `fastify.io.emit(...)` to the frontend.
 
 ## 3. Dual Source of Truth

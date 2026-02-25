@@ -1,11 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
-import { getAgents, getLiveSessions, generateAgentConfig } from '../openclaw/cli.js';
+import { getAgents, getLiveSessions, generateAgentConfig, gatewayCall } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
 import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import fs from 'fs/promises';
-import path from 'path';
-import { env } from '../config/env.js';
 import { randomUUID } from 'crypto';
 
 const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
@@ -64,23 +61,22 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
     fastify.get('/:id/files', async (request, reply) => {
         const { id } = request.params as { id: string };
-        try {
-            const workspacesRoot = path.join(env.OPENCLAW_HOME, 'workspaces');
-            const workspacePath = path.resolve(workspacesRoot, id);
 
-            // Guard against path traversal (e.g. id = '../../etc/passwd')
-            if (!workspacePath.startsWith(workspacesRoot + path.sep) && workspacePath !== workspacesRoot) {
-                return reply.status(400).send({ error: 'Invalid agent id.' });
+        async function fetchFile(name: string): Promise<string> {
+            try {
+                const payload = await gatewayCall('agents.files.get', { agentId: id, name }) as Record<string, unknown> | null;
+                return typeof payload?.content === 'string' ? payload.content : '';
+            } catch {
+                return ''; // file not found or gateway error — return empty
             }
+        }
 
-            let soul = '';
-            let tools = '';
-            let agentsMd = '';
-
-            try { soul = await fs.readFile(path.join(workspacePath, 'SOUL.md'), 'utf-8'); } catch (e) { }
-            try { tools = await fs.readFile(path.join(workspacePath, 'TOOLS.md'), 'utf-8'); } catch (e) { }
-            try { agentsMd = await fs.readFile(path.join(workspacePath, 'AGENTS.md'), 'utf-8'); } catch (e) { }
-
+        try {
+            const [soul, tools, agentsMd] = await Promise.all([
+                fetchFile('SOUL.md'),
+                fetchFile('TOOLS.md'),
+                fetchFile('AGENTS.md'),
+            ]);
             return reply.send({ soul, tools, agentsMd });
         } catch (error) {
             fastify.log.error(error);
@@ -98,26 +94,17 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof UpdateAgentFilesSchema>;
         try {
-            const workspacesRoot = path.join(env.OPENCLAW_HOME, 'workspaces');
-            const workspacePath = path.resolve(workspacesRoot, id);
-
-            // Guard against path traversal
-            if (!workspacePath.startsWith(workspacesRoot + path.sep) && workspacePath !== workspacesRoot) {
-                return reply.status(400).send({ error: 'Invalid agent id.' });
-            }
-
-            await fs.mkdir(workspacePath, { recursive: true });
-
+            const updates: Promise<unknown>[] = [];
             if (body.soul !== undefined) {
-                await fs.writeFile(path.join(workspacePath, 'SOUL.md'), body.soul, 'utf-8');
+                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'SOUL.md', content: body.soul }));
             }
             if (body.tools !== undefined) {
-                await fs.writeFile(path.join(workspacePath, 'TOOLS.md'), body.tools, 'utf-8');
+                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'TOOLS.md', content: body.tools }));
             }
             if (body.agentsMd !== undefined) {
-                await fs.writeFile(path.join(workspacePath, 'AGENTS.md'), body.agentsMd, 'utf-8');
+                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'AGENTS.md', content: body.agentsMd }));
             }
-
+            await Promise.all(updates);
             return reply.send({ success: true });
         } catch (error) {
             fastify.log.error(error);

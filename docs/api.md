@@ -1,28 +1,28 @@
 # 🌐 Claw-Pilot API Specification
 
 ## 1. Agent Management API
-*These endpoints interact heavily with the user's local `~/.openclaw/openclaw.json` file and the agent workspace directories.*
+*These endpoints communicate with the OpenClaw gateway over WebSocket RPC to read agent and file data.*
 
 | Method | Endpoint | Purpose | Data Source |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/agents` | Lists all configured agents, merging their config with real-time status (`WORKING`, `IDLE`) derived from session file timestamps. | `openclaw.json` + `fs.stat` |
-| `GET` | `/api/agents/:id` | Gets a single agent's configuration and status. | `openclaw.json` |
-| `POST` | `/api/agents` | Creates a new agent. Creates physical `workspace` directories and writes default `SOUL.md` and `TOOLS.md`. Updates config. | `openclaw.json` + `fs.mkdir` |
-| `PATCH` | `/api/agents/:id` | Updates basic agent info (name, emoji, primary model). | `openclaw.json` |
-| `DELETE` | `/api/agents/:id` | Removes the agent from the config (but preserves the physical workspace folder). | `openclaw.json` |
-| `GET` | `/api/agents/:id/files` | Reads the raw text of `SOUL.md`, `TOOLS.md`, and `AGENTS.md`. | `fs.readFile` |
-| `PUT` | `/api/agents/:id/files` | Overwrites the contents of the agent's markdown configuration files. | `fs.writeFile` |
-| `POST` | `/api/agents/generate` | **Body:** `{ description: string }`<br>Executes an OpenClaw CLI command asking the `main` Lead AI to draft a configuration for a new agent. | `child_process` |
+| `GET` | `/api/agents` | Lists all configured agents, merging their config with real-time status (`WORKING`, `IDLE`) derived from live sessions. | `gateway: config.get + sessions.list` |
+| `GET` | `/api/agents/:id` | Gets a single agent's configuration and status. | `gateway: config.get` |
+| `POST` | `/api/agents` | Creates a new agent. | `gateway: agents.create` |
+| `PATCH` | `/api/agents/:id` | Updates basic agent info (name, model, etc.). | `gateway: agents.update` |
+| `DELETE` | `/api/agents/:id` | Removes the agent. | `gateway: agents.delete` |
+| `GET` | `/api/agents/:id/files` | Reads the raw text of `SOUL.md`, `TOOLS.md`, and `AGENTS.md` from the gateway. | `gateway: agents.files.get` |
+| `PUT` | `/api/agents/:id/files` | Overwrites the contents of the agent's markdown configuration files on the gateway. | `gateway: agents.files.set` |
+| `POST` | `/api/agents/generate` | **Body:** `{ description: string }`<br>Sends a prompt to the gateway main agent session asking it to draft a configuration for a new agent. Returns `202 Accepted`. Result arrives via the `agent_config_generated` Socket.io event. | `gateway: sessions.patch + chat.send` |
 
 ## 2. LLM Model Management
 *Handles model configurations and fallbacks.*
 
 | Method | Endpoint | Purpose | Data Source |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/models` | Executes `openclaw models list --all --json` to get available LLMs. Maps them to friendly aliases (e.g., `sonnet`, `opus`). | `child_process` |
-| `GET` | `/api/agents/:id/model-status` | Returns the agent's `primary_model`, `fallback_model`, and `failure_count`. | LowDB / Config |
-| `PATCH` | `/api/agents/:id/models` | **Body:** `{ primary_model?: string, fallback_model?: string }` | `openclaw.json` |
-| `POST` | `/api/agents/:id/model-failure` | Increments failure count. Automatically swaps agent to `fallback_model` if it exists, and notifies the Lead AI. | Config + `child_process` |
+| `GET` | `/api/models` | Calls `models.list` on the gateway to get available LLMs. Maps them to friendly aliases (e.g., `sonnet`, `opus`). | `gateway: models.list` |
+| `GET` | `/api/agents/:id/model-status` | Returns the agent's `primary_model`, `fallback_model`, and `failure_count`. | SQLite / Config |
+| `PATCH` | `/api/agents/:id/models` | **Body:** `{ primary_model?: string, fallback_model?: string }` | `gateway: agents.update` |
+| `POST` | `/api/agents/:id/model-failure` | Increments failure count. Automatically swaps agent to `fallback_model` if it exists, and notifies the Lead AI. | Config + `gateway: chat.send` |
 | `POST` | `/api/agents/:id/restore-primary-model`| Resets failure count to 0 and switches back to the primary model. | Config |
 
 ## 3. Task Kanban API (LowDB)
@@ -36,25 +36,25 @@
 | `PATCH` | `/api/tasks/:id` | Updates task fields. **Rule:** If `status === 'DONE'`, return `403 Forbidden` if requested by an AI. AI can only transition to `REVIEW`. |
 | `DELETE` | `/api/tasks/:id` | Deletes a task and cascades deletion to its activities/comments in LowDB. |
 
-## 4. Task Execution & Routing (The CLI Bridge)
-*This is where Claw-Pilot interacts with OpenClaw agents to get work done.*
+## 4. Task Execution & Routing (The Gateway Bridge)
+*This is where Claw-Pilot communicates with OpenClaw agents via the WebSocket gateway RPC.*
 
 | Method | Endpoint | Purpose | Implementation Detail |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/tasks/:id/route` | Wakes up the assigned AI and feeds it the task in an isolated context. | Exec: `openclaw sessions spawn --agent <id> --label task-<id> --message "<msg>"` |
-| `POST` | `/api/tasks/:id/activity` | **Body:** `{ agent_id, message }`<br>Logs progress. **Rule:** If task is `ASSIGNED`, transition to `IN_PROGRESS`. If message contains "done/completed", transition to `REVIEW`. | Writes to LowDB `activities` array + emits WS event. |
-| `POST` | `/api/tasks/:id/complete` | Explicitly forces a task into `REVIEW` status and sends a CLI notification to the reviewer (Lead AI). | LowDB update + Exec: `openclaw agent ...` |
-| `POST` | `/api/tasks/:id/review` | **Body:** `{ action: 'approve' \| 'reject', feedback?: string }`<br>Approve moves to `DONE`. Reject moves to `IN_PROGRESS` and sends `feedback` to the agent via CLI. | LowDB update + Exec: `openclaw agent ...` |
-| `POST` | `/api/tasks/:id/comments` | **Body:** `{ agent_id, content }`<br>Adds a comment. If content contains `@agent_name`, uses CLI to ping that agent. | LowDB update |
+| `POST` | `/api/tasks/:id/route` | Wakes up the assigned AI and feeds it the task in an isolated context. Returns `202 Accepted`; result arrives via Socket.io. | `gateway: sessions.patch + chat.send` (deliver: true) |
+| `POST` | `/api/tasks/:id/activity` | **Body:** `{ agent_id, message }`<br>Logs progress. **Rule:** If task is `ASSIGNED`, transition to `IN_PROGRESS`. If message contains "done/completed", transition to `REVIEW` and notify the Lead AI. | Writes to SQLite `activities` table + emits WS event. Auto-notify: `gateway: chat.send` |
+| `POST` | `/api/tasks/:id/complete` | Explicitly forces a task into `REVIEW` status and sends a gateway notification to the reviewer (Lead AI). | SQLite update + `gateway: chat.send` |
+| `POST` | `/api/tasks/:id/review` | **Body:** `{ action: 'approve' \| 'reject', feedback?: string }`<br>Approve moves to `DONE`. Reject moves to `IN_PROGRESS` and sends `feedback` to the agent via the gateway. | SQLite update + `gateway: sessions.patch + chat.send` |
+| `POST` | `/api/tasks/:id/comments` | **Body:** `{ agent_id, content }`<br>Adds a comment. If content contains `@agent_name`, pings that agent via gateway. | SQLite update |
 
 ## 5. Squad Chat API
 *Global chat for human-to-agent communication.*
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `GET`  | `/api/chat` | Retrieves chat history from LowDB. Accepts `?cursor=<id>&limit=50` for cursor-based pagination (newest first). |
+| `GET`  | `/api/chat` | Retrieves chat history from SQLite. Accepts `?cursor=<id>&limit=50` for cursor-based pagination (newest first). |
 | `POST` | `/api/chat` | **Body:** `{ agentId?, content }` — Saves a standard chat message directly. |
-| `POST` | `/api/chat/send-to-agent` | **Body:** `{ message, agentId? }` — Saves the user message, then asynchronously routes it to the OpenClaw CLI agent. **Returns `202 Accepted`** immediately with `{ id, status: "pending" }`. The AI reply is delivered via the `chat_message` Socket.io event when the CLI process completes. If the CLI fails, an `agent_error` event is emitted instead. |
+| `POST` | `/api/chat/send-to-agent` | **Body:** `{ message, agentId? }` — Saves the user message, then asynchronously delivers it to the agent's gateway session via `chat.send` RPC. **Returns `202 Accepted`** immediately with `{ id, status: "pending" }`. The AI reply is delivered via the `chat_message` Socket.io event. If the gateway call fails, an `agent_error` event is emitted instead. |
 | `DELETE` | `/api/chat` | Wipes all chat history. Emits the `chat_cleared` Socket.io event. |
 
 ## 6. App Configuration API
@@ -154,7 +154,9 @@ or
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `GET` | `/api/system/stats` | Returns aggregate dashboard numbers (active agents, tasks in queue, completed today). |
+| `GET` | `/api/system/stats` | Returns aggregate dashboard numbers (active agents, tasks in queue, completed today). Sources agent count from `gateway: config.get` and task counts from SQLite. |
+| `GET` | `/api/monitoring/gateway/status` | Calls `health` RPC on the gateway. Returns `{ status: 'HEALTHY', detail: {...} }` or `{ status: 'DOWN', error: '...' }`. |
+| `GET` | `/api/monitoring/stuck-tasks/check` | Returns all `IN_PROGRESS` tasks older than 24 h. |
 
 ---
 

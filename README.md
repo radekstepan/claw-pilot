@@ -2,7 +2,7 @@
 
 **Mission Control dashboard for [OpenClaw](https://github.com/openclaw/openclaw) AI agents.**
 
-Claw-Pilot is a real-time Kanban + chat interface built in a Yarn/Turborepo monorepo. It bridges a React frontend to a Fastify backend, which in turn drives OpenClaw agents via its Python CLI.
+Claw-Pilot is a real-time Kanban + chat interface built in a Yarn/Turborepo monorepo. It bridges a React frontend to a Fastify backend, which in turn drives OpenClaw agents via the OpenClaw **WebSocket gateway RPC API**.
 
 ---
 
@@ -17,14 +17,14 @@ graph LR
     subgraph "Node.js Server (Fastify)"
         API["REST API\n/api/*"]
         WS["Socket.io\nreal-time events"]
-        DB["LowDB\ndata/db.json"]
+        DB["SQLite\n(Drizzle ORM)"]
         MON["Background Monitors\nsessionMonitor · stuckTaskMonitor"]
         CRON["Recurring Tasks\n(schedule templates → Tasks)"]
     end
 
-    subgraph "OpenClaw (Python CLI)"
-        CLI["openclaw binary"]
-        CFG["~/.openclaw/openclaw.json\nagent definitions"]
+    subgraph "OpenClaw (Python)"
+        GW["WebSocket Gateway\nws://localhost:18789"]
+        CFG["Agent Config\nRPC: config.get / agents.*"]
     end
 
     UI -- "fetch + Bearer token" --> API
@@ -34,11 +34,12 @@ graph LR
     MON --> WS
     CRON --> DB
     CRON -- "POST /recurring/:id/trigger" --> API
-    API -- "child_process.execFile" --> CLI
-    CLI --> CFG
+    API -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
+    MON -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
+    GW --> CFG
 ```
 
-> **Data flow summary:** The React UI communicates with the Fastify server exclusively via REST (Bearer-token auth) and Socket.io. The server drives OpenClaw agents through `child_process.execFile` — never via an npm import. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io, eliminating the need for frontend polling.
+> **Data flow summary:** The React UI communicates with the Fastify server via REST (Bearer-token auth) and Socket.io. The server communicates with OpenClaw agents through the **WebSocket gateway RPC API** — never via CLI subprocess. Each RPC call (`gatewayCall`) opens a fresh WebSocket connection, performs a Mode-B (control_ui) handshake, fires one JSON-RPC method, reads the response, and closes. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io, eliminating the need for frontend polling.
 
 ---
 
@@ -50,7 +51,7 @@ graph LR
 | :--- | :--- |
 | Node.js | 22+ |
 | Yarn | 1.22+ |
-| OpenClaw | installed & on `$PATH` |
+| OpenClaw | running with WebSocket gateway enabled (`ws://localhost:18789`) |
 
 ### 1. Clone & install
 
@@ -75,9 +76,11 @@ cp apps/backend/.env.example apps/backend/.env
 | `HOST` | | `127.0.0.1` | Interface to bind — use `0.0.0.0` inside Docker |
 | `ALLOWED_ORIGIN` | | `http://localhost:5173` | CORS origin for the frontend |
 | `NODE_ENV` | | `development` | `development` / `production` / `test` |
-| `CLI_TIMEOUT` | | `15000` | Timeout (ms) for fast CLI calls (sessions list, models) |
-| `AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
-| `OPENCLAW_HOME` | | `~/.openclaw` | Root of the OpenClaw config directory — override for Docker |
+| `OPENCLAW_GATEWAY_URL` | | `ws://localhost:18789` | WebSocket URL of the OpenClaw gateway |
+| `OPENCLAW_GATEWAY_TOKEN` | | _(none)_ | Bearer token appended as `?token=…` to each gateway connection |
+| `OPENCLAW_GATEWAY_ID` | | `gateway` | Gateway identifier — used to build the main agent session key |
+| `OPENCLAW_WS_TIMEOUT` | | `15000` | Timeout (ms) for fast RPC calls (health, sessions list, models) |
+| `OPENCLAW_AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
 
 Frontend variables (in `apps/frontend/.env`):
 
@@ -97,13 +100,7 @@ yarn workspace backend dev
 yarn workspace frontend dev
 ```
 
-**No OpenClaw installed?** Use the mock CLI so you can develop the UI without any Python dependencies:
-
-```bash
-yarn workspace backend dev:mock
-```
-
-This creates `~/.openclaw-mock/openclaw.json` with two synthetic agents and intercepts all `execFileAsync('openclaw', ...)` calls with instant JSON responses.
+**No OpenClaw gateway running?** Point `OPENCLAW_GATEWAY_URL` at a local stub or skip gateway-dependent endpoints. The backend starts and all non-AI routes (tasks, activities, recurring) work without a live gateway.
 
 ### 4. Run in production (Docker)
 
@@ -133,7 +130,7 @@ claw-pilot/
 │   │   │   ├── config/env.ts    # Zod-validated env config (fail-fast boot)
 │   │   │   ├── middleware/auth.ts
 │   │   │   ├── monitors/        # sessionMonitor · stuckTaskMonitor
-│   │   │   ├── openclaw/cli.ts  # child_process wrappers
+│   │   │   ├── openclaw/cli.ts  # WebSocket gateway client (gatewayCall + higher-level functions)
 │   │   │   ├── routes/          # tasks · chat · agents · models · recurring …
 │   │   │   ├── db.ts            # LowDB + atomic write + hourly backup
 │   │   │   ├── app.ts           # Fastify factory + static serving
@@ -163,12 +160,12 @@ claw-pilot/
 
 | Decision | Rationale |
 | :--- | :--- |
-| `execFile` not `exec` | Prevents shell-injection; args are passed as an array, not a shell string |
-| Atomic db writes (`db.tmp.json` → rename) | POSIX `rename(2)` is atomic — a mid-write crash never corrupts `db.json` |
-| Hourly `db.backup.json` | Secondary safety net against logical corruption |
-| 202 Accepted for AI calls | AI CLI calls can take minutes; HTTP requests must not block |
+| WebSocket RPC not `execFile` | Each `gatewayCall` opens a fresh WS, authenticates (Mode B / control_ui), issues one JSON-RPC method, and closes — no persistent socket or CLI process needed |
+| Mode B auth (control_ui) | No Ed25519 key pair management required; gateway must have `disable_device_pairing: true` |
+| Atomic db writes | Drizzle ORM with SQLite transactions + WAL mode — a mid-write crash never corrupts the database |
+| 202 Accepted for AI calls | AI gateway calls can take minutes; HTTP requests must not block. The result is pushed via Socket.io |
 | `timingSafeEqual` for API key | Prevents timing side-channel attacks |
-| `OPENCLAW_HOME` env var | Enables Docker deployments without hardcoded `os.homedir()` paths |
+| Fresh WS per RPC call | No connection-state management; failures are isolated; the gateway is stateless from the client's perspective |
 
 ---
 

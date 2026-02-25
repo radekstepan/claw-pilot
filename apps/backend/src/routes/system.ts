@@ -1,15 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { db, tasks as tasksTable } from '../db/index.js';
 import { eq, or, and, count, lt, like } from 'drizzle-orm';
-import { getAgents, getLiveSessions } from '../openclaw/cli.js';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { env } from '../config/env.js';
-
-const execFileAsync = promisify(execFile);
-
-/** Timeout for fast CLI commands in this module (ms). */
-const CLI_TIMEOUT = env.CLI_TIMEOUT;
+import { getAgents, getLiveSessions, gatewayCall } from '../openclaw/cli.js';
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     fastify.get('/stats', async (request, reply) => {
@@ -44,20 +36,16 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
 
     fastify.get('/monitoring/gateway/status', async (request, reply) => {
         try {
-            await execFileAsync('openclaw', ['--version'], { timeout: CLI_TIMEOUT });
-            return reply.send({ status: 'HEALTHY' });
+            const health = await gatewayCall('health', {});
+            return reply.send({ status: 'HEALTHY', detail: health });
         } catch (e) {
             return reply.send({ status: 'DOWN', error: e instanceof Error ? e.message : String(e) });
         }
     });
 
-    fastify.post('/monitoring/gateway/restart', async (request, reply) => {
-        try {
-            await execFileAsync('openclaw', ['daemon', 'restart'], { timeout: CLI_TIMEOUT });
-            return reply.send({ success: true, message: 'Gateway restart triggered' });
-        } catch (e) {
-            return reply.status(500).send({ error: 'Failed to restart gateway' });
-        }
+    fastify.post('/monitoring/gateway/restart', async (_request, reply) => {
+        // The OpenClaw gateway does not expose a restart RPC method.
+        return reply.status(501).send({ error: 'Gateway restart is not supported via the WebSocket API.' });
     });
 
     fastify.get('/monitoring/stuck-tasks/check', async (request, reply) => {

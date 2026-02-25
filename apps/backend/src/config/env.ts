@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import os from 'os';
-import path from 'path';
 
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'] as const;
 
@@ -36,18 +34,29 @@ const EnvSchema = z.object({
     /** Controls error-message verbosity in the global error handler. */
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-    /** Timeout (ms) for fast informational CLI calls (sessions list, --version, etc.). */
-    CLI_TIMEOUT: z.coerce.number().int().positive().default(15_000),
-
-    /** Timeout (ms) for heavy AI calls (chat routing, session spawn). */
-    AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
+    /**
+     * WebSocket URL of the OpenClaw gateway.
+     * Example: ws://localhost:18789  or  wss://myhost:18789
+     */
+    OPENCLAW_GATEWAY_URL: z.string().url().default('ws://localhost:18789'),
 
     /**
-     * Root directory of the OpenClaw installation.
-     * Defaults to ~/.openclaw so local dev works without any extra config.
-     * Override in Docker / CI to point at a mounted config volume.
+     * Optional bearer token passed as `?token=…` on every gateway connection.
+     * Leave unset when the gateway is configured without authentication.
      */
-    OPENCLAW_HOME: z.string().default(path.join(os.homedir(), '.openclaw')),
+    OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
+
+    /**
+     * Logical identifier for this gateway instance.
+     * Used to construct the main-agent session key: mc-gateway:{id}:main
+     */
+    OPENCLAW_GATEWAY_ID: z.string().min(1).default('gateway'),
+
+    /** Timeout (ms) for fast/informational gateway RPC calls (sessions list, health, etc.). */
+    OPENCLAW_WS_TIMEOUT: z.coerce.number().int().positive().default(15_000),
+
+    /** Timeout (ms) for heavy AI gateway calls (chat routing, session spawn, agent generation). */
+    OPENCLAW_AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
