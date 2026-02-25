@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import os from 'os';
+import path from 'path';
 
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1'] as const;
 
@@ -39,6 +41,13 @@ const EnvSchema = z.object({
 
     /** Timeout (ms) for heavy AI calls (chat routing, session spawn). */
     AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
+
+    /**
+     * Root directory of the OpenClaw installation.
+     * Defaults to ~/.openclaw so local dev works without any extra config.
+     * Override in Docker / CI to point at a mounted config volume.
+     */
+    OPENCLAW_HOME: z.string().default(path.join(os.homedir(), '.openclaw')),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

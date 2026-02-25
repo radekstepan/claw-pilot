@@ -97,6 +97,12 @@ export interface ServerToClientEvents {
     agent_status_changed: (agent: Agent) => void;
     chat_message: (message: ChatMessage) => void;
     chat_cleared: () => void;
+    /** Emitted when an async /send-to-agent CLI call fails. */
+    agent_error: (payload: { agentId: string; error: string }) => void;
+    /** Emitted when an async /agents/generate CLI call completes. */
+    agent_config_generated: (payload: { requestId: string; config: unknown }) => void;
+    /** Emitted when an async /agents/generate CLI call fails. */
+    agent_config_error: (payload: { requestId: string; error: string }) => void;
 }
 
 export interface ClientToServerEvents {

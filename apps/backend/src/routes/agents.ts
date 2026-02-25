@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
+import { env } from '../config/env.js';
+import { randomUUID } from 'crypto';
 
 const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.get('/', async (request, reply) => {
@@ -36,22 +37,41 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     });
 
     fastify.post('/generate', { schema: { body: GenerateAgentSchema }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
-        try {
-            const body = request.body as z.infer<typeof GenerateAgentSchema>;
-            const prompt = body.prompt;
+        const body = request.body as z.infer<typeof GenerateAgentSchema>;
+        const prompt = body.prompt;
+        const requestId = randomUUID();
 
-            const agentConfig = await generateAgentConfig(prompt);
-            return reply.send(agentConfig);
-        } catch (error) {
-            fastify.log.error(error);
-            return reply.status(500).send({ error: 'Failed to generate agent configuration.' });
-        }
+        // Respond immediately — the generated config will arrive via Socket.io.
+        reply.status(202).send({ requestId, status: 'pending' });
+
+        void (async () => {
+            try {
+                const config = await generateAgentConfig(prompt);
+                if (fastify.io) {
+                    fastify.io.emit('agent_config_generated', { requestId, config });
+                }
+            } catch (error) {
+                fastify.log.error(error, 'generateAgentConfig failed');
+                if (fastify.io) {
+                    fastify.io.emit('agent_config_error', {
+                        requestId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+        })();
     });
 
     fastify.get('/:id/files', async (request, reply) => {
         const { id } = request.params as { id: string };
         try {
-            const workspacePath = path.join(os.homedir(), '.openclaw', 'workspaces', id);
+            const workspacesRoot = path.join(env.OPENCLAW_HOME, 'workspaces');
+            const workspacePath = path.resolve(workspacesRoot, id);
+
+            // Guard against path traversal (e.g. id = '../../etc/passwd')
+            if (!workspacePath.startsWith(workspacesRoot + path.sep) && workspacePath !== workspacesRoot) {
+                return reply.status(400).send({ error: 'Invalid agent id.' });
+            }
 
             let soul = '';
             let tools = '';
@@ -78,7 +98,13 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof UpdateAgentFilesSchema>;
         try {
-            const workspacePath = path.join(os.homedir(), '.openclaw', 'workspaces', id);
+            const workspacesRoot = path.join(env.OPENCLAW_HOME, 'workspaces');
+            const workspacePath = path.resolve(workspacesRoot, id);
+
+            // Guard against path traversal
+            if (!workspacePath.startsWith(workspacesRoot + path.sep) && workspacePath !== workspacesRoot) {
+                return reply.status(400).send({ error: 'Invalid agent id.' });
+            }
 
             await fs.mkdir(workspacePath, { recursive: true });
 

@@ -1,6 +1,5 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import os from 'os';
 import path from 'path';
 import fs from 'fs/promises';
 import { Agent } from '@claw-pilot/shared-types';
@@ -121,7 +120,7 @@ export async function generateAgentConfig(prompt: string): Promise<unknown> {
 
 export async function getAgents(): Promise<Agent[]> {
     try {
-        const openclawPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+        const openclawPath = path.join(env.OPENCLAW_HOME, 'openclaw.json');
 
         // try to read the file
         let content: string;

@@ -30,7 +30,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const userMessage = body.message;
         const agentId = body.agentId || 'main'; // Default to main agent
 
-        // 1. Save user message
+        // 1. Persist the user message and respond immediately with 202.
         const newUserMessage = {
             id: randomUUID(),
             role: 'user' as const,
@@ -45,40 +45,48 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             fastify.io.emit('chat_message', newUserMessage);
         }
 
-        // 2. Invoke openclaw CLI agent
-        try {
-            const aiResponseRaw = await routeChatToAgent(agentId, userMessage);
-            // Normalise the CLI response to a plain string regardless of its shape.
-            const aiText: string =
-                typeof aiResponseRaw === 'string'
-                    ? aiResponseRaw
-                    : aiResponseRaw !== null &&
-                        typeof aiResponseRaw === 'object' &&
-                        'message' in aiResponseRaw &&
-                        typeof (aiResponseRaw as Record<string, unknown>).message === 'string'
-                      ? ((aiResponseRaw as Record<string, unknown>).message as string)
-                      : JSON.stringify(aiResponseRaw);
+        // Return 202 immediately — the AI reply will arrive via Socket.io.
+        reply.status(202).send({ id: newUserMessage.id, status: 'pending' });
 
-            // 3. Save AI response
-            const newAiMessage = {
-                id: randomUUID(),
-                role: 'assistant' as const,
-                content: aiText,
-                agentId,
-                timestamp: new Date().toISOString()
-            };
-            db.data.chat.push(newAiMessage);
-            await db.write();
+        // 2. Invoke openclaw CLI asynchronously (fire-and-forget from the HTTP layer).
+        void (async () => {
+            try {
+                const aiResponseRaw = await routeChatToAgent(agentId, userMessage);
+                // Normalise the CLI response to a plain string regardless of its shape.
+                const aiText: string =
+                    typeof aiResponseRaw === 'string'
+                        ? aiResponseRaw
+                        : aiResponseRaw !== null &&
+                            typeof aiResponseRaw === 'object' &&
+                            'message' in aiResponseRaw &&
+                            typeof (aiResponseRaw as Record<string, unknown>).message === 'string'
+                          ? ((aiResponseRaw as Record<string, unknown>).message as string)
+                          : JSON.stringify(aiResponseRaw);
 
-            if (fastify.io) {
-                fastify.io.emit('chat_message', newAiMessage);
+                // 3. Persist and broadcast the AI reply.
+                const newAiMessage = {
+                    id: randomUUID(),
+                    role: 'assistant' as const,
+                    content: aiText,
+                    agentId,
+                    timestamp: new Date().toISOString()
+                };
+                db.data.chat.push(newAiMessage);
+                await db.write();
+
+                if (fastify.io) {
+                    fastify.io.emit('chat_message', newAiMessage);
+                }
+            } catch (error) {
+                fastify.log.error(error, 'routeChatToAgent failed');
+                if (fastify.io) {
+                    fastify.io.emit('agent_error', {
+                        agentId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
             }
-
-            return reply.status(201).send(newAiMessage);
-        } catch (error) {
-            console.error('Error invoking agent:', error);
-            return reply.status(500).send({ error: 'Failed to communicate with agent' });
-        }
+        })();
     });
 
     const SaveChatSchema = z.object({

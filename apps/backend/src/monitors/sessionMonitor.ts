@@ -2,10 +2,10 @@ import { FastifyInstance } from 'fastify';
 import { getAgents, getLiveSessions } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
 
-export function startSessionMonitor(fastify: FastifyInstance) {
+export function startSessionMonitor(fastify: FastifyInstance): NodeJS.Timeout {
     const previousAgentStatuses: Record<string, string> = {};
 
-    setInterval(async () => {
+    return setInterval(async () => {
         try {
             const agents = await getAgents();
             const sessions = await getLiveSessions();

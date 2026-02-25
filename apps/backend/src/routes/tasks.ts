@@ -114,7 +114,12 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         if (body.message && (body.message.toLowerCase().includes('done') || body.message.toLowerCase().includes('completed'))) {
             task.status = 'REVIEW';
             statusChanged = true;
-            routeChatToAgent('main', `Task ${id} ready for review`).catch(console.error);
+            void routeChatToAgent('main', `Task ${id} ready for review`).catch((err: unknown) => {
+                fastify.io.emit('agent_error', {
+                    agentId: 'main',
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            });
         }
 
         if (statusChanged) {
@@ -202,7 +207,12 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             if (body.feedback) {
                 // Determine agent ID dynamically if stored in task, else 'main'
                 const assignedAgentId = task.agentId ?? 'main';
-                routeChatToAgent(assignedAgentId, `Review Feedback for task ${id}: ${body.feedback}`).catch(console.error);
+                void routeChatToAgent(assignedAgentId, `Review Feedback for task ${id}: ${body.feedback}`).catch((err: unknown) => {
+                    fastify.io.emit('agent_error', {
+                        agentId: assignedAgentId,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                });
 
                 const newActivity = {
                     id: randomUUID(),

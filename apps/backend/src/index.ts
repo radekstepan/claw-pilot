@@ -17,6 +17,7 @@ import { Server } from 'socket.io';
 import { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-types';
 import { startSessionMonitor } from './monitors/sessionMonitor.js';
 import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
+import { db, dbBackupTimer } from './db.js';
 
 const fastify = await buildApp();
 
@@ -40,12 +41,46 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------------------
 // Background monitors
 // ---------------------------------------------------------------------------
-startSessionMonitor(fastify);
-startStuckTaskMonitor(fastify);
+const sessionMonitorTimer = startSessionMonitor(fastify);
+const stuckTaskMonitorTimer = startStuckTaskMonitor(fastify);
 
 // ---------------------------------------------------------------------------
 // Start listening
 // ---------------------------------------------------------------------------
 await fastify.listen({ port: env.PORT, host: env.HOST });
 console.log(`Server listening on http://${env.HOST}:${env.PORT}`);
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown — handle SIGINT (Ctrl-C) and SIGTERM (container stop).
+//
+// Order of operations:
+//   1. Stop timers so no new work is scheduled.
+//   2. Flush any pending db state to disk.
+//   3. Close the Fastify/HTTP/Socket.io server (drains in-flight requests).
+//   4. Exit with code 0.
+// ---------------------------------------------------------------------------
+async function shutdown(signal: string): Promise<void> {
+    console.log(`\n[claw-pilot] ${signal} received — shutting down gracefully…`);
+
+    clearInterval(sessionMonitorTimer);
+    clearInterval(stuckTaskMonitorTimer);
+    clearInterval(dbBackupTimer);
+
+    try {
+        await db.write();
+    } catch (e) {
+        console.error('[claw-pilot] db.write() failed during shutdown:', e);
+    }
+
+    try {
+        await fastify.close();
+    } catch (e) {
+        console.error('[claw-pilot] fastify.close() failed during shutdown:', e);
+    }
+
+    process.exit(0);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
 

@@ -4,9 +4,9 @@ import { randomUUID } from 'crypto';
 
 const notifiedStuckTasks = new Set<string>();
 
-export function startStuckTaskMonitor(fastify: FastifyInstance) {
+export function startStuckTaskMonitor(fastify: FastifyInstance): NodeJS.Timeout {
     // Check every minute
-    setInterval(async () => {
+    return setInterval(async () => {
         try {
             await updateDb(async (data) => {
                 const now = new Date();
