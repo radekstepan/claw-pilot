@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "tsx watch src/index.ts",
+        "dev:mock": "node scripts/setup-mock-env.mjs && PATH=$(pwd)/scripts:$PATH OPENCLAW_HOME=$HOME/.openclaw-mock tsx watch src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
         "lint": "eslint . --ext .ts",
@@ -15,6 +16,7 @@
         "@claw-pilot/shared-types": "*",
         "@fastify/cors": "^11.2.0",
         "@fastify/rate-limit": "^10.3.0",
+        "@fastify/static": "^9.0.0",
         "dotenv": "^16.4.5",
         "fastify": "^5.0.0",
         "fastify-type-provider-zod": "^6.1.0",

@@ -1,0 +1,46 @@
+services:
+  claw-pilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claw-pilot:latest
+    container_name: claw-pilot
+
+    ports:
+      - "54321:54321"
+
+    environment:
+      NODE_ENV: production
+      PORT: 54321
+      HOST: "0.0.0.0"           # bind to all interfaces inside the container
+      # Copy .env.production or pass these via `docker run -e`:
+      API_KEY: "${API_KEY}"
+      ALLOWED_ORIGIN: "${ALLOWED_ORIGIN:-http://localhost:54321}"
+
+      # Override to point at the mounted OpenClaw config volume.
+      OPENCLAW_HOME: /openclaw
+
+    volumes:
+      # Persistent database — keeps db.json across container restarts.
+      - claw_data:/app/apps/backend/data
+
+      # OpenClaw agent configuration — mount your local ~/.openclaw directory.
+      # Make it read-only (:ro) unless Claw-Pilot needs to write workspace files.
+      - "${OPENCLAW_CONFIG_DIR:-${HOME}/.openclaw}:/openclaw"
+
+    restart: unless-stopped
+
+    # Ensure the process receives SIGTERM for graceful shutdown.
+    stop_signal: SIGTERM
+    stop_grace_period: 15s
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:54321/').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  claw_data:
+    driver: local

@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { createHash, timingSafeEqual } from 'crypto';
 import { env } from '../config/env.js';
 
 /**
@@ -9,16 +10,20 @@ import { env } from '../config/env.js';
  *   Authorization: Bearer <key>
  *
  * Returns 401 if the header is absent, malformed, or the token does not match.
- * This hook is registered on all API routes; the root health-check `GET /` is
- * registered before the hook and remains public.
+ * Only routes under `/api/*` require authentication. All other paths (the root
+ * health-check, SPA HTML, and static frontend assets served by @fastify/static
+ * in production) are intentionally public so the browser can load the UI without
+ * needing to supply an API key.
+ *
+ * Security: comparison is done via SHA-256 digest + timingSafeEqual to prevent
+ * timing-based side-channel attacks that could leak the API key length or value.
  */
 export async function authHook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    // The root health-check (GET /) is intentionally public.
-    // Fastify applies global hooks to all routes regardless of registration order,
-    // so we bypass auth explicitly here rather than relying on registration position.
-    if (request.url === '/') return;
-
-    const apiKey = env.API_KEY;
+    // Only protect the API surface. Static assets, the SPA entry-point, and the
+    // health-check root are all public. This keeps the browser able to load the
+    // frontend in production without requiring an Authorization header for every
+    // JS/CSS bundle fetch.
+    if (!request.url.startsWith('/api/')) return;
 
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,7 +31,14 @@ export async function authHook(request: FastifyRequest, reply: FastifyReply): Pr
     }
 
     const token = authHeader.slice('Bearer '.length);
-    if (token !== apiKey) {
+
+    // Hash both values to a fixed-length digest before comparing, so
+    // timingSafeEqual always receives equal-length Buffers and the comparison
+    // time does not leak whether the token length is correct.
+    const expectedHash = createHash('sha256').update(env.API_KEY).digest();
+    const actualHash = createHash('sha256').update(token).digest();
+
+    if (!timingSafeEqual(expectedHash, actualHash)) {
         return reply.status(401).send({ error: 'Unauthorized: invalid API key.' });
     }
 }

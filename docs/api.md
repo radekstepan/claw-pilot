@@ -52,67 +52,126 @@
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `GET` | `/api/chat` | Retrieves chat history from LowDB. |
-| `POST` | `/api/chat` | **Body:** `{ agent_id, content }`<br>Saves a standard chat message. |
-| `POST` | `/api/chat/send-to-agent` | **Body:** `{ agent_id, message }`<br>Saves human message, executes `openclaw agent --agent <id> --message "<msg>" --json`, awaits response, saves AI response, broadcasts via WS. |
+| `GET`  | `/api/chat` | Retrieves chat history from LowDB. Accepts `?cursor=<id>&limit=50` for cursor-based pagination (newest first). |
+| `POST` | `/api/chat` | **Body:** `{ agentId?, content }` — Saves a standard chat message directly. |
+| `POST` | `/api/chat/send-to-agent` | **Body:** `{ message, agentId? }` — Saves the user message, then asynchronously routes it to the OpenClaw CLI agent. **Returns `202 Accepted`** immediately with `{ id, status: "pending" }`. The AI reply is delivered via the `chat_message` Socket.io event when the CLI process completes. If the CLI fails, an `agent_error` event is emitted instead. |
+| `DELETE` | `/api/chat` | Wipes all chat history. Emits the `chat_cleared` Socket.io event. |
 
-## 6. Deliverables & Recurring Tasks
+## 6. App Configuration API
+*Persists runtime config in LowDB (gateway URL, port, auto-restart flag).*
+
+| Method | Endpoint | Purpose |
+| :--- | :--- | :--- |
+| `GET`  | `/api/config` | Returns the current `AppConfig` object. |
+| `POST` | `/api/config` | **Body:** Partial `AppConfig` — merges the supplied fields into the stored config and writes to LowDB. |
+
+**AppConfig schema:**
+```json
+{
+  "gatewayUrl": "http://127.0.0.1:8000",
+  "apiPort": 54321,
+  "autoRestart": false
+}
+```
+
+## 7. Activities API
+*Cursor-paginated activity log across all tasks.*
+
+| Method | Endpoint | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/activities?cursor=<id>&limit=50` | Returns activity logs sorted newest-first. `nextCursor` is null at end of log. |
+
+**Response shape:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "task_id": "uuid",
+      "agent_id": "dev",
+      "message": "Started working on the auth module.",
+      "timestamp": "2026-02-24T09:30:00.000Z"
+    }
+  ],
+  "nextCursor": "uuid-of-oldest-item-in-page"
+}
+```
+
+When `nextCursor` is `null`, the client has reached the beginning of the log. Pass `cursor=<nextCursor>` in the next request to paginate backwards.
+
+## 8. Deliverables & Recurring Tasks
 *Sub-tasks and cron-like scheduled tasks.*
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `POST` | `/api/tasks/:id/deliverables` | **Body:** `{ title, file_path? }`<br>Adds a checklist item to a task. |
-| `PATCH` | `/api/deliverables/:id/complete`| Toggles completion of a deliverable. |
-| `GET` | `/api/recurring` | Lists all recurring task templates. |
-| `POST` | `/api/recurring` | **Body:** `{ title, schedule_type, schedule_value... }`<br>Creates a cron template. |
-| `PATCH` | `/api/recurring/:id` | Pauses/Resumes or updates a recurring task. |
-| `POST` | `/api/recurring/:id/trigger` | Manually triggers a recurring task, spawning a new normal Task. |
+| `POST`  | `/api/tasks/:id/deliverables` | **Body:** `{ title, file_path? }` — Adds a checklist item to a task. |
+| `PATCH` | `/api/deliverables/:id/complete` | Toggles completion of a deliverable. |
+| `GET`   | `/api/recurring` | Lists all recurring task templates. |
+| `POST`  | `/api/recurring` | **Body:** `{ title, schedule_type, schedule_value? }` — Creates a scheduled template. |
+| `PATCH` | `/api/recurring/:id` | **Body:** Partial `RecurringTask` — Pauses/Resumes or updates a recurring task. |
+| `DELETE`| `/api/recurring/:id` | Deletes a recurring task template. |
+| `POST`  | `/api/recurring/:id/trigger` | Manually triggers a recurring task, spawning a new normal Task from the template. |
 
-## 7. System & Monitoring API
-*Diagnostics and background service hooks.*
+**RecurringTask create payload:**
+```json
+{
+  "title": "Weekly status report",
+  "schedule_type": "weekly",
+  "schedule_value": "monday"
+}
+```
+
+Valid `schedule_type` values: `"daily"` | `"weekly"` | `"manual"`. `schedule_value` is only meaningful for `"weekly"` (day name, e.g., `"monday"`).
+
+**RecurringTask PATCH payload** (pause/resume or rename):
+```json
+{
+  "status": "PAUSED"
+}
+```
+or
+```json
+{
+  "status": "ACTIVE",
+  "title": "Renamed weekly report"
+}
+```
+
+**`POST /api/recurring/:id/trigger` response** — returns the newly-spawned `Task`:
+```json
+{
+  "id": "uuid",
+  "title": "Weekly status report",
+  "description": "Auto-generated from recurring template: Weekly status report",
+  "status": "INBOX",
+  "priority": "MEDIUM",
+  "createdAt": "2026-02-24T10:00:00.000Z",
+  "updatedAt": "2026-02-24T10:00:00.000Z"
+}
+```
+
+## 9. System & Monitoring API
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `GET` | `/api/stats` | Returns aggregate dashboard numbers (active agents, tasks in queue, completed today). |
-| `GET` | `/api/monitoring/gateway/status` | Returns the health of the OpenClaw gateway (managed by backend watchdog). |
-| `POST` | `/api/monitoring/gateway/restart`| Manually triggers a restart of the OpenClaw gateway via CLI. |
-| `GET` | `/api/monitoring/stuck-tasks/check`| Returns a list of tasks that have been in `IN_PROGRESS` for too long (e.g., > 24h). |
+| `GET` | `/api/system/stats` | Returns aggregate dashboard numbers (active agents, tasks in queue, completed today). |
 
 ---
 
-## 8. WebSocket Events (Socket.io)
-Because the frontend must be highly reactive, your Node.js server needs to emit the following Socket.io events whenever LowDB is updated by an API call or a background monitor.
+## 10. WebSocket Events (Socket.io)
+Because the frontend must be highly reactive, the Node.js server emits the following Socket.io events whenever LowDB is updated by an API call or a background monitor.
 
-### Client Listens For (Backend Emits):
-*   `task_created` (Payload: `{ id, title }`)
-*   `task_updated` (Payload: `{ id, status }`)
-*   `task_deleted` (Payload: `{ id }`)
-*   `task_reviewed` (Payload: `{ id, action: 'approve' | 'reject' }`)
-*   `activity_added` (Payload: `ActivityLog` object)
-*   `chat_message` (Payload: `ChatMessage` object)
-*   `agent_status_changed` (Payload: `{ agentId, status: 'WORKING' | 'IDLE' | 'OFFLINE' }`)
-
----
-
-## Recommended Turborepo Structure for this API
-
-To implement this cleanly, structure your monorepo to share the request/response payloads:
-
-```text
-claw-pilot/
-├── packages/
-│   ├── shared-types/      # Zod schemas & TS Interfaces for the APIs above
-│   ├── eslint-config/
-│   └── tsconfig/
-├── apps/
-│   ├── backend/           # Express + Socket.io + LowDB + CLI Bridge
-│   │   ├── src/
-│   │   │   ├── routes/    # (agents.ts, tasks.ts, chat.ts, etc.)
-│   │   │   ├── openclaw/  # child_process wrappers
-│   │   │   └── db/        # LowDB setup
-│   └── frontend/          # React + Vite + Zustand + Tailwind
-│       ├── src/
-│       │   ├── api/       # Typed fetch/axios wrappers matching the shared-types
-│       │   ├── store/     # Zustand stores updated by Socket.io
-│       │   └── components/
-```
+### Backend Emits → Client Listens:
+| Event | Payload | Trigger |
+| :--- | :--- | :--- |
+| `task_created` | `{ id, title? }` | `POST /api/tasks` |
+| `task_updated` | Full `Task` object | Any status change |
+| `task_deleted` | `{ id }` | `DELETE /api/tasks/:id` |
+| `task_reviewed` | `{ id, action: 'approve' \| 'reject' }` | `POST /api/tasks/:id/review` |
+| `activity_added` | `ActivityLog` object | `POST /api/tasks/:id/activity` |
+| `agent_status_changed` | `Agent` object | Session monitor (every 10 s) |
+| `chat_message` | `ChatMessage` object | Any message saved to LowDB |
+| `chat_cleared` | _(no payload)_ | `DELETE /api/chat` |
+| `agent_error` | `{ agentId, error }` | Async CLI call fails in `/send-to-agent`, activity, or review routes |
+| `agent_config_generated` | `{ requestId, config }` | `POST /api/agents/generate` CLI succeeds |
+| `agent_config_error` | `{ requestId, error }` | `POST /api/agents/generate` CLI fails |

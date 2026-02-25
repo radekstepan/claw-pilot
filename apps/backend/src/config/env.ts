@@ -2,7 +2,7 @@ import { z } from 'zod';
 import os from 'os';
 import path from 'path';
 
-const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1'] as const;
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'] as const;
 
 const EnvSchema = z.object({
     /** Required — app refuses to start without a non-empty API key. */
@@ -19,7 +19,7 @@ const EnvSchema = z.object({
         .string()
         .default('127.0.0.1')
         .refine((h) => LOOPBACK_HOSTS.includes(h as (typeof LOOPBACK_HOSTS)[number]), {
-            message: `HOST must be a loopback interface: ${LOOPBACK_HOSTS.join(', ')}`,
+            message: `HOST must be a loopback interface (${LOOPBACK_HOSTS.slice(0,3).join(', ')}) or 0.0.0.0 for Docker containers`,
         }),
 
     /**

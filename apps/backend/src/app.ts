@@ -8,9 +8,12 @@
 import Fastify, { FastifyError, FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import staticPlugin from '@fastify/static';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { authHook } from './middleware/auth.js';
 import { env } from './config/env.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 // Route plugins
 import taskRoutes from './routes/tasks.js';
@@ -90,6 +93,28 @@ export async function buildApp(): Promise<FastifyInstance> {
     fastify.register(systemRoutes, { prefix: '/api' });
     fastify.register(configRoutes, { prefix: '/api/config' });
     fastify.register(activityRoutes, { prefix: '/api/activities' });
+
+    // ---------------------------------------------------------------------------
+    // Production static serving — serve the pre-built Vite frontend from
+    // apps/frontend/dist when NODE_ENV=production.
+    // In development the Vite dev server runs separately on port 5173.
+    // ---------------------------------------------------------------------------
+    if (env.NODE_ENV === 'production') {
+        const __dirname = path.dirname(fileURLToPath(import.meta.url));
+        const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+
+        await fastify.register(staticPlugin, {
+            root: frontendDist,
+            prefix: '/',
+            // Serve index.html for any unknown route so the React SPA handles routing.
+            wildcard: false,
+        });
+
+        // SPA catch-all: any non-asset, non-API path serves index.html.
+        fastify.setNotFoundHandler((_request, reply) => {
+            return reply.sendFile('index.html');
+        });
+    }
 
     return fastify;
 }
