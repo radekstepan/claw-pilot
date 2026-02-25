@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
-import { getAgents, getLiveSessions, generateAgentConfig, gatewayCall } from '../openclaw/cli.js';
+import { getAgents, getLiveSessions, generateAgentConfig, gatewayCall, GatewayOfflineError } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
 import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -8,8 +8,7 @@ import { randomUUID } from 'crypto';
 const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.get('/', async (request, reply) => {
         try {
-            const agents = await getAgents();
-            const sessions = await getLiveSessions();
+            const [agents, sessions] = await Promise.all([getAgents(), getLiveSessions()]);
 
             // Find active sessions that correspond to the agents
             const activeSessions = sessions.filter(s => s.status === 'WORKING' || s.status === 'IDLE');
@@ -24,6 +23,10 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
             return updatedAgents;
         } catch (error) {
+            if (error instanceof GatewayOfflineError) {
+                fastify.log.warn(`[agents] ${error.message}`);
+                return reply.status(503).send({ error: 'OpenClaw gateway is unreachable. Agents are unavailable.' });
+            }
             fastify.log.error(error);
             return reply.status(500).send({ error: 'Failed to fetch agents.' });
         }

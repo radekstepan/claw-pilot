@@ -3,6 +3,34 @@ import WebSocket from 'ws';
 import { Agent } from '@claw-pilot/shared-types';
 import { env } from '../config/env.js';
 
+/**
+ * Thrown by higher-level gateway helpers (getAgents, getLiveSessions, etc.)
+ * when the underlying TCP/WebSocket connection to the gateway is refused or
+ * otherwise unreachable.  Callers can instanceof-check this to distinguish
+ * a configuration/network problem from an unexpected runtime error.
+ */
+export class GatewayOfflineError extends Error {
+    override readonly name = 'GatewayOfflineError';
+    constructor(method: string, cause: Error) {
+        super(`OpenClaw gateway unreachable (${method}): ${cause.message}`);
+        this.cause = cause;
+    }
+}
+
+/** Returns true for low-level connection errors (ECONNREFUSED, ENOTFOUND, ETIMEDOUT, WS close). */
+function isConnectionError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const code = (err as NodeJS.ErrnoException).code ?? '';
+    return (
+        code === 'ECONNREFUSED' ||
+        code === 'ECONNRESET' ||
+        code === 'ENOTFOUND' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ECONNABORTED' ||
+        err.message.includes('WebSocket was closed before the connection was established')
+    );
+}
+
 /** Timeout (ms) for fast/informational gateway RPC calls (health, sessions list, models, etc.). */
 const WS_TIMEOUT = env.OPENCLAW_WS_TIMEOUT;
 
@@ -231,7 +259,8 @@ export async function getAgents(): Promise<Agent[]> {
         if (!cfg || !Object.prototype.hasOwnProperty.call(cfg, 'agents')) return [];
         return parseOpenclawConfig(cfg);
     } catch (e) {
-        console.error('Failed to fetch agents from gateway:', e);
+        if (isConnectionError(e)) throw new GatewayOfflineError('config.get', e as Error);
+        console.error('[openclaw] getAgents unexpected error:', e);
         return [];
     }
 }
@@ -249,7 +278,8 @@ export async function getLiveSessions(): Promise<LiveSession[]> {
         }
         return [];
     } catch (e) {
-        console.error('Failed to list live sessions:', e);
+        if (isConnectionError(e)) throw new GatewayOfflineError('sessions.list', e as Error);
+        console.error('[openclaw] getLiveSessions unexpected error:', e);
         return [];
     }
 }
@@ -269,7 +299,8 @@ export async function routeChatToAgent(agentId: string, message: string): Promis
             { timeout: AI_TIMEOUT },
         );
     } catch (e) {
-        console.error('Failed to route chat to agent:', e);
+        if (isConnectionError(e)) throw new GatewayOfflineError('chat.send', e as Error);
+        console.error('[openclaw] routeChatToAgent unexpected error:', e);
         throw e;
     }
 }
@@ -289,7 +320,8 @@ export async function generateAgentConfig(prompt: string): Promise<unknown> {
             { timeout: AI_TIMEOUT },
         );
     } catch (e) {
-        console.error('Failed to generate agent config:', e);
+        if (isConnectionError(e)) throw new GatewayOfflineError('chat.send', e as Error);
+        console.error('[openclaw] generateAgentConfig unexpected error:', e);
         throw e;
     }
 }
@@ -298,13 +330,19 @@ export async function generateAgentConfig(prompt: string): Promise<unknown> {
  * Creates a session for a task and delivers the initial prompt to it.
  */
 export async function spawnTaskSession(agentId: string, taskId: string, prompt: string): Promise<void> {
-    const sessionKey = `task-${taskId}`;
-    await gatewayCall('sessions.patch', { key: sessionKey, label: sessionKey }, { timeout: WS_TIMEOUT });
-    await gatewayCall(
-        'chat.send',
-        { sessionKey, message: prompt, deliver: true, idempotencyKey: randomUUID() },
-        { timeout: AI_TIMEOUT },
-    );
+    try {
+        const sessionKey = `task-${taskId}`;
+        await gatewayCall('sessions.patch', { key: sessionKey, label: sessionKey }, { timeout: WS_TIMEOUT });
+        await gatewayCall(
+            'chat.send',
+            { sessionKey, message: prompt, deliver: true, idempotencyKey: randomUUID() },
+            { timeout: AI_TIMEOUT },
+        );
+    } catch (e) {
+        if (isConnectionError(e)) throw new GatewayOfflineError('chat.send', e as Error);
+        console.error('[openclaw] spawnTaskSession unexpected error:', e);
+        throw e;
+    }
 }
 
 /**
@@ -319,7 +357,8 @@ export async function getModels(): Promise<unknown> {
         }
         return payload ?? [];
     } catch (e) {
-        console.error('Failed to list models:', e);
+        if (isConnectionError(e)) throw new GatewayOfflineError('models.list', e as Error);
+        console.error('[openclaw] getModels unexpected error:', e);
         return [];
     }
 }

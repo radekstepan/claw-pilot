@@ -63,11 +63,17 @@ yarn install
 
 ### 2. Configure environment
 
-Copy the example file and fill in the required values:
+Generate both `.env` files with a single matching `API_KEY` (the key must be identical in both):
 
 ```bash
-cp apps/backend/.env.example apps/backend/.env
+KEY=$(openssl rand -hex 32)
+printf "PORT=54321\nAPI_KEY=$KEY\n" > apps/backend/.env
+printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54321\nVITE_API_KEY=$KEY\n" > apps/frontend/.env
 ```
+
+> **Why two files?** The backend validates every request against `API_KEY`; the frontend must send the same value as a `Bearer` token. Mismatched keys produce 401 errors on boot.
+
+**Backend variables** (`apps/backend/.env`):
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
@@ -82,13 +88,15 @@ cp apps/backend/.env.example apps/backend/.env
 | `OPENCLAW_WS_TIMEOUT` | | `15000` | Timeout (ms) for fast RPC calls (health, sessions list, models) |
 | `OPENCLAW_AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
 
-Frontend variables (in `apps/frontend/.env`):
+**Frontend variables** (`apps/frontend/.env`):
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `VITE_API_URL` | ✅ | — | Full URL of the backend, e.g. `http://localhost:54321` |
-| `VITE_SOCKET_URL` | ✅ | — | Socket.io URL (usually same as `VITE_API_URL`) |
+| `VITE_API_URL` | ✅ | `http://localhost:54321` | Full URL of the backend |
+| `VITE_SOCKET_URL` | ✅ | `http://localhost:54321` | Socket.io URL (usually same as `VITE_API_URL`) |
 | `VITE_API_KEY` | ✅ | — | Must match the backend `API_KEY` |
+
+**No OpenClaw gateway?** The backend starts and all non-AI routes (tasks, activities, recurring) work without a live gateway. After the first monitor tick (~10 s) the frontend will show a yellow banner: _"OpenClaw gateway unreachable — AI features are offline."_ The banner disappears automatically when the gateway comes back.
 
 ### 3. Run in development
 

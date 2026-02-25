@@ -1,18 +1,20 @@
-import { FastifyPluginAsync } from 'fastify';
-import { getModels } from '../openclaw/cli.js';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { getModels, GatewayOfflineError } from '../openclaw/cli.js';
+import { env } from '../config/env.js';
 
 const modelRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.get('/', async (request, reply) => {
         try {
             const models = await getModels();
-
-            // Map the raw models to a friendlier format if necessary, 
-            // or just return the raw array from openclaw.
-            // Assuming openclaw models list returns an array of objects
-            // with at least id, name, provider, etc.
             return models;
         } catch (error) {
+            if (error instanceof GatewayOfflineError) {
+                fastify.log.warn(`[models] ${(error as Error).message}`);
+                return reply.status(503).send({
+                    error: 'OpenClaw gateway is unreachable. Model list unavailable.',
+                    gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+                });
+            }
             fastify.log.error(error);
             return reply.status(500).send({ error: 'Failed to fetch models.' });
         }

@@ -11,6 +11,7 @@ export function useSocketListener() {
         deleteTaskLocally,
         addChatMessage,
         setSocketConnected,
+        setGatewayOnline,
         fetchInitialData,
     } = useMissionStore();
 
@@ -81,9 +82,14 @@ export function useSocketListener() {
             useMissionStore.setState({ chatHistory: [], chatCursor: null });
         });
 
+        socket.on('gateway_status', ({ online }) => {
+            console.log('Socket event: gateway_status', online);
+            setGatewayOnline(online);
+        });
+
         return () => {
             socket.io.off('reconnect', handleReconnect);
             socket.disconnect();
         };
-    }, [updateTaskLocally, addTaskLocally, deleteTaskLocally, addChatMessage, setSocketConnected, fetchInitialData]);
+    }, [updateTaskLocally, addTaskLocally, deleteTaskLocally, addChatMessage, setSocketConnected, setGatewayOnline, fetchInitialData]);
 }

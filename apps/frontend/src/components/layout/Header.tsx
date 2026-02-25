@@ -1,15 +1,18 @@
-import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu } from 'lucide-react';
+import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu, WifiOff } from 'lucide-react';
 
 interface HeaderProps {
     stats: { active: number; queued: number; done: number };
     theme: string;
     isSocketConnected: boolean;
+    /** null = status not yet known (first monitor tick pending) */
+    gatewayOnline: boolean | null;
     onToggleTheme: () => void;
     onNewTask: () => void;
     onToggleSidebar: () => void;
 }
 
-export const Header = ({ stats, theme, isSocketConnected, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => (
+export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => (
+    <>
     <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between px-4 md:px-6 sticky top-0 z-50">
         <div className="flex items-center gap-3 md:gap-8">
             <button
@@ -54,16 +57,37 @@ export const Header = ({ stats, theme, isSocketConnected, onToggleTheme, onNewTa
 
             <div
                 role="status"
-                aria-label={isSocketConnected ? 'Gateway connected' : 'Gateway disconnected'}
-                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border mr-2 md:mr-4 cursor-default transition-colors group ${isSocketConnected
-                    ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
-                    : 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10'
+                aria-label={
+                    !isSocketConnected ? 'Backend disconnected'
+                    : gatewayOnline === false ? 'OpenClaw gateway offline'
+                    : 'All systems nominal'
+                }
+                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border mr-2 md:mr-4 cursor-default transition-colors group ${
+                    !isSocketConnected
+                        ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10'
+                        : gatewayOnline === false
+                        ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10'
+                        : 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
                 }`}>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isSocketConnected ? 'bg-emerald-500' : 'bg-red-500'}`} aria-hidden="true" />
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${isSocketConnected ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-600 dark:text-red-500'}`}>
-                    {isSocketConnected ? 'Gateway Nominal' : 'Disconnected'}
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                    !isSocketConnected ? 'bg-red-500'
+                    : gatewayOnline === false ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                }`} aria-hidden="true" />
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                    !isSocketConnected ? 'text-red-600 dark:text-red-500'
+                    : gatewayOnline === false ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-500'
+                }`}>
+                    {!isSocketConnected ? 'Disconnected'
+                    : gatewayOnline === false ? 'Gateway Offline'
+                    : 'Nominal'}
                 </span>
-                <ChevronDown size={12} className={`${isSocketConnected ? 'text-emerald-500' : 'text-red-500'} opacity-50 group-hover:opacity-100`} aria-hidden="true" />
+                <ChevronDown size={12} className={`${
+                    !isSocketConnected ? 'text-red-500'
+                    : gatewayOnline === false ? 'text-amber-500'
+                    : 'text-emerald-500'
+                } opacity-50 group-hover:opacity-100`} aria-hidden="true" />
             </div>
 
             <button
@@ -82,4 +106,15 @@ export const Header = ({ stats, theme, isSocketConnected, onToggleTheme, onNewTa
             </button>
         </div>
     </header>
+    {isSocketConnected && gatewayOnline === false && (
+        <div
+            role="alert"
+            aria-live="polite"
+            className="sticky top-14 z-40 flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] font-medium"
+        >
+            <WifiOff size={13} aria-hidden="true" className="shrink-0" />
+            <span><strong>OpenClaw gateway unreachable</strong> — AI features (agent routing, chat, models) are offline. Non-AI features continue to work normally.</span>
+        </div>
+    )}
+    </>
 );

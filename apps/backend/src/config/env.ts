@@ -74,7 +74,7 @@ function parseEnv(): Env {
             .join('\n');
         throw new Error(
             `\n[claw-pilot] ❌ Invalid environment configuration:\n\n${issues}\n\n` +
-                `Fix the above issues in apps/backend/.env and restart.\n`,
+                `Fix the above issues in the root .env file and restart.\n`,
         );
     }
     return result.data;

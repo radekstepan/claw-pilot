@@ -10,7 +10,9 @@
  *  4. Attach Socket.io and start background monitors.
  *  5. Bind to the TCP port and begin accepting connections.
  */
-import 'dotenv/config';
+// MUST be first: ESM evaluates this module fully before index.ts body runs,
+// so process.env is populated before Zod validates it in config/env.ts.
+import './loadEnv.js';
 import { env } from './config/env.js';
 import { buildApp } from './app.js';
 import { Server } from 'socket.io';

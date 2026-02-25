@@ -71,8 +71,16 @@ export const api = {
 
     // Agents
     getAgents: async (): Promise<Agent[]> => {
-        const response = await apiClient.get('/agents');
-        return response.data;
+        try {
+            const response = await apiClient.get('/agents');
+            return response.data;
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error) && error.response?.status === 503) {
+                // Gateway offline — banner already communicates this; return empty list silently
+                return [];
+            }
+            throw error;
+        }
     },
     generateAgent: async (prompt: string): Promise<GeneratedAgentConfig> => {
         const response = await apiClient.post('/agents/generate', { prompt });
@@ -118,8 +126,15 @@ export const api = {
 
     // Settings & System
     getModels: async (): Promise<Model[]> => {
-        const response = await apiClient.get('/models');
-        return response.data;
+        try {
+            const response = await apiClient.get('/models');
+            return response.data;
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error) && error.response?.status === 503) {
+                return [];
+            }
+            throw error;
+        }
     },
     getGatewayStatus: async (): Promise<GatewayStatus> => {
         const response = await apiClient.get('/monitoring/gateway/status');

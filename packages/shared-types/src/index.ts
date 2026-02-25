@@ -103,6 +103,8 @@ export interface ServerToClientEvents {
     agent_config_generated: (payload: { requestId: string; config: unknown }) => void;
     /** Emitted when an async /agents/generate CLI call fails. */
     agent_config_error: (payload: { requestId: string; error: string }) => void;
+    /** Emitted when the OpenClaw gateway comes online or goes offline. */
+    gateway_status: (payload: { online: boolean }) => void;
 }
 
 export interface ClientToServerEvents {

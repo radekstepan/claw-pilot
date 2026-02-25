@@ -12,6 +12,8 @@ interface MissionState {
     isLoading: boolean;
     error: string | null;
     isSocketConnected: boolean;
+    /** null = not yet known (first tick pending), true = reachable, false = offline */
+    gatewayOnline: boolean | null;
     /** Cursor for the next page of activities (null = no more pages). */
     activitiesCursor: string | null;
     /** Cursor for the next page of chat history (null = no more pages). */
@@ -29,6 +31,7 @@ interface MissionState {
     addChatMessage: (msg: ChatMessage) => void;
     clearChatHistory: () => Promise<void>;
     setSocketConnected: (connected: boolean) => void;
+    setGatewayOnline: (online: boolean) => void;
     loadMoreActivities: () => Promise<void>;
     loadMoreChat: () => Promise<void>;
     // Recurring
@@ -48,6 +51,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     isLoading: false,
     error: null,
     isSocketConnected: false,
+    gatewayOnline: null,
     activitiesCursor: null,
     chatCursor: null,
 
@@ -210,6 +214,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     },
 
     setSocketConnected: (connected: boolean) => set({ isSocketConnected: connected }),
+    setGatewayOnline: (online: boolean) => set({ gatewayOnline: online }),
 
     loadMoreActivities: async () => {
         const { activitiesCursor } = get();
