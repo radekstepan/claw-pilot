@@ -21,6 +21,8 @@ const PRIORITY_OPTIONS = [
     { value: 'HIGH', label: 'HIGH' },
 ];
 
+const NONE_VALUE = '__NONE__';
+
 interface NewTaskModalProps {
     agents: Agent[];
     onClose: () => void;
@@ -43,7 +45,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
             title: '',
             description: '',
             priority: 'MEDIUM',
-            assignee_id: '',
+            assignee_id: NONE_VALUE,
             tags: [],
         },
     });
@@ -66,21 +68,22 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
     };
 
     const onSubmit = (data: FormValues) => {
+        const assignedId = data.assignee_id && data.assignee_id !== NONE_VALUE ? data.assignee_id : undefined;
         const payload: CreateTaskPayload = {
             title: data.title,
             description: data.description || undefined,
             priority: data.priority,
-            assignee_id: data.assignee_id || undefined,
+            assignee_id: assignedId,
             tags: data.tags.length > 0 ? data.tags : undefined,
-            status: data.assignee_id ? 'ASSIGNED' : 'TODO',
+            status: assignedId ? 'ASSIGNED' : 'TODO',
         };
         onAdd(payload);
         onClose();
     };
 
     const agentOptions = [
-        { value: '', label: 'DEFERRED (INBOX)' },
-        ...agents.map(a => ({ value: a.id, label: `${a.name}${a.role ? ` (${a.role})` : ''}` })),
+        { value: NONE_VALUE, label: 'DEFERRED (INBOX)' },
+        ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: `${a.name}${a.role ? ` (${a.role})` : ''}` })),
     ];
 
     return (
@@ -150,7 +153,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                                 control={control}
                                 render={({ field }) => (
                                     <Select
-                                        value={field.value ?? ''}
+                                        value={field.value || NONE_VALUE}
                                         onValueChange={field.onChange}
                                         options={agentOptions}
                                         placeholder="DEFERRED (INBOX)"

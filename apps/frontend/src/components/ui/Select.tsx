@@ -80,7 +80,7 @@ export const Select = ({
                     </RadixSelect.ScrollUpButton>
 
                     <RadixSelect.Viewport>
-                        {options.map((opt) => (
+                        {options.filter(opt => !!opt.value).map((opt) => (
                             <RadixSelect.Item
                                 key={opt.value}
                                 value={opt.value}

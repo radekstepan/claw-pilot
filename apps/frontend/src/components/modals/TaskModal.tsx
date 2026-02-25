@@ -22,8 +22,10 @@ const updateFormSchema = z.object({
 });
 type UpdateFormValues = z.infer<typeof updateFormSchema>;
 
+const NONE_VALUE = '__NONE__';
+
 const PRIORITY_OPTIONS = [
-    { value: '', label: '— None —' },
+    { value: NONE_VALUE, label: '— None —' },
     { value: 'LOW', label: 'LOW' },
     { value: 'MEDIUM', label: 'MEDIUM' },
     { value: 'HIGH', label: 'HIGH' },
@@ -53,8 +55,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         defaultValues: {
             title: task?.title ?? '',
             description: task?.description ?? '',
-            priority: task?.priority ?? '',
-            assignee_id: task?.assignee_id ?? '',
+            priority: task?.priority || NONE_VALUE,
+            assignee_id: task?.assignee_id || NONE_VALUE,
         },
     });
 
@@ -66,8 +68,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const agent = agents.find(a => a.id === (assigneeId || task.assignee_id));
 
     const agentOptions = [
-        { value: '', label: '— Unassigned —' },
-        ...agents.map(a => ({ value: a.id, label: a.name })),
+        { value: NONE_VALUE, label: '— Unassigned —' },
+        ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
     ];
 
     const handleApprove = async () => {
@@ -116,8 +118,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
             const patch: Partial<Task> = {
                 title: data.title || undefined,
                 description: data.description || undefined,
-                priority: (data.priority as Task['priority']) || undefined,
-                assignee_id: data.assignee_id || undefined,
+                priority: data.priority === NONE_VALUE ? undefined : (data.priority as Task['priority']),
+                assignee_id: data.assignee_id === NONE_VALUE ? undefined : data.assignee_id,
             };
             await updateTask(task.id, patch);
             toast.success('Task updated.');
@@ -288,7 +290,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 control={control}
                                 render={({ field }) => (
                                     <Select
-                                        value={field.value ?? ''}
+                                        value={field.value || NONE_VALUE}
                                         onValueChange={field.onChange}
                                         options={agentOptions}
                                         placeholder="— Unassigned —"
@@ -304,7 +306,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 control={control}
                                 render={({ field }) => (
                                     <Select
-                                        value={field.value ?? ''}
+                                        value={field.value || NONE_VALUE}
                                         onValueChange={field.onChange}
                                         options={PRIORITY_OPTIONS}
                                         placeholder="— None —"
