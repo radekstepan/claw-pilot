@@ -1,12 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Bot, X, ChevronRight, MessageSquare, Loader2, Trash2 } from 'lucide-react';
 import { useMissionStore } from '../../store/useMissionStore';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 export const ChatWidget = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [msg, setMsg] = useState("");
     const [isTyping, setIsTyping] = useState(false);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
     const chatHistory = useMissionStore(state => state.chatHistory);
     const chatCursor = useMissionStore(state => state.chatCursor);
     const loadMoreChat = useMissionStore(state => state.loadMoreChat);
@@ -14,14 +16,21 @@ export const ChatWidget = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const handleClearChat = async () => {
-        if (!window.confirm('Clear all chat history? This cannot be undone.')) return;
+        setShowClearConfirm(true);
+    };
+
+    const confirmClearChat = async () => {
+        setShowClearConfirm(false);
         await clearChatHistory();
     };
 
-    // Provide initial history if empty
-    const displayHistory = chatHistory.length > 0 ? chatHistory : [
-        { id: '__placeholder__', role: 'assistant' as const, content: 'System ready. How can I assist the squad today?', timestamp: new Date().toISOString() }
-    ];
+    // Provide initial history if empty — memoized to avoid new reference on every render
+    const displayHistory = useMemo(
+        () => chatHistory.length > 0
+            ? chatHistory
+            : [{ id: '__placeholder__', role: 'assistant' as const, content: 'System ready. How can I assist the squad today?', timestamp: new Date().toISOString() }],
+        [chatHistory]
+    );
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -121,6 +130,16 @@ export const ChatWidget = () => {
                     <MessageSquare size={22} />
                 </button>
             )}
+
+            <ConfirmDialog
+                open={showClearConfirm}
+                title="Clear Chat History"
+                message="Clear all chat history? This cannot be undone."
+                confirmLabel="Clear"
+                variant="danger"
+                onConfirm={confirmClearChat}
+                onCancel={() => setShowClearConfirm(false)}
+            />
         </div>
     );
 };

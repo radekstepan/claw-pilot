@@ -4,6 +4,16 @@ import { toast } from 'sonner';
 import type { CreateRecurringPayload, RecurringTask } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
 import { Badge } from './ui/Badge';
+import { ConfirmDialog } from './ui/ConfirmDialog';
+import { Select } from './ui/Select';
+import { EmptyState } from './ui/EmptyState';
+
+const SCHEDULE_TYPE_OPTIONS = [
+    { value: 'HOURLY', label: 'Hourly' },
+    { value: 'DAILY', label: 'Daily' },
+    { value: 'WEEKLY', label: 'Weekly' },
+    { value: 'CUSTOM', label: 'Custom (cron)' },
+];
 
 export const RecurringView = () => {
     const { recurringTasks, createRecurring, deleteRecurring, updateRecurring, triggerRecurring } = useMissionStore();
@@ -13,6 +23,7 @@ export const RecurringView = () => {
     const [newScheduleType, setNewScheduleType] = useState<string>('DAILY');
     const [newScheduleValue, setNewScheduleValue] = useState('');
     const [loadingId, setLoadingId] = useState<string | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     const handleCreate = async () => {
         if (!newTitle.trim()) {
@@ -35,8 +46,13 @@ export const RecurringView = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm('Delete this scheduled mission?')) return;
-        await deleteRecurring(id);
+        setPendingDeleteId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!pendingDeleteId) return;
+        await deleteRecurring(pendingDeleteId);
+        setPendingDeleteId(null);
     };
 
     const handleTogglePause = async (task: RecurringTask) => {
@@ -60,6 +76,7 @@ export const RecurringView = () => {
     };
 
     return (
+        <>
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 max-w-4xl mx-auto w-full">
             <div className="flex items-center justify-between mb-8">
                 <div>
@@ -94,16 +111,12 @@ export const RecurringView = () => {
                         </div>
                         <div className="space-y-1">
                             <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Type</label>
-                            <select
+                            <Select
                                 value={newScheduleType}
-                                onChange={(e) => setNewScheduleType(e.target.value)}
-                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
-                            >
-                                <option value="HOURLY">Hourly</option>
-                                <option value="DAILY">Daily</option>
-                                <option value="WEEKLY">Weekly</option>
-                                <option value="CUSTOM">Custom (cron)</option>
-                            </select>
+                                onValueChange={setNewScheduleType}
+                                options={SCHEDULE_TYPE_OPTIONS}
+                                placeholder="— Schedule Type —"
+                            />
                         </div>
                         <div className="md:col-span-2 space-y-1">
                             <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Value <span className="text-slate-300 dark:text-slate-700 normal-case">(optional, e.g. cron expr)</span></label>
@@ -134,13 +147,12 @@ export const RecurringView = () => {
             )}
 
             {recurringTasks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 text-center">
-                    <Clock size={32} className="text-slate-300 dark:text-slate-700 mb-4" />
-                    <p className="text-sm font-bold text-slate-400 dark:text-slate-600 mb-1">No scheduled missions</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-700 max-w-xs">
-                        Create a recurring template to automatically generate tasks on a schedule.
-                    </p>
-                </div>
+                <EmptyState
+                    icon={Clock}
+                    title="No scheduled missions"
+                    description="Create a recurring template to automatically generate tasks on a schedule."
+                    action={{ label: '+ New Mission', onClick: () => setIsCreating(true) }}
+                />
             ) : (
                 <div className="space-y-3">
                     {recurringTasks.map((task) => {
@@ -207,5 +219,16 @@ export const RecurringView = () => {
                 </div>
             )}
         </div>
+
+        <ConfirmDialog
+            open={pendingDeleteId !== null}
+            title="Delete Mission"
+            message="Delete this scheduled mission? This cannot be undone."
+            confirmLabel="Delete"
+            variant="danger"
+            onConfirm={confirmDelete}
+            onCancel={() => setPendingDeleteId(null)}
+        />
+    </>
     );
 };

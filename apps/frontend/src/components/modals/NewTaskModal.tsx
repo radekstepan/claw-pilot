@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Plus, X, Send } from 'lucide-react';
-import type { Agent, CreateTaskPayload, TaskPriority } from '@claw-pilot/shared-types';
+import type { Agent, CreateTaskPayload } from '@claw-pilot/shared-types';
+import { Select } from '../ui/Select';
+
+const formSchema = z.object({
+    title: z.string().min(1, 'Mission title is required.'),
+    description: z.string().optional(),
+    priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+    assignee_id: z.string().optional(),
+    tags: z.array(z.string()),
+});
+type FormValues = z.infer<typeof formSchema>;
+
+const PRIORITY_OPTIONS = [
+    { value: 'LOW', label: 'LOW' },
+    { value: 'MEDIUM', label: 'MEDIUM' },
+    { value: 'HIGH', label: 'HIGH' },
+];
 
 interface NewTaskModalProps {
     agents: Agent[];
@@ -9,47 +28,60 @@ interface NewTaskModalProps {
 }
 
 export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
-    const [task, setTask] = useState<{
-        title: string;
-        description: string;
-        priority: TaskPriority;
-        assignee_id: string;
-        tags: string[];
-    }>({
-        title: '',
-        description: '',
-        priority: 'MEDIUM',
-        assignee_id: '',
-        tags: []
-    });
     const [tagInput, setTagInput] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!task.title) return;
-        const payload: CreateTaskPayload = {
-            title: task.title,
-            description: task.description || undefined,
-            priority: task.priority,
-            assignee_id: task.assignee_id || undefined,
-            tags: task.tags.length > 0 ? task.tags : undefined,
-            status: task.assignee_id ? 'ASSIGNED' : 'TODO',
-        };
-        onAdd(payload);
-        onClose();
-    };
+    const {
+        register,
+        handleSubmit,
+        control,
+        watch,
+        setValue,
+        formState: { errors, isSubmitting },
+    } = useForm<FormValues>({
+        resolver: zodResolver(formSchema),
+        defaultValues: {
+            title: '',
+            description: '',
+            priority: 'MEDIUM',
+            assignee_id: '',
+            tags: [],
+        },
+    });
+
+    const tags = watch('tags');
 
     const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && tagInput.trim()) {
             e.preventDefault();
-            setTask(prev => ({ ...prev, tags: Array.from(new Set([...prev.tags, tagInput.trim().toLowerCase()])) }));
+            const trimmed = tagInput.trim().toLowerCase();
+            if (!tags.includes(trimmed)) {
+                setValue('tags', [...tags, trimmed]);
+            }
             setTagInput('');
         }
     };
 
     const removeTag = (tagToRemove: string) => {
-        setTask(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tagToRemove) }));
+        setValue('tags', tags.filter(t => t !== tagToRemove));
     };
+
+    const onSubmit = (data: FormValues) => {
+        const payload: CreateTaskPayload = {
+            title: data.title,
+            description: data.description || undefined,
+            priority: data.priority,
+            assignee_id: data.assignee_id || undefined,
+            tags: data.tags.length > 0 ? data.tags : undefined,
+            status: data.assignee_id ? 'ASSIGNED' : 'TODO',
+        };
+        onAdd(payload);
+        onClose();
+    };
+
+    const agentOptions = [
+        { value: '', label: 'DEFERRED (INBOX)' },
+        ...agents.map(a => ({ value: a.id, label: `${a.name}${a.role ? ` (${a.role})` : ''}` })),
+    ];
 
     return (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
@@ -63,62 +95,82 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><X size={18} /></button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                    {/* Title */}
                     <div className="space-y-2">
                         <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Mission Title</label>
                         <input
                             autoFocus
-                            required
                             type="text"
-                            value={task.title}
-                            onChange={e => setTask({ ...task, title: e.target.value })}
+                            {...register('title')}
                             placeholder="e.g. Refactor Data Stream Gateway"
-                            className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 transition-colors"
+                            className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 transition-colors aria-[invalid=true]:border-rose-500/50"
+                            aria-invalid={errors.title ? 'true' : 'false'}
                         />
+                        {errors.title && (
+                            <p className="text-rose-400 text-[10px]" role="alert">{errors.title.message}</p>
+                        )}
                     </div>
 
+                    {/* Description */}
                     <div className="space-y-2">
                         <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Mission Briefing</label>
                         <textarea
-                            value={task.description}
-                            onChange={e => setTask({ ...task, description: e.target.value })}
+                            {...register('description')}
                             placeholder="Detail the parameters and expected outcomes..."
                             className="w-full h-24 bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 transition-colors"
                         />
                     </div>
 
+                    {/* Priority + Assignee */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Priority</label>
-                            <select
-                                value={task.priority}
-                                onChange={e => setTask({ ...task, priority: e.target.value as TaskPriority })}
-                                className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none"
-                            >
-                                <option value="LOW">LOW</option>
-                                <option value="MEDIUM">MEDIUM</option>
-                                <option value="HIGH">HIGH</option>
-                            </select>
+                            <Controller
+                                name="priority"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        options={PRIORITY_OPTIONS}
+                                        placeholder="— Priority —"
+                                        className="bg-slate-100 dark:bg-black/20"
+                                    />
+                                )}
+                            />
+                            {errors.priority && (
+                                <p className="text-rose-400 text-[10px]" role="alert">{errors.priority.message}</p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Assign Agent</label>
-                            <select
-                                value={task.assignee_id}
-                                onChange={e => setTask({ ...task, assignee_id: e.target.value })}
-                                className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none"
-                            >
-                                <option value="">DEFERRED (INBOX)</option>
-                                {agents.map(a => <option key={a.id} value={a.id}>{a.name}{a.role ? ` (${a.role})` : ''}</option>)}
-                            </select>
+                            <Controller
+                                name="assignee_id"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select
+                                        value={field.value ?? ''}
+                                        onValueChange={field.onChange}
+                                        options={agentOptions}
+                                        placeholder="DEFERRED (INBOX)"
+                                        className="bg-slate-100 dark:bg-black/20"
+                                    />
+                                )}
+                            />
                         </div>
                     </div>
 
+                    {/* Tags */}
                     <div className="space-y-2">
                         <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Tags</label>
                         <div className="flex flex-wrap gap-2 mb-2">
-                            {task.tags.map(t => (
+                            {tags.map(t => (
                                 <span key={t} className="flex items-center gap-1 text-[9px] uppercase font-bold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-sm">
-                                    {t} <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500"><X size={10} /></button>
+                                    {t}
+                                    <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500">
+                                        <X size={10} />
+                                    </button>
                                 </span>
                             ))}
                         </div>
@@ -135,7 +187,11 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
 
                 <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-black/20 flex items-center justify-end gap-3">
                     <button type="button" onClick={onClose} className="px-5 py-2 text-[10px] uppercase font-bold text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Cancel</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-violet-500 flex items-center gap-2">
+                    <button
+                        onClick={handleSubmit(onSubmit)}
+                        disabled={isSubmitting}
+                        className="px-6 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-violet-500 flex items-center gap-2 disabled:opacity-50 transition-all"
+                    >
                         <Send size={12} /> Launch Mission
                     </button>
                 </div>

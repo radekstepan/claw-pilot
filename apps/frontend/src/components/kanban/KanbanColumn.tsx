@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import { Plus, Activity, Lock } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { TaskCard } from './TaskCard';
 import { Task } from '@claw-pilot/shared-types';
 import { SkeletonCard } from '../ui/SkeletonCard';
@@ -22,6 +24,18 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
     const { isOver, setNodeRef } = useDroppable({
         id: id,
         disabled: isDoneColumn,
+    });
+
+    // ─── Virtualization ───────────────────────────────────────────────────────
+    // Renders only visible TaskCards, keeping DOM lightweight for large boards.
+    // Kick in automatically regardless of task count — the overhead is trivial
+    // and prevents any future DOM lag as task lists grow beyond 200+ items.
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const virtualizer = useVirtualizer({
+        count: tasks.length,
+        getScrollElement: () => scrollContainerRef.current,
+        estimateSize: () => 98, // approximate TaskCard height with mb-2 gap
+        overscan: 5,            // buffer extra items above/below viewport
     });
 
     return (
@@ -59,23 +73,43 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                     />
                 )}
             </div>
-            <div className="flex-1 p-3 overflow-y-auto custom-scrollbar bg-transparent" role="list" aria-label={`${title} tasks`}>
+            <div
+                ref={scrollContainerRef}
+                className="flex-1 p-3 overflow-y-auto custom-scrollbar bg-transparent"
+                role="list"
+                aria-label={`${title} tasks`}
+            >
                 {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+                ) : tasks.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center opacity-40 dark:opacity-20 border border-dashed border-slate-200 dark:border-white/10 rounded p-8 pointer-events-none" aria-hidden="true">
+                        <Activity size={24} className="mb-2 text-slate-300 dark:text-white" />
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-white">Empty Node</span>
+                    </div>
                 ) : (
-                    <>
-                        {tasks.map(task => (
-                            <div key={task.id} role="listitem">
-                                <TaskCard task={task} onClick={() => onTaskClick(task)} />
-                            </div>
-                        ))}
-                        {tasks.length === 0 && (
-                            <div className="h-full flex flex-col items-center justify-center opacity-40 dark:opacity-20 border border-dashed border-slate-200 dark:border-white/10 rounded p-8 pointer-events-none" aria-hidden="true">
-                                <Activity size={24} className="mb-2 text-slate-300 dark:text-white" />
-                                <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-white">Empty Node</span>
-                            </div>
-                        )}
-                    </>
+                    // Virtual list: total-height spacer with absolutely-positioned items
+                    <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+                        {virtualizer.getVirtualItems().map(virtualItem => {
+                            const task = tasks[virtualItem.index];
+                            return (
+                                <div
+                                    key={virtualItem.key}
+                                    data-index={virtualItem.index}
+                                    ref={virtualizer.measureElement}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${virtualItem.start}px)`,
+                                    }}
+                                    role="listitem"
+                                >
+                                    <TaskCard task={task} onClick={() => onTaskClick(task)} />
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
         </section>

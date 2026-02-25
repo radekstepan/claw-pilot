@@ -1,12 +1,33 @@
 import { useState } from 'react';
-import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Agent, Task, TaskPriority } from '@claw-pilot/shared-types';
+import type { Agent, Task } from '@claw-pilot/shared-types';
 import { Badge } from '../ui/Badge';
 import { StatusDot } from '../ui/StatusDot';
 import { COLUMN_TITLES } from '../../constants';
 import { useMissionStore } from '../../store/useMissionStore';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { Select } from '../ui/Select';
+import { EmptyState } from '../ui/EmptyState';
+
+const updateFormSchema = z.object({
+    title: z.string().min(1, 'Title cannot be empty.'),
+    description: z.string().optional(),
+    priority: z.string().optional(),
+    assignee_id: z.string().optional(),
+});
+type UpdateFormValues = z.infer<typeof updateFormSchema>;
+
+const PRIORITY_OPTIONS = [
+    { value: '', label: '— None —' },
+    { value: 'LOW', label: 'LOW' },
+    { value: 'MEDIUM', label: 'MEDIUM' },
+    { value: 'HIGH', label: 'HIGH' },
+];
 
 interface TaskModalProps {
     task: Task | null;
@@ -19,17 +40,35 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const [showFeedbackInput, setShowFeedbackInput] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // Editable form state — initialized from the task prop
-    const [title, setTitle] = useState(task?.title ?? '');
-    const [description, setDescription] = useState(task?.description ?? '');
-    const [priority, setPriority] = useState<TaskPriority | ''>(task?.priority ?? '');
-    const [assigneeId, setAssigneeId] = useState(task?.assignee_id ?? '');
+    const {
+        register,
+        handleSubmit,
+        control,
+        watch,
+        formState: { errors },
+    } = useForm<UpdateFormValues>({
+        resolver: zodResolver(updateFormSchema),
+        defaultValues: {
+            title: task?.title ?? '',
+            description: task?.description ?? '',
+            priority: task?.priority ?? '',
+            assignee_id: task?.assignee_id ?? '',
+        },
+    });
+
+    const assigneeId = watch('assignee_id');
 
     const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable } = useMissionStore();
 
     if (!task) return null;
     const agent = agents.find(a => a.id === (assigneeId || task.assignee_id));
+
+    const agentOptions = [
+        { value: '', label: '— Unassigned —' },
+        ...agents.map(a => ({ value: a.id, label: a.name })),
+    ];
 
     const handleApprove = async () => {
         setIsSubmitting(true);
@@ -71,14 +110,14 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         }
     };
 
-    const handleUpdateTask = async () => {
+    const handleUpdateTask = async (data: UpdateFormValues) => {
         setIsSubmitting(true);
         try {
             const patch: Partial<Task> = {
-                title: title || undefined,
-                description: description || undefined,
-                priority: (priority as TaskPriority) || undefined,
-                assignee_id: assigneeId || undefined,
+                title: data.title || undefined,
+                description: data.description || undefined,
+                priority: (data.priority as Task['priority']) || undefined,
+                assignee_id: data.assignee_id || undefined,
             };
             await updateTask(task.id, patch);
             toast.success('Task updated.');
@@ -91,7 +130,6 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     };
 
     const handleDeleteTask = async () => {
-        if (!window.confirm('Delete this task? This cannot be undone.')) return;
         setIsDeleting(true);
         try {
             await deleteTask(task.id);
@@ -117,14 +155,17 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         </div>
                         <input
                             type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            className="text-xl font-bold text-slate-900 dark:text-white tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-violet-500/50 rounded px-1 -ml-1"
+                            {...register('title')}
+                            className="text-xl font-bold text-slate-900 dark:text-white tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-violet-500/50 rounded px-1 -ml-1 aria-[invalid=true]:ring-1 aria-[invalid=true]:ring-rose-500/50"
+                            aria-invalid={errors.title ? 'true' : 'false'}
                         />
+                        {errors.title && (
+                            <p className="text-rose-400 text-[10px] mt-1" role="alert">{errors.title.message}</p>
+                        )}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                         <button
-                            onClick={handleDeleteTask}
+                            onClick={() => setShowDeleteConfirm(true)}
                             disabled={isDeleting}
                             title="Delete task"
                             className="p-2 text-slate-400 hover:text-rose-500 transition-colors disabled:opacity-50"
@@ -184,8 +225,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Project Description</h3>
                             <textarea
                                 rows={5}
-                                value={description}
-                                onChange={(e) => setDescription(e.target.value)}
+                                {...register('description')}
                                 placeholder="No description…"
                                 className="w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none"
                             />
@@ -201,7 +241,11 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 )}
                             </h3>
                             {!task.deliverables || task.deliverables.length === 0 ? (
-                                <p className="text-xs text-slate-400 dark:text-slate-600 italic">No deliverables defined for this task.</p>
+                                <EmptyState
+                                    icon={Package}
+                                    title="No deliverables"
+                                    description="No deliverables defined for this task."
+                                />
                             ) : (
                                 <div className="space-y-2">
                                     {task.deliverables.map((d) => (
@@ -239,30 +283,34 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                     </div>
                                 </div>
                             )}
-                            <select
-                                value={assigneeId}
-                                onChange={(e) => setAssigneeId(e.target.value)}
-                                className="w-full bg-white dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
-                            >
-                                <option value="">— Unassigned —</option>
-                                {agents.map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                ))}
-                            </select>
+                            <Controller
+                                name="assignee_id"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select
+                                        value={field.value ?? ''}
+                                        onValueChange={field.onChange}
+                                        options={agentOptions}
+                                        placeholder="— Unassigned —"
+                                    />
+                                )}
+                            />
                         </div>
 
                         <div>
                             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Priority</h3>
-                            <select
-                                value={priority}
-                                onChange={(e) => setPriority(e.target.value as TaskPriority | '')}
-                                className="w-full bg-white dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
-                            >
-                                <option value="">— None —</option>
-                                <option value="LOW">LOW</option>
-                                <option value="MEDIUM">MEDIUM</option>
-                                <option value="HIGH">HIGH</option>
-                            </select>
+                            <Controller
+                                name="priority"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select
+                                        value={field.value ?? ''}
+                                        onValueChange={field.onChange}
+                                        options={PRIORITY_OPTIONS}
+                                        placeholder="— None —"
+                                    />
+                                )}
+                            />
                         </div>
                     </div>
                 </div>
@@ -273,7 +321,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                     </button>
                     {task.status !== 'REVIEW' && (
                         <button
-                            onClick={handleUpdateTask}
+                            onClick={handleSubmit(handleUpdateTask)}
                             disabled={isSubmitting}
                             className="flex items-center gap-1.5 px-5 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 disabled:opacity-50 transition-all"
                         >
@@ -283,6 +331,16 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                     )}
                 </div>
             </div>
+
+            <ConfirmDialog
+                open={showDeleteConfirm}
+                title="Delete Task"
+                message="Delete this task? This cannot be undone."
+                confirmLabel="Delete"
+                variant="danger"
+                onConfirm={handleDeleteTask}
+                onCancel={() => setShowDeleteConfirm(false)}
+            />
         </div>
     );
 };
