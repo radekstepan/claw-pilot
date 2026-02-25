@@ -34,6 +34,8 @@ export const TaskSchema = z.object({
     priority: TaskPriorityEnum.optional(),
     tags: z.array(z.string()).optional(),
     assignee_id: z.string().optional(),
+    /** ID of the OpenClaw agent currently assigned to this task. */
+    agentId: z.string().optional(),
     deliverables: z.array(DeliverableSchema).optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
@@ -94,8 +96,54 @@ export interface ServerToClientEvents {
     activity_added: (activity: ActivityLog) => void;
     agent_status_changed: (agent: Agent) => void;
     chat_message: (message: ChatMessage) => void;
+    chat_cleared: () => void;
 }
 
 export interface ClientToServerEvents {
     // Empty for now, add as needed
+}
+
+export const AppConfigSchema = z.object({
+    gatewayUrl: z.string(),
+    apiPort: z.number(),
+    autoRestart: z.boolean(),
+});
+export type AppConfig = z.infer<typeof AppConfigSchema>;
+
+export const CreateRecurringPayloadSchema = z.object({
+    title: z.string(),
+    schedule_type: z.string(),
+    schedule_value: z.string().optional(),
+});
+export type CreateRecurringPayload = z.infer<typeof CreateRecurringPayloadSchema>;
+
+// ---------------------------------------------------------------------------
+// Pagination helpers
+// ---------------------------------------------------------------------------
+
+/** Query schema for cursor-based pagination (Chat, Activities — newest first). */
+export const CursorPageQuerySchema = z.object({
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type CursorPageQuery = z.infer<typeof CursorPageQuerySchema>;
+
+/** Response envelope for cursor-based pages. */
+export interface CursorPageResponse<T> {
+    data: T[];
+    /** ID of the last record in this page; pass as `cursor` in the next request. `null` means end of data. */
+    nextCursor: string | null;
+}
+
+/** Query schema for offset-based pagination (Tasks — full Kanban snapshot). */
+export const OffsetPageQuerySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(1000).default(200),
+    offset: z.coerce.number().int().min(0).default(0),
+});
+export type OffsetPageQuery = z.infer<typeof OffsetPageQuerySchema>;
+
+/** Response envelope for offset-based pages. */
+export interface OffsetPageResponse<T> {
+    data: T[];
+    total: number;
 }

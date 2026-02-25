@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { db } from '../db.js';
 import { Server } from 'socket.io';
-import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload } from '@claw-pilot/shared-types';
+import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable } from '@claw-pilot/shared-types';
 import { randomUUID } from 'crypto';
 import { routeChatToAgent } from '../openclaw/cli.js';
 import { z } from 'zod';
@@ -14,27 +14,32 @@ declare module 'fastify' {
 }
 
 const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
-    fastify.get('/', async (request, reply) => {
-        return db.data.tasks;
+    // GET /api/tasks?limit=200&offset=0
+    fastify.get('/', { schema: { querystring: OffsetPageQuerySchema } }, async (request, reply) => {
+        const q = request.query as { limit: number; offset: number };
+        const { limit, offset } = q;
+        const all = db.data.tasks;
+        const data = all.slice(offset, offset + limit);
+        return { data, total: all.length };
     });
 
     fastify.post('/', { schema: { body: CreateTaskSchema } }, async (request, reply) => {
         const body = request.body as CreateTaskPayload;
-        const newTask = {
+        const newTask: Task = {
             id: randomUUID(),
-            title: body.title || 'New Task',
-            description: body.description || '',
-            status: body.status || 'TODO',
-            priority: body.priority || 'MEDIUM',
+            title: body.title ?? 'New Task',
+            description: body.description ?? '',
+            status: body.status ?? 'TODO',
+            priority: body.priority ?? 'MEDIUM',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
-        db.data.tasks.push(newTask as any);
+        db.data.tasks.push(newTask);
         await db.write();
 
         if (fastify.io) {
             fastify.io.emit('task_created', { id: newTask.id, title: newTask.title });
-            fastify.io.emit('task_updated', newTask as any);
+            fastify.io.emit('task_updated', newTask);
         }
         return reply.status(201).send(newTask);
     });
@@ -47,7 +52,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             return reply.status(403).send({ error: 'AI agents are not allowed to mark tasks as DONE. They must be put in REVIEW.' });
         }
 
-        const taskIndex = db.data.tasks.findIndex((t: any) => t.id === id);
+        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
         if (taskIndex === -1) {
             return reply.status(404).send({ error: 'Task not found' });
         }
@@ -61,7 +66,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         await db.write();
 
         if (fastify.io) {
-            fastify.io.emit('task_updated', updatedTask as any);
+            fastify.io.emit('task_updated', updatedTask);
         }
         return reply.send(updatedTask);
     });
@@ -70,7 +75,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
 
         const initialLength = db.data.tasks.length;
-        db.data.tasks = db.data.tasks.filter((t: any) => t.id !== id);
+        db.data.tasks = db.data.tasks.filter((t) => t.id !== id);
 
         if (db.data.tasks.length === initialLength) {
             return reply.status(404).send({ error: 'Task not found' });
@@ -93,7 +98,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof ActivityPayloadSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t: any) => t.id === id);
+        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
         if (taskIndex === -1) {
             return reply.status(404).send({ error: 'Task not found' });
         }
@@ -106,7 +111,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             statusChanged = true;
         }
 
-        if (body.message && body.message.toLowerCase().includes('done')) {
+        if (body.message && (body.message.toLowerCase().includes('done') || body.message.toLowerCase().includes('completed'))) {
             task.status = 'REVIEW';
             statusChanged = true;
             routeChatToAgent('main', `Task ${id} ready for review`).catch(console.error);
@@ -131,7 +136,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         if (fastify.io) {
             fastify.io.emit('activity_added', newActivity);
             if (statusChanged) {
-                fastify.io.emit('task_updated', task as any);
+                fastify.io.emit('task_updated', task);
             }
         }
 
@@ -147,28 +152,28 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof CreateDeliverableSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t: any) => t.id === id);
+        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
         if (taskIndex === -1) {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
         const task = db.data.tasks[taskIndex];
-        const newDeliverable = {
+        const newDeliverable: Deliverable = {
             id: randomUUID(),
             taskId: id,
             title: body.title,
             file_path: body.file_path,
-            status: 'PENDING' // 'PENDING' | 'COMPLETED'
+            status: 'PENDING',
         };
 
-        task.deliverables = task.deliverables || [];
-        task.deliverables.push(newDeliverable as any);
+        task.deliverables = task.deliverables ?? [];
+        task.deliverables.push(newDeliverable);
         task.updatedAt = new Date().toISOString();
 
         await db.write();
 
         if (fastify.io) {
-            fastify.io.emit('task_updated', task as any);
+            fastify.io.emit('task_updated', task);
         }
 
         return reply.status(201).send(newDeliverable);
@@ -183,7 +188,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof ReviewTaskSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t: any) => t.id === id);
+        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
         if (taskIndex === -1) {
             return reply.status(404).send({ error: 'Task not found' });
         }
@@ -196,7 +201,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             task.status = 'IN_PROGRESS';
             if (body.feedback) {
                 // Determine agent ID dynamically if stored in task, else 'main'
-                const assignedAgentId = (task as any).agentId || 'main';
+                const assignedAgentId = task.agentId ?? 'main';
                 routeChatToAgent(assignedAgentId, `Review Feedback for task ${id}: ${body.feedback}`).catch(console.error);
 
                 const newActivity = {
@@ -219,7 +224,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
         if (fastify.io) {
             fastify.io.emit('task_reviewed', { id, action: body.action });
-            fastify.io.emit('task_updated', task as any);
+            fastify.io.emit('task_updated', task);
         }
 
         return reply.send(task);

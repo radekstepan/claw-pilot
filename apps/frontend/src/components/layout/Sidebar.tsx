@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { Settings, CalendarClock, LayoutDashboard } from 'lucide-react';
 import { StatusDot } from '../ui/StatusDot';
 import { SkeletonAgentItem } from '../ui/SkeletonCard';
 import { Agent } from '../../types';
@@ -11,9 +11,11 @@ interface SidebarProps {
     onOpenSettings: () => void;
     isMobileOpen: boolean;
     onMobileClose: () => void;
+    activeView: 'kanban' | 'recurring';
+    onChangeView: (view: 'kanban' | 'recurring') => void;
 }
 
-export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onOpenSettings, isMobileOpen, onMobileClose }: SidebarProps) => (
+export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onOpenSettings, isMobileOpen, onMobileClose, activeView, onChangeView }: SidebarProps) => (
     <aside
         className={`
             fixed md:relative inset-y-0 left-0 z-40
@@ -24,6 +26,37 @@ export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onO
         `}
         aria-label="Agent roster navigation"
     >
+        {/* View switcher */}
+        <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.04]">
+            <h2 className="text-[9px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Navigation</h2>
+            <nav className="space-y-1" aria-label="Views">
+                <button
+                    onClick={() => { onChangeView('kanban'); onMobileClose(); }}
+                    aria-pressed={activeView === 'kanban'}
+                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                        activeView === 'kanban'
+                            ? 'bg-violet-500/10 dark:bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300'
+                            : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-transparent text-slate-600 dark:text-slate-400'
+                    }`}
+                >
+                    <LayoutDashboard size={13} />
+                    Mission Board
+                </button>
+                <button
+                    onClick={() => { onChangeView('recurring'); onMobileClose(); }}
+                    aria-pressed={activeView === 'recurring'}
+                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                        activeView === 'recurring'
+                            ? 'bg-violet-500/10 dark:bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300'
+                            : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-transparent text-slate-600 dark:text-slate-400'
+                    }`}
+                >
+                    <CalendarClock size={13} />
+                    Scheduled Missions
+                </button>
+            </nav>
+        </div>
+
         <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.04]">
             <h2 className="text-[9px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-4">Agent Roster</h2>
             <nav className="space-y-1" aria-label="Agents">

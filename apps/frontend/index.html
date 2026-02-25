@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claw Pilot Dashboard</title>
+    <!-- Blocking theme script: runs before React mounts to prevent FOUC -->
+    <script>
+      ;(function () {
+        var stored = localStorage.getItem('theme');
+        // Default to dark if no preference is stored
+        if (stored === 'dark' || stored === null) {
+          document.documentElement.classList.add('dark');
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

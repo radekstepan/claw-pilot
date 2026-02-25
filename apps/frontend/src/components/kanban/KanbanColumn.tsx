@@ -10,10 +10,15 @@ interface KanbanColumnProps {
     tasks: Task[];
     onTaskClick: (task: Task) => void;
     isLoading?: boolean;
+    /** True while any card is being dragged (globally). Used to show no-drop cues on the DONE column. */
+    isDragging?: boolean;
 }
 
-export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading }: KanbanColumnProps) => {
+export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragging }: KanbanColumnProps) => {
     const isDoneColumn = id === 'DONE';
+    // Show no-drop warning when any card is being dragged AND this is the DONE column
+    const showNoDrop = isDoneColumn && isDragging;
+
     const { isOver, setNodeRef } = useDroppable({
         id: id,
         disabled: isDoneColumn,
@@ -23,14 +28,27 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading }: Kanba
         <section
             ref={setNodeRef}
             aria-label={`${title} column, ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
-            className={`flex-1 min-w-[280px] flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-colors ${isOver ? 'bg-violet-500/5 dark:bg-violet-400/5' : ''} ${isDoneColumn ? 'opacity-80' : ''}`}
+            className={`flex-1 min-w-[280px] flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-all duration-150
+                ${isOver ? 'bg-violet-500/5 dark:bg-violet-400/5' : ''}
+                ${isDoneColumn && !showNoDrop ? 'opacity-80' : ''}
+                ${showNoDrop ? 'opacity-100 ring-1 ring-inset ring-red-500/40 bg-red-500/[0.03]' : ''}
+            `}
         >
             <div className="p-3 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] bg-[#f8fafc]/80 dark:bg-white/[0.01]">
                 <div className="flex items-center gap-2">
                     <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">{title}</h2>
                     <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 bg-black/5 dark:bg-white/5 px-1.5 rounded-sm" aria-hidden="true">{tasks.length}</span>
                     {isDoneColumn && (
-                        <Lock size={10} className="text-slate-400 dark:text-slate-600" aria-label="Locked: only a human lead can place tasks here" />
+                        <Lock
+                            size={10}
+                            className={`transition-colors ${showNoDrop ? 'text-red-400 animate-pulse' : 'text-slate-400 dark:text-slate-600'}`}
+                            aria-label="Locked: only a human lead can place tasks here"
+                        />
+                    )}
+                    {showNoDrop && (
+                        <span className="text-[8px] uppercase tracking-widest font-bold text-red-400 animate-pulse">
+                            Review gate
+                        </span>
                     )}
                 </div>
                 {!isDoneColumn && (

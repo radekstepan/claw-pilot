@@ -10,6 +10,7 @@ import { ChatWidget } from './components/widgets/ChatWidget';
 import { TaskModal } from './components/modals/TaskModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NewTaskModal } from './components/modals/NewTaskModal';
+import { RecurringView } from './components/RecurringView';
 import { TaskCard } from './components/kanban/TaskCard';
 import { Task } from '@claw-pilot/shared-types';
 import type { CreateTaskPayload, TaskStatus } from '@claw-pilot/shared-types';
@@ -30,11 +31,19 @@ export default function App() {
         });
     }, []);
 
+    // Keep the <html> element's .dark class in sync with theme state.
+    // The blocking <script> in index.html applies it before React mounts;
+    // this effect keeps it accurate after user toggles.
+    useEffect(() => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+    }, [theme]);
+
     // Zustand Store
-    const { tasks, agents, fetchInitialData, updateTaskStatus, isSocketConnected, isLoading } = useMissionStore();
+    const { tasks, agents, fetchInitialData, fetchRecurring, updateTaskStatus, isSocketConnected, isLoading } = useMissionStore();
 
     // Local UI State
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [activeView, setActiveView] = useState<'kanban' | 'recurring'>('kanban');
     const [activeTask, setActiveTask] = useState<Task | null>(null);
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
     const [isFeedCollapsed, setIsFeedCollapsed] = useState(false);
@@ -44,7 +53,8 @@ export default function App() {
 
     useEffect(() => {
         fetchInitialData();
-    }, [fetchInitialData]);
+        fetchRecurring();
+    }, [fetchInitialData, fetchRecurring]);
 
     const stats = useMemo(() => ({
         active: agents.filter(a => a.status === 'WORKING').length,
@@ -90,7 +100,7 @@ export default function App() {
     };
 
     return (
-        <div className={`flex flex-col h-screen font-sans selection:bg-violet-500/30 overflow-hidden ${theme === 'dark' ? 'dark bg-[#08070b] text-slate-400' : 'bg-white text-slate-600'}`}>
+        <div className={`flex flex-col h-screen font-sans selection:bg-violet-500/30 overflow-hidden ${theme === 'dark' ? 'bg-[#08070b] text-slate-400' : 'bg-white text-slate-600'}`}>
             <Toaster
                 theme={theme as 'dark' | 'light'}
                 position="bottom-right"
@@ -124,9 +134,13 @@ export default function App() {
                     onOpenSettings={() => setIsSettingsOpen(true)}
                     isMobileOpen={isSidebarOpen}
                     onMobileClose={() => setIsSidebarOpen(false)}
+                    activeView={activeView}
+                    onChangeView={setActiveView}
                 />
 
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                    {activeView === 'kanban' && (
+                        <>
                     <div className="h-10 px-4 md:px-6 border-b border-black/[0.04] dark:border-white/[0.04] bg-[#fcfdfe] dark:bg-white/[0.01] flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <button
@@ -178,6 +192,7 @@ export default function App() {
                                     tasks={filteredTasks.filter(t => t.status === colId)}
                                     onTaskClick={handleTaskClick}
                                     isLoading={isLoading}
+                                    isDragging={activeDragTask !== null}
                                 />
                             ))}
                             <DragOverlay dropAnimation={null}>
@@ -189,6 +204,10 @@ export default function App() {
                             </DragOverlay>
                         </DndContext>
                     </div>
+                        </>
+                    )}
+
+                    {activeView === 'recurring' && <RecurringView />}
                 </div>
 
                 <LiveFeed collapsed={isFeedCollapsed} agents={agents} />

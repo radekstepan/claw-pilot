@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, X, ChevronRight, MessageSquare, Loader2 } from 'lucide-react';
+import { Bot, X, ChevronRight, MessageSquare, Loader2, Trash2 } from 'lucide-react';
 import { useMissionStore } from '../../store/useMissionStore';
 import { api } from '../../api/client';
 
@@ -8,11 +8,19 @@ export const ChatWidget = () => {
     const [msg, setMsg] = useState("");
     const [isTyping, setIsTyping] = useState(false);
     const chatHistory = useMissionStore(state => state.chatHistory);
+    const chatCursor = useMissionStore(state => state.chatCursor);
+    const loadMoreChat = useMissionStore(state => state.loadMoreChat);
+    const clearChatHistory = useMissionStore(state => state.clearChatHistory);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    const handleClearChat = async () => {
+        if (!window.confirm('Clear all chat history? This cannot be undone.')) return;
+        await clearChatHistory();
+    };
 
     // Provide initial history if empty
     const displayHistory = chatHistory.length > 0 ? chatHistory : [
-        { sender: 'agent', message: 'System ready. How can I assist the squad today?' }
+        { id: '__placeholder__', role: 'assistant' as const, content: 'System ready. How can I assist the squad today?', timestamp: new Date().toISOString() }
     ];
 
     useEffect(() => {
@@ -44,21 +52,38 @@ export const ChatWidget = () => {
                             <Bot size={16} className="text-violet-600 dark:text-violet-400" />
                             <span className="text-[10px] uppercase tracking-widest font-bold text-slate-900 dark:text-white">Squad Terminal</span>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
-                            <X size={14} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={handleClearChat}
+                                title="Clear chat history"
+                                className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors p-0.5"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                            <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
+                                <X size={14} />
+                            </button>
+                        </div>
                     </div>
                     <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
-                        {displayHistory.map((m: any, i) => (
-                            <div key={i} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                        {chatCursor !== null && (
+                            <button
+                                onClick={loadMoreChat}
+                                className="w-full text-[9px] uppercase tracking-[0.15em] font-bold text-slate-400 dark:text-slate-600 hover:text-violet-500 dark:hover:text-violet-400 py-1 transition-colors"
+                            >
+                                Load older messages
+                            </button>
+                        )}
+                        {displayHistory.map((m, i) => (
+                            <div key={m.id ?? i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                                 <span className="text-[8px] uppercase tracking-tighter text-slate-400 dark:text-slate-500 mb-1">
-                                    {m.sender === 'user' ? 'Commander' : 'Main Frame'}
+                                    {m.role === 'user' ? 'Commander' : 'Main Frame'}
                                 </span>
-                                <div className={`text-[11px] p-2.5 rounded max-w-[85%] border ${m.sender === 'user'
+                                <div className={`text-[11px] p-2.5 rounded max-w-[85%] border ${m.role === 'user'
                                     ? 'bg-violet-600/10 text-violet-900 dark:text-violet-100 border-violet-500/20'
                                     : 'bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 border-black/5 dark:border-white/5'
                                     }`}>
-                                    {m.message}
+                                    {m.content}
                                 </div>
                             </div>
                         ))}

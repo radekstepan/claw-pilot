@@ -9,6 +9,8 @@ interface LiveFeedProps {
 
 export const LiveFeed = ({ collapsed, agents }: LiveFeedProps) => {
     const activities = useMissionStore((state) => state.activities);
+    const activitiesCursor = useMissionStore((state) => state.activitiesCursor);
+    const loadMoreActivities = useMissionStore((state) => state.loadMoreActivities);
 
     return (
         <div className={`${collapsed ? 'w-12' : 'w-72'} border-l border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex flex-col transition-all duration-300`}>
@@ -33,6 +35,14 @@ export const LiveFeed = ({ collapsed, agents }: LiveFeedProps) => {
                                 </div>
                             </div>
                         ))}
+                        {activitiesCursor !== null && (
+                            <button
+                                onClick={loadMoreActivities}
+                                className="w-full text-[9px] uppercase tracking-[0.15em] font-bold text-slate-400 dark:text-slate-600 hover:text-violet-500 dark:hover:text-violet-400 py-2 transition-colors"
+                            >
+                                Load more
+                            </button>
+                        )}
                     </div>
                 </>
             ) : (

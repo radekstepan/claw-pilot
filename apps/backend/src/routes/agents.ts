@@ -35,7 +35,7 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         prompt: z.string()
     });
 
-    fastify.post('/generate', { schema: { body: GenerateAgentSchema } }, async (request, reply) => {
+    fastify.post('/generate', { schema: { body: GenerateAgentSchema }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         try {
             const body = request.body as z.infer<typeof GenerateAgentSchema>;
             const prompt = body.prompt;

@@ -29,8 +29,8 @@ export function startSessionMonitor(fastify: FastifyInstance) {
 
                 previousAgentStatuses[agent.id] = currentStatus;
             }
-        } catch (error: any) {
-            fastify.log.error(`Error in session monitor loop: ${error.message}`);
+        } catch (error: unknown) {
+            fastify.log.error(`Error in session monitor loop: ${error instanceof Error ? error.message : String(error)}`);
         }
     }, 10000);
 }

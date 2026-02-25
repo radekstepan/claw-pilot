@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Shield, Trash2, Zap, Globe, RefreshCw, Wand2, ChevronRight, Plus } from 'lucide-react';
-import type { Agent } from '@claw-pilot/shared-types';
+import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Shield, Trash2, Zap, Globe, RefreshCw, Wand2, ChevronRight, Plus, Save, Loader2 } from 'lucide-react';
+import type { Agent, AppConfig } from '@claw-pilot/shared-types';
 import type { Model, GatewayStatus, GeneratedAgentConfig } from '../../api/client';
 import { Badge } from '../ui/Badge';
 import { api } from '../../api/client';
@@ -29,15 +29,20 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
     const [models, setModels] = useState<Model[]>(AVAILABLE_MODELS);
     const [gatewayLogs, setGatewayLogs] = useState<string>('Loading gateway status...\n');
 
+    // Config state for System tab
+    const [config, setConfig] = useState<AppConfig>({ gatewayUrl: '', apiPort: 54321, autoRestart: false });
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+
     useEffect(() => {
         if (activeTab === 'models') {
             api.getModels().then(setModels).catch(console.error);
         } else if (activeTab === 'system') {
+            api.getConfig().then(setConfig).catch(console.error);
             api.getGatewayStatus().then((data: GatewayStatus) => {
-                if (data.status === 'ok') {
-                    setGatewayLogs(`[System] Gateway connected\nMemory: ${data.memory}\nUptime: ${data.uptime}\n`);
+                if (data.status === 'HEALTHY') {
+                    setGatewayLogs('[System] Gateway connected and healthy.\n');
                 } else {
-                    setGatewayLogs(data.logs ?? 'Status check failed.\n');
+                    setGatewayLogs(`[System] Gateway status: ${data.status}${data.error ? '\nError: ' + data.error : ''}\n`);
                 }
             }).catch((err: unknown) => {
                 const message = err instanceof Error ? err.message : 'Unknown error';
@@ -212,23 +217,49 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                         <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Gateway URL</label>
                         <input
                             type="text"
-                            defaultValue="http://127.0.0.1:8000"
-                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300"
+                            value={config.gatewayUrl}
+                            onChange={(e) => setConfig(c => ({ ...c, gatewayUrl: e.target.value }))}
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
                         />
                     </div>
                     <div className="space-y-1">
                         <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">API Port</label>
                         <input
-                            type="text"
-                            defaultValue="54321"
-                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300"
+                            type="number"
+                            value={config.apiPort}
+                            onChange={(e) => setConfig(c => ({ ...c, apiPort: parseInt(e.target.value, 10) || c.apiPort }))}
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
                         />
                     </div>
                     <div className="flex items-center gap-2 col-span-full">
-                        <input type="checkbox" id="auto-restart" className="accent-violet-600" defaultChecked />
+                        <input
+                            type="checkbox"
+                            id="auto-restart"
+                            className="accent-violet-600"
+                            checked={config.autoRestart}
+                            onChange={(e) => setConfig(c => ({ ...c, autoRestart: e.target.checked }))}
+                        />
                         <label htmlFor="auto-restart" className="text-[10px] text-slate-600 dark:text-slate-400">Auto-restart OpenClaw gateway on CLI crash</label>
                     </div>
                 </div>
+                <button
+                    onClick={async () => {
+                        setIsSavingConfig(true);
+                        try {
+                            const saved = await api.saveConfig(config);
+                            setConfig(saved);
+                        } catch {
+                            // error shown inline
+                        } finally {
+                            setIsSavingConfig(false);
+                        }
+                    }}
+                    disabled={isSavingConfig}
+                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 disabled:opacity-50 transition-all"
+                >
+                    {isSavingConfig ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                    Save Changes
+                </button>
             </div>
 
             <div className="space-y-2">

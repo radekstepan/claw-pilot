@@ -12,7 +12,7 @@ const deliverableRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         for (let i = 0; i < db.data.tasks.length; i++) {
             const task = db.data.tasks[i];
             if (task.deliverables) {
-                const dIndex = task.deliverables.findIndex((d: any) => d.id === id);
+                const dIndex = task.deliverables.findIndex((d) => d.id === id);
                 if (dIndex !== -1) {
                     foundDeliverable = task.deliverables[dIndex];
                     parentTaskIndex = i;
@@ -34,7 +34,7 @@ const deliverableRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         await db.write();
 
         if (fastify.io) {
-            fastify.io.emit('task_updated', task as any);
+            fastify.io.emit('task_updated', task);
         }
 
         return reply.send(foundDeliverable);

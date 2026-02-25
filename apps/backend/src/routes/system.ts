@@ -3,8 +3,12 @@ import { db } from '../db.js';
 import { getAgents, getLiveSessions } from '../openclaw/cli.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { env } from '../config/env.js';
 
 const execFileAsync = promisify(execFile);
+
+/** Timeout for fast CLI commands in this module (ms). */
+const CLI_TIMEOUT = env.CLI_TIMEOUT;
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     fastify.get('/stats', async (request, reply) => {
@@ -12,10 +16,10 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
             const agents = await getAgents();
             const activeSessions = await getLiveSessions();
 
-            const tasksInQueue = db.data.tasks.filter((t: any) => t.status === 'TODO' || t.status === 'BACKLOG').length;
+            const tasksInQueue = db.data.tasks.filter((t) => t.status === 'TODO' || t.status === 'BACKLOG').length;
 
             const today = new Date().toISOString().split('T')[0];
-            const completedToday = db.data.tasks.filter((t: any) => t.status === 'DONE' && t.updatedAt && t.updatedAt.startsWith(today)).length;
+            const completedToday = db.data.tasks.filter((t) => t.status === 'DONE' && t.updatedAt && t.updatedAt.startsWith(today)).length;
 
             return reply.send({
                 activeAgents: activeSessions.length,
@@ -31,16 +35,16 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
 
     fastify.get('/monitoring/gateway/status', async (request, reply) => {
         try {
-            await execFileAsync('openclaw', ['--version']);
+            await execFileAsync('openclaw', ['--version'], { timeout: CLI_TIMEOUT });
             return reply.send({ status: 'HEALTHY' });
         } catch (e) {
-            return reply.send({ status: 'DOWN', error: (e as any).message });
+            return reply.send({ status: 'DOWN', error: e instanceof Error ? e.message : String(e) });
         }
     });
 
     fastify.post('/monitoring/gateway/restart', async (request, reply) => {
         try {
-            await execFileAsync('openclaw', ['daemon', 'restart']);
+            await execFileAsync('openclaw', ['daemon', 'restart'], { timeout: CLI_TIMEOUT });
             return reply.send({ success: true, message: 'Gateway restart triggered' });
         } catch (e) {
             return reply.status(500).send({ error: 'Failed to restart gateway' });
@@ -51,7 +55,7 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
         const now = new Date();
         const stuckThreshold = 24 * 60 * 60 * 1000;
 
-        const stuckTasks = db.data.tasks.filter((task: any) => {
+        const stuckTasks = db.data.tasks.filter((task) => {
             if (task.status === 'IN_PROGRESS' && task.updatedAt) {
                 const updatedAt = new Date(task.updatedAt);
                 return now.getTime() - updatedAt.getTime() > stuckThreshold;
