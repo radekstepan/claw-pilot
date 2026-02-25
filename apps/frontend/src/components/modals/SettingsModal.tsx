@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Shield, Trash2, Zap, Globe, RefreshCw, Wand2, ChevronRight, Plus } from 'lucide-react';
-import { Agent } from '../../types';
+import type { Agent } from '@claw-pilot/shared-types';
+import type { Model, GatewayStatus, GeneratedAgentConfig } from '../../api/client';
 import { Badge } from '../ui/Badge';
 import { api } from '../../api/client';
 
@@ -10,7 +11,7 @@ interface SettingsModalProps {
     theme: string;
 }
 
-const AVAILABLE_MODELS = [
+const AVAILABLE_MODELS: Model[] = [
     { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
     { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
     { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI' },
@@ -23,7 +24,27 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
     const [wizardStep, setWizardStep] = useState(0);
     const [prompt, setPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedConfig, setGeneratedConfig] = useState<any>(null);
+    const [generatedConfig, setGeneratedConfig] = useState<GeneratedAgentConfig | null>(null);
+
+    const [models, setModels] = useState<Model[]>(AVAILABLE_MODELS);
+    const [gatewayLogs, setGatewayLogs] = useState<string>('Loading gateway status...\n');
+
+    useEffect(() => {
+        if (activeTab === 'models') {
+            api.getModels().then(setModels).catch(console.error);
+        } else if (activeTab === 'system') {
+            api.getGatewayStatus().then((data: GatewayStatus) => {
+                if (data.status === 'ok') {
+                    setGatewayLogs(`[System] Gateway connected\nMemory: ${data.memory}\nUptime: ${data.uptime}\n`);
+                } else {
+                    setGatewayLogs(data.logs ?? 'Status check failed.\n');
+                }
+            }).catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : 'Unknown error';
+                setGatewayLogs(`Failed to fetch gateway status: ${message}\n`);
+            });
+        }
+    }, [activeTab]);
 
     const renderAgentsTab = () => {
         if (wizardStep === 1) {
@@ -122,7 +143,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                         <div key={agent.id} className="p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-violet-500/30 transition-all">
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${agent.status === 'working' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                    <div className={`w-2 h-2 rounded-full ${agent.status === 'WORKING' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                                     <span className="text-[11px] font-bold text-slate-900 dark:text-slate-200">{agent.name}</span>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -145,10 +166,10 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
         <div className="space-y-6 animate-fadeIn">
             <div className="flex items-center justify-between">
                 <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">LLM Provider Status</h3>
-                <button className="text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 flex items-center gap-1"><RefreshCw size={10} /> Rescan</button>
+                <button onClick={() => api.getModels().then(setModels).catch()} className="text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 flex items-center gap-1"><RefreshCw size={10} /> Rescan</button>
             </div>
             <div className="space-y-2">
-                {AVAILABLE_MODELS.map(model => (
+                {models.map((model) => (
                     <div key={model.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-white dark:bg-white/5 rounded flex items-center justify-center border border-black/5 dark:border-white/5 shadow-sm">
@@ -212,10 +233,8 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
 
             <div className="space-y-2">
                 <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Gateway Watchdog</label>
-                <div className="p-3 bg-slate-900 dark:bg-black/20 rounded border border-black/5 dark:border-white/5 font-mono text-[9px] text-slate-400 h-24 overflow-y-auto">
-                    [14:22:01] Watchdog started...{"\n"}
-                    [14:22:31] Checking openclaw gateway status...{"\n"}
-                    [14:23:01] Heartbeat received from session TASK-001
+                <div className="p-3 bg-slate-900 dark:bg-black/20 rounded border border-black/5 dark:border-white/5 font-mono text-[9px] text-slate-400 h-24 overflow-y-auto whitespace-pre-wrap">
+                    {gatewayLogs}
                 </div>
             </div>
         </div>

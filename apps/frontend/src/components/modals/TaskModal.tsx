@@ -1,5 +1,5 @@
 import { X, CheckCircle2 } from 'lucide-react';
-import { Agent, Task } from '../../types';
+import type { Agent, Task } from '@claw-pilot/shared-types';
 import { Badge } from '../ui/Badge';
 import { StatusDot } from '../ui/StatusDot';
 import { COLUMN_TITLES } from '../../constants';
@@ -12,7 +12,7 @@ interface TaskModalProps {
 
 export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     if (!task) return null;
-    const agent = agents.find(a => a.id === task.assignee);
+    const agent = agents.find(a => a.id === task.assignee_id);
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
@@ -69,7 +69,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                     </div>
                                     <div>
                                         <div className="text-xs font-bold text-slate-900 dark:text-slate-200">{agent.name}</div>
-                                        <div className="text-[9px] text-slate-500 uppercase">{agent.role}</div>
+                                        <div className="text-[9px] text-slate-500 uppercase">{agent.role ?? '—'}</div>
                                     </div>
                                 </div>
                             ) : (
@@ -80,7 +80,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         </div>
                         <div>
                             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Priority</h3>
-                            <Badge variant={task.priority === 'URGENT' ? 'urgent' : 'default'}>{task.priority}</Badge>
+                            <Badge variant={task.priority === 'HIGH' ? 'urgent' : 'default'}>{task.priority ?? 'NONE'}</Badge>
                         </div>
                     </div>
                 </div>

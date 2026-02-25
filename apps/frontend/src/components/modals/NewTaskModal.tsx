@@ -1,32 +1,41 @@
 import React, { useState } from 'react';
 import { Plus, X, Send } from 'lucide-react';
-import { Agent, Task } from '../../types';
+import type { Agent, CreateTaskPayload, TaskPriority } from '@claw-pilot/shared-types';
 
 interface NewTaskModalProps {
     agents: Agent[];
     onClose: () => void;
-    onAdd: (task: Task) => void;
+    onAdd: (payload: CreateTaskPayload) => void;
 }
 
 export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
-    const [task, setTask] = useState({
+    const [task, setTask] = useState<{
+        title: string;
+        description: string;
+        priority: TaskPriority;
+        assignee_id: string;
+        tags: string[];
+    }>({
         title: '',
         description: '',
-        priority: 'NORMAL',
-        assignee: '',
-        tags: [] as string[]
+        priority: 'MEDIUM',
+        assignee_id: '',
+        tags: []
     });
     const [tagInput, setTagInput] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!task.title) return;
-        onAdd({
-            ...task,
-            id: `TASK-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-            status: task.assignee ? 'ASSIGNED' : 'INBOX',
-            tags: task.tags.length > 0 ? task.tags : ['untagged']
-        });
+        const payload: CreateTaskPayload = {
+            title: task.title,
+            description: task.description || undefined,
+            priority: task.priority,
+            assignee_id: task.assignee_id || undefined,
+            tags: task.tags.length > 0 ? task.tags : undefined,
+            status: task.assignee_id ? 'ASSIGNED' : 'TODO',
+        };
+        onAdd(payload);
         onClose();
     };
 
@@ -83,22 +92,23 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Priority</label>
                             <select
                                 value={task.priority}
-                                onChange={e => setTask({ ...task, priority: e.target.value })}
+                                onChange={e => setTask({ ...task, priority: e.target.value as TaskPriority })}
                                 className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none"
                             >
-                                <option value="NORMAL">NORMAL</option>
-                                <option value="URGENT">URGENT</option>
+                                <option value="LOW">LOW</option>
+                                <option value="MEDIUM">MEDIUM</option>
+                                <option value="HIGH">HIGH</option>
                             </select>
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Assign Agent</label>
                             <select
-                                value={task.assignee}
-                                onChange={e => setTask({ ...task, assignee: e.target.value })}
+                                value={task.assignee_id}
+                                onChange={e => setTask({ ...task, assignee_id: e.target.value })}
                                 className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none"
                             >
                                 <option value="">DEFERRED (INBOX)</option>
-                                {agents.map(a => <option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+                                {agents.map(a => <option key={a.id} value={a.id}>{a.name}{a.role ? ` (${a.role})` : ''}</option>)}
                             </select>
                         </div>
                     </div>

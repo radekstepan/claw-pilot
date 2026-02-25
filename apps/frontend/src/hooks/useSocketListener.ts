@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-types';
+import type { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
 
-const SOCKET_URL = 'http://localhost:54321';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:54321';
 
 export function useSocketListener() {
     const { updateTaskLocally, addChatMessage, setSocketConnected } = useMissionStore();

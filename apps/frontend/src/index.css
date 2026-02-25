@@ -45,3 +45,15 @@
     opacity: 1;
   }
 }
+
+/* Global focus-visible ring for keyboard navigation */
+@layer base {
+  :focus-visible {
+    outline: 2px solid rgb(139 92 246);
+    outline-offset: 2px;
+  }
+  /* Remove outline for mouse users but keep for keyboard */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}

@@ -1,18 +1,15 @@
-export interface Agent {
-    id: string;
-    name: string;
-    role: string;
-    status: string;
-    model: string;
-    fallback: string;
-}
-
-export interface Task {
-    id: string;
-    title: string;
-    status: string;
-    priority: string;
-    assignee: string | null;
-    tags: string[];
-    description: string;
-}
+// Re-export all types from the shared package.
+// This file exists only for backward compatibility with local imports (../../types).
+// Prefer importing directly from '@claw-pilot/shared-types' in new code.
+export type {
+    Agent,
+    Task,
+    TaskStatus,
+    TaskPriority,
+    ActivityLog,
+    ChatMessage,
+    CreateTaskPayload,
+    UpdateTaskPayload,
+    Deliverable,
+    RecurringTask,
+} from '@claw-pilot/shared-types';

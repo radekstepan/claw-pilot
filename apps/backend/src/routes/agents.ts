@@ -1,8 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
 import { getAgents, getLiveSessions, generateAgentConfig } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
+import { z } from 'zod';
+import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
 
-const agentRoutes: FastifyPluginAsync = async (fastify, opts) => {
+const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.get('/', async (request, reply) => {
         try {
             const agents = await getAgents();
@@ -26,20 +31,71 @@ const agentRoutes: FastifyPluginAsync = async (fastify, opts) => {
         }
     });
 
-    fastify.post('/generate', async (request, reply) => {
-        try {
-            const body = request.body as any;
-            const prompt = body.prompt;
+    const GenerateAgentSchema = z.object({
+        prompt: z.string()
+    });
 
-            if (!prompt) {
-                return reply.status(400).send({ error: 'Prompt is required' });
-            }
+    fastify.post('/generate', { schema: { body: GenerateAgentSchema } }, async (request, reply) => {
+        try {
+            const body = request.body as z.infer<typeof GenerateAgentSchema>;
+            const prompt = body.prompt;
 
             const agentConfig = await generateAgentConfig(prompt);
             return reply.send(agentConfig);
         } catch (error) {
             fastify.log.error(error);
             return reply.status(500).send({ error: 'Failed to generate agent configuration.' });
+        }
+    });
+
+    fastify.get('/:id/files', async (request, reply) => {
+        const { id } = request.params as { id: string };
+        try {
+            const workspacePath = path.join(os.homedir(), '.openclaw', 'workspaces', id);
+
+            let soul = '';
+            let tools = '';
+            let agentsMd = '';
+
+            try { soul = await fs.readFile(path.join(workspacePath, 'SOUL.md'), 'utf-8'); } catch (e) { }
+            try { tools = await fs.readFile(path.join(workspacePath, 'TOOLS.md'), 'utf-8'); } catch (e) { }
+            try { agentsMd = await fs.readFile(path.join(workspacePath, 'AGENTS.md'), 'utf-8'); } catch (e) { }
+
+            return reply.send({ soul, tools, agentsMd });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.status(500).send({ error: 'Failed to read agent files.' });
+        }
+    });
+
+    const UpdateAgentFilesSchema = z.object({
+        soul: z.string().optional(),
+        tools: z.string().optional(),
+        agentsMd: z.string().optional()
+    });
+
+    fastify.put('/:id/files', { schema: { body: UpdateAgentFilesSchema } }, async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const body = request.body as z.infer<typeof UpdateAgentFilesSchema>;
+        try {
+            const workspacePath = path.join(os.homedir(), '.openclaw', 'workspaces', id);
+
+            await fs.mkdir(workspacePath, { recursive: true });
+
+            if (body.soul !== undefined) {
+                await fs.writeFile(path.join(workspacePath, 'SOUL.md'), body.soul, 'utf-8');
+            }
+            if (body.tools !== undefined) {
+                await fs.writeFile(path.join(workspacePath, 'TOOLS.md'), body.tools, 'utf-8');
+            }
+            if (body.agentsMd !== undefined) {
+                await fs.writeFile(path.join(workspacePath, 'AGENTS.md'), body.agentsMd, 'utf-8');
+            }
+
+            return reply.send({ success: true });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.status(500).send({ error: 'Failed to update agent files.' });
         }
     });
 };

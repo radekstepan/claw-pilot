@@ -11,6 +11,12 @@
                 "!.next/cache/**"
             ]
         },
+        "test": {
+            "dependsOn": [
+                "^build"
+            ],
+            "outputs": []
+        },
         "lint": {
             "dependsOn": [
                 "^lint"

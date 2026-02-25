@@ -1,15 +1,76 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import path from 'path';
 import fs from 'fs/promises';
 import { Agent } from '@claw-pilot/shared-types';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/**
+ * Extracts and parses JSON from an openclaw CLI stdout string.
+ * Handles both raw JSON and JSON wrapped in a markdown code fence (``` or ```json).
+ * @internal exported for unit testing
+ */
+export function extractJsonFromStdout(stdout: string): unknown {
+    try {
+        return JSON.parse(stdout);
+    } catch {
+        const match = stdout.match(/`{3}(?:json)?\n([\s\S]*?)\n`{3}/);
+        if (match && match[1]) {
+            return JSON.parse(match[1]);
+        }
+        throw new Error('Could not parse agent JSON from stdout');
+    }
+}
+
+/**
+ * Normalises the three possible shapes of the `agents` field in openclaw.json into
+ * a flat Agent array:
+ *   1. `{ agents: Agent[] }` — plain array
+ *   2. `{ agents: { [id]: AgentData } }` — object map
+ *   3. `Agent[]` — top-level array (no `agents` key)
+ * @internal exported for unit testing
+ */
+export function parseOpenclawConfig(parsed: unknown): Agent[] {
+    let raw: unknown[] = [];
+    if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed)
+    ) {
+        const obj = parsed as Record<string, unknown>;
+        if (Array.isArray(obj.agents)) {
+            raw = obj.agents as unknown[];
+        } else if (obj.agents !== undefined && typeof obj.agents === 'object') {
+            raw = Object.entries(obj.agents as Record<string, unknown>).map(
+                ([id, data]) => ({ id, ...(data as object) })
+            );
+        } else {
+            // Bare top-level object treated as a single agent map
+            raw = Object.entries(obj).map(([id, data]) => ({ id, ...(data as object) }));
+        }
+    } else if (Array.isArray(parsed)) {
+        raw = parsed;
+    }
+
+    return raw.map((a: unknown) => {
+        const agent = a as Record<string, unknown>;
+        return {
+            id: String(agent.id ?? agent.name ?? 'unknown-agent'),
+            name: String(agent.name ?? agent.id ?? 'Unknown Agent'),
+            status: 'OFFLINE' as const,
+            capabilities: Array.isArray(agent.capabilities) ? (agent.capabilities as string[]) : [],
+            role: typeof agent.role === 'string' ? agent.role : undefined,
+            model: typeof agent.model === 'string' ? agent.model : undefined,
+            fallback: typeof agent.fallback === 'string' ? agent.fallback : undefined,
+        };
+    });
+}
 
 export async function spawnTaskSession(agentId: string, taskId: string, prompt: string): Promise<string> {
     try {
-        const { stdout } = await execAsync(`openclaw sessions spawn --agent ${agentId} --label task-${taskId} --message "${prompt}"`);
+        const { stdout } = await execFileAsync('openclaw', ['sessions', 'spawn', '--agent', agentId, '--label', `task-${taskId}`, '--message', prompt]);
         return stdout;
     } catch (e) {
         console.error('Failed to spawn task session:', e);
@@ -19,7 +80,7 @@ export async function spawnTaskSession(agentId: string, taskId: string, prompt: 
 
 export async function routeChatToAgent(agentId: string, message: string): Promise<any> {
     try {
-        const { stdout } = await execAsync(`openclaw agent --agent ${agentId} --message "${message}" --json`);
+        const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', agentId, '--message', message, '--json']);
         return JSON.parse(stdout);
     } catch (e) {
         console.error('Failed to route chat to agent:', e);
@@ -27,24 +88,11 @@ export async function routeChatToAgent(agentId: string, message: string): Promis
     }
 }
 
-export async function generateAgentConfig(prompt: string): Promise<any> {
+export async function generateAgentConfig(prompt: string): Promise<unknown> {
     try {
         const fullPrompt = `Generate a JSON configuration for a new AI agent based on this request: ${prompt}. Return ONLY a JSON object with 'name' (string) and 'capabilities' (array of strings).`;
-        const { stdout } = await execAsync(`openclaw agent --agent main --message "${fullPrompt}" --json`);
-
-        let parsed;
-        try {
-            parsed = JSON.parse(stdout);
-        } catch (parseError) {
-            // In case CLI wraps the output in markdown code blocks like ```json ... ```
-            const match = stdout.match(/`{3}(?:json)?\n([\s\S]*?)\n`{3}/);
-            if (match && match[1]) {
-                parsed = JSON.parse(match[1]);
-            } else {
-                throw new Error("Could not parse agent JSON");
-            }
-        }
-        return parsed;
+        const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', 'main', '--message', fullPrompt, '--json']);
+        return extractJsonFromStdout(stdout);
     } catch (e) {
         console.error('Failed to generate agent config:', e);
         throw e;
@@ -67,29 +115,7 @@ export async function getAgents(): Promise<Agent[]> {
         }
 
         const parsed = JSON.parse(content);
-
-        // Assuming openclaw.json has an `agents` property which is a map { [id]: { name, capabilities } }
-        // or an array of objects
-        let parsedAgents: any[] = [];
-        if (Array.isArray(parsed.agents)) {
-            parsedAgents = parsed.agents;
-        } else if (parsed.agents && typeof parsed.agents === 'object') {
-            parsedAgents = Object.entries(parsed.agents).map(([id, data]: [string, any]) => ({
-                id,
-                ...data
-            }));
-        } else if (Array.isArray(parsed)) {
-            parsedAgents = parsed;
-        }
-
-        const agents: Agent[] = parsedAgents.map((a: any) => ({
-            id: a.id || a.name || 'unknown-agent',
-            name: a.name || a.id || 'Unknown Agent',
-            status: 'OFFLINE', // Default status, overridden later by live sessions
-            capabilities: a.capabilities || [],
-        }));
-
-        return agents;
+        return parseOpenclawConfig(parsed);
     } catch (e) {
         console.error('Failed to parse openclaw configuration:', e);
         return [];
@@ -98,10 +124,20 @@ export async function getAgents(): Promise<Agent[]> {
 
 export async function getLiveSessions(): Promise<any[]> {
     try {
-        const { stdout } = await execAsync('openclaw sessions list --json');
+        const { stdout } = await execFileAsync('openclaw', ['sessions', 'list', '--json']);
         return JSON.parse(stdout);
     } catch (e) {
         console.error('Failed to list live sessions:', e);
+        return [];
+    }
+}
+
+export async function getModels(): Promise<any> {
+    try {
+        const { stdout } = await execFileAsync('openclaw', ['models', 'list', '--all', '--json']);
+        return JSON.parse(stdout);
+    } catch (e) {
+        console.error('Failed to list models:', e);
         return [];
     }
 }
