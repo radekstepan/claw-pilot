@@ -17,7 +17,11 @@ import { Server } from 'socket.io';
 import { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-types';
 import { startSessionMonitor } from './monitors/sessionMonitor.js';
 import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
-import { db, dbBackupTimer } from './db.js';
+import { startPruningMonitor } from './monitors/pruningMonitor.js';
+import { runMigrations } from './db/index.js';
+
+// Apply any pending DB schema migrations before the app starts.
+runMigrations();
 
 const fastify = await buildApp();
 
@@ -41,8 +45,9 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------------------
 // Background monitors
 // ---------------------------------------------------------------------------
-const sessionMonitorTimer = startSessionMonitor(fastify);
+const sessionMonitorTimer  = startSessionMonitor(fastify);
 const stuckTaskMonitorTimer = startStuckTaskMonitor(fastify);
+const pruningMonitorTimer   = startPruningMonitor(fastify);
 
 // ---------------------------------------------------------------------------
 // Start listening
@@ -64,13 +69,7 @@ async function shutdown(signal: string): Promise<void> {
 
     clearInterval(sessionMonitorTimer);
     clearInterval(stuckTaskMonitorTimer);
-    clearInterval(dbBackupTimer);
-
-    try {
-        await db.write();
-    } catch (e) {
-        console.error('[claw-pilot] db.write() failed during shutdown:', e);
-    }
+    clearInterval(pruningMonitorTimer);
 
     try {
         await fastify.close();

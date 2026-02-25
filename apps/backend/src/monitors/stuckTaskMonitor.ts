@@ -1,47 +1,56 @@
 import { FastifyInstance } from 'fastify';
-import { db, updateDb } from '../db.js';
+import { db, tasks as tasksTable, chatMessages as chatTable } from '../db/index.js';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { ChatMessage } from '@claw-pilot/shared-types';
 
 const notifiedStuckTasks = new Set<string>();
 
 export function startStuckTaskMonitor(fastify: FastifyInstance): NodeJS.Timeout {
-    // Check every minute
-    return setInterval(async () => {
+    return setInterval(() => {
         try {
-            await updateDb(async (data) => {
-                const now = new Date();
-                const stuckThreshold = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+            const now = new Date();
+            const stuckThreshold = 24 * 60 * 60 * 1000; // 24 hours in ms
 
-                for (const task of data.tasks) {
-                    if (task.status === 'IN_PROGRESS' && task.updatedAt) {
-                        const updatedAt = new Date(task.updatedAt);
-                        const timeDiff = now.getTime() - updatedAt.getTime();
+            const inProgressTasks = db
+                .select()
+                .from(tasksTable)
+                .where(eq(tasksTable.status, 'IN_PROGRESS'))
+                .all();
 
-                        if (timeDiff > stuckThreshold && !notifiedStuckTasks.has(task.id)) {
-                            fastify.log.warn(`Task ${task.id} has been IN_PROGRESS for over 24 hours.`);
+            for (const task of inProgressTasks) {
+                if (!task.updatedAt || notifiedStuckTasks.has(task.id)) continue;
 
-                            // Send system chat message
-                            const systemMessage = {
-                                id: randomUUID(),
-                                role: 'system' as const,
-                                content: `System Alert: Task "${task.title ?? task.id}" has been stuck IN_PROGRESS for over 24 hours.`,
-                                timestamp: new Date().toISOString()
-                            };
+                const timeDiff = now.getTime() - new Date(task.updatedAt).getTime();
+                if (timeDiff <= stuckThreshold) continue;
 
-                            data.chat.push(systemMessage);
+                fastify.log.warn(`Task ${task.id} has been IN_PROGRESS for over 24 hours.`);
 
-                            if (fastify.io) {
-                                fastify.io.emit('chat_message', systemMessage);
-                            }
+                const systemMessage: ChatMessage = {
+                    id: randomUUID(),
+                    role: 'system',
+                    content: `System Alert: Task "${task.title ?? task.id}" has been stuck IN_PROGRESS for over 24 hours.`,
+                    timestamp: new Date().toISOString(),
+                };
 
-                            // Mark as notified so we don't spam
-                            notifiedStuckTasks.add(task.id);
-                        }
-                    }
+                db.transaction(() => {
+                    db.insert(chatTable).values({
+                        id: systemMessage.id,
+                        agentId: null,
+                        role: systemMessage.role,
+                        content: systemMessage.content,
+                        timestamp: systemMessage.timestamp,
+                    }).run();
+                });
+
+                if (fastify.io) {
+                    fastify.io.emit('chat_message', systemMessage);
                 }
-            });
+
+                notifiedStuckTasks.add(task.id);
+            }
         } catch (error: unknown) {
             fastify.log.error(`Error in stuck task monitor loop: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }, 60000); // 1 minute
+    }, 60_000);
 }

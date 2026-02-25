@@ -1,40 +1,66 @@
-import { FastifyPluginAsync } from 'fastify';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { db } from '../db.js';
+import { db, tasks as tasksTable, parseJsonField, stringifyJsonField } from '../db/index.js';
+import { eq } from 'drizzle-orm';
+import { Deliverable, Task } from '@claw-pilot/shared-types';
+
+function rowToTask(row: typeof tasksTable.$inferSelect): Task {
+    return {
+        id: row.id,
+        title: row.title ?? undefined,
+        description: row.description ?? undefined,
+        status: row.status as Task['status'],
+        priority: row.priority as Task['priority'] ?? undefined,
+        tags: parseJsonField<string[]>(row.tags),
+        assignee_id: row.assignee_id ?? undefined,
+        agentId: row.agentId ?? undefined,
+        deliverables: parseJsonField<Deliverable[]>(row.deliverables),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+    };
+}
 
 const deliverableRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.patch('/:id/complete', async (request, reply) => {
         const { id } = request.params as { id: string };
 
-        let foundDeliverable = null;
-        let parentTaskIndex = -1;
+        // Find the task that owns this deliverable.
+        const allTasks = db.select().from(tasksTable).all();
 
-        for (let i = 0; i < db.data.tasks.length; i++) {
-            const task = db.data.tasks[i];
-            if (task.deliverables) {
-                const dIndex = task.deliverables.findIndex((d) => d.id === id);
-                if (dIndex !== -1) {
-                    foundDeliverable = task.deliverables[dIndex];
-                    parentTaskIndex = i;
+        let foundDeliverable: Deliverable | null = null;
+        let ownerTaskId: string | null = null;
 
-                    // Toggle status
-                    foundDeliverable.status = foundDeliverable.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+        for (const taskRow of allTasks) {
+            const deliverables = parseJsonField<Deliverable[]>(taskRow.deliverables);
+            if (deliverables) {
+                const d = deliverables.find((d) => d.id === id);
+                if (d) {
+                    foundDeliverable = { ...d };
+                    ownerTaskId = taskRow.id;
                     break;
                 }
             }
         }
 
-        if (!foundDeliverable) {
+        if (!foundDeliverable || !ownerTaskId) {
             return reply.status(404).send({ error: 'Deliverable not found' });
         }
 
-        const task = db.data.tasks[parentTaskIndex];
-        task.updatedAt = new Date().toISOString();
+        // Toggle status.
+        foundDeliverable.status = foundDeliverable.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
 
-        await db.write();
+        const now = new Date().toISOString();
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, ownerTaskId)).get()!;
+        const deliverables = parseJsonField<Deliverable[]>(taskRow.deliverables) ?? [];
+        const idx = deliverables.findIndex((d) => d.id === id);
+        if (idx !== -1) deliverables[idx] = foundDeliverable;
 
-        if (fastify.io) {
-            fastify.io.emit('task_updated', task);
+        const updatedRow = db.update(tasksTable).set({
+            deliverables: stringifyJsonField(deliverables),
+            updatedAt: now,
+        }).where(eq(tasksTable.id, ownerTaskId)).returning().get();
+
+        if (fastify.io && updatedRow) {
+            fastify.io.emit('task_updated', rowToTask(updatedRow));
         }
 
         return reply.send(foundDeliverable);

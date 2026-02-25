@@ -1,22 +1,60 @@
-import { FastifyPluginAsync } from 'fastify';
-import { db } from '../db.js';
+import { db, chatMessages as chatTable, encodeCursor, decodeCursor } from '../db/index.js';
 import { randomUUID } from 'crypto';
 import { routeChatToAgent } from '../openclaw/cli.js';
 import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { CursorPageQuerySchema } from '@claw-pilot/shared-types';
+import { CursorPageQuerySchema, ChatMessage } from '@claw-pilot/shared-types';
+import { desc, or, lt, and, eq } from 'drizzle-orm';
+
+type ChatRow = typeof chatTable.$inferSelect;
+
+function rowToMessage(row: ChatRow): ChatMessage {
+    return {
+        id: row.id,
+        agentId: row.agentId ?? undefined,
+        role: row.role as ChatMessage['role'],
+        content: row.content,
+        timestamp: row.timestamp,
+    };
+}
 
 const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
-    // GET /api/chat?cursor=<id>&limit=50  (newest first)
+    // GET /api/chat?cursor=<token>&limit=50  (newest first, cursor-based)
     fastify.get('/', { schema: { querystring: CursorPageQuerySchema } }, async (request, reply) => {
         const q = request.query as { cursor?: string; limit: number };
         const { cursor, limit } = q;
-        const sorted = [...db.data.chat].sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        const startIndex = cursor ? sorted.findIndex((m) => m.id === cursor) + 1 : 0;
-        const data = sorted.slice(startIndex, startIndex + limit);
-        const nextCursor = data.length === limit ? data[data.length - 1]!.id : null;
+
+        let rows: ChatRow[];
+
+        if (cursor) {
+            const { timestamp: cursorTs, id: cursorId } = decodeCursor(cursor);
+            rows = db
+                .select()
+                .from(chatTable)
+                .where(
+                    or(
+                        lt(chatTable.timestamp, cursorTs),
+                        and(eq(chatTable.timestamp, cursorTs), lt(chatTable.id, cursorId))
+                    )
+                )
+                .orderBy(desc(chatTable.timestamp), desc(chatTable.id))
+                .limit(limit)
+                .all();
+        } else {
+            rows = db
+                .select()
+                .from(chatTable)
+                .orderBy(desc(chatTable.timestamp), desc(chatTable.id))
+                .limit(limit)
+                .all();
+        }
+
+        const data = rows.map(rowToMessage);
+        const lastRow = rows[rows.length - 1];
+        const nextCursor = rows.length === limit && lastRow
+            ? encodeCursor(lastRow.timestamp, lastRow.id)
+            : null;
+
         return { data, nextCursor };
     });
 
@@ -28,31 +66,34 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.post('/send-to-agent', { schema: { body: SendToAgentSchema }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         const body = request.body as z.infer<typeof SendToAgentSchema>;
         const userMessage = body.message;
-        const agentId = body.agentId || 'main'; // Default to main agent
+        const agentId = body.agentId || 'main';
 
-        // 1. Persist the user message and respond immediately with 202.
-        const newUserMessage = {
+        const now = new Date().toISOString();
+        const newUserMessage: ChatMessage = {
             id: randomUUID(),
-            role: 'user' as const,
+            role: 'user',
             content: userMessage,
             agentId: agentId !== 'main' ? agentId : undefined,
-            timestamp: new Date().toISOString()
+            timestamp: now,
         };
-        db.data.chat.push(newUserMessage);
-        await db.write();
+
+        db.insert(chatTable).values({
+            id: newUserMessage.id,
+            agentId: newUserMessage.agentId ?? null,
+            role: newUserMessage.role,
+            content: newUserMessage.content,
+            timestamp: now,
+        }).run();
 
         if (fastify.io) {
             fastify.io.emit('chat_message', newUserMessage);
         }
 
-        // Return 202 immediately — the AI reply will arrive via Socket.io.
         reply.status(202).send({ id: newUserMessage.id, status: 'pending' });
 
-        // 2. Invoke openclaw CLI asynchronously (fire-and-forget from the HTTP layer).
         void (async () => {
             try {
                 const aiResponseRaw = await routeChatToAgent(agentId, userMessage);
-                // Normalise the CLI response to a plain string regardless of its shape.
                 const aiText: string =
                     typeof aiResponseRaw === 'string'
                         ? aiResponseRaw
@@ -63,16 +104,22 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                           ? ((aiResponseRaw as Record<string, unknown>).message as string)
                           : JSON.stringify(aiResponseRaw);
 
-                // 3. Persist and broadcast the AI reply.
-                const newAiMessage = {
+                const aiTs = new Date().toISOString();
+                const newAiMessage: ChatMessage = {
                     id: randomUUID(),
-                    role: 'assistant' as const,
+                    role: 'assistant',
                     content: aiText,
                     agentId,
-                    timestamp: new Date().toISOString()
+                    timestamp: aiTs,
                 };
-                db.data.chat.push(newAiMessage);
-                await db.write();
+
+                db.insert(chatTable).values({
+                    id: newAiMessage.id,
+                    agentId: newAiMessage.agentId ?? null,
+                    role: newAiMessage.role,
+                    content: newAiMessage.content,
+                    timestamp: aiTs,
+                }).run();
 
                 if (fastify.io) {
                     fastify.io.emit('chat_message', newAiMessage);
@@ -96,15 +143,22 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
     fastify.post('/', { schema: { body: SaveChatSchema } }, async (request, reply) => {
         const body = request.body as z.infer<typeof SaveChatSchema>;
-        const newMsg = {
+        const now = new Date().toISOString();
+        const newMsg: ChatMessage = {
             id: randomUUID(),
-            role: (body.agentId ? 'assistant' : 'user') as 'user' | 'assistant',
+            role: body.agentId ? 'assistant' : 'user',
             content: body.content,
             agentId: body.agentId,
-            timestamp: new Date().toISOString()
+            timestamp: now,
         };
-        db.data.chat.push(newMsg);
-        await db.write();
+
+        db.insert(chatTable).values({
+            id: newMsg.id,
+            agentId: newMsg.agentId ?? null,
+            role: newMsg.role,
+            content: newMsg.content,
+            timestamp: now,
+        }).run();
 
         if (fastify.io) {
             fastify.io.emit('chat_message', newMsg);
@@ -112,10 +166,8 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         return reply.status(201).send(newMsg);
     });
 
-    // DELETE /api/chat — permanently wipe all chat history from the database
     fastify.delete('/', async (_request, reply) => {
-        db.data.chat = [];
-        await db.write();
+        db.delete(chatTable).run();
         if (fastify.io) {
             fastify.io.emit('chat_cleared');
         }

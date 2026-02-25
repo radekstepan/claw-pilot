@@ -1,8 +1,8 @@
-import { FastifyPluginAsync } from 'fastify';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { db } from '../db.js';
+import { db, tasks as tasksTable, activities as activitiesTable, parseJsonField, stringifyJsonField } from '../db/index.js';
+import { eq, count, desc } from 'drizzle-orm';
 import { Server } from 'socket.io';
-import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable } from '@claw-pilot/shared-types';
+import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable, ActivityLog } from '@claw-pilot/shared-types';
 import { randomUUID } from 'crypto';
 import { routeChatToAgent } from '../openclaw/cli.js';
 import { z } from 'zod';
@@ -13,29 +13,77 @@ declare module 'fastify' {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Row ↔ domain-object mappers
+// ---------------------------------------------------------------------------
+
+type TaskRow = typeof tasksTable.$inferSelect;
+
+function rowToTask(row: TaskRow): Task {
+    return {
+        id: row.id,
+        title: row.title ?? undefined,
+        description: row.description ?? undefined,
+        status: row.status as Task['status'],
+        priority: row.priority as Task['priority'] ?? undefined,
+        tags: parseJsonField<string[]>(row.tags),
+        assignee_id: row.assignee_id ?? undefined,
+        agentId: row.agentId ?? undefined,
+        deliverables: parseJsonField<Deliverable[]>(row.deliverables),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+    };
+}
+
+function activityRowToLog(row: { id: string; taskId: string | null; agentId: string | null; message: string; timestamp: string }): ActivityLog {
+    return {
+        id: row.id,
+        taskId: row.taskId ?? '',
+        agentId: row.agentId ?? undefined,
+        message: row.message,
+        timestamp: row.timestamp,
+    };
+}
+
 const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     // GET /api/tasks?limit=200&offset=0
     fastify.get('/', { schema: { querystring: OffsetPageQuerySchema } }, async (request, reply) => {
         const q = request.query as { limit: number; offset: number };
         const { limit, offset } = q;
-        const all = db.data.tasks;
-        const data = all.slice(offset, offset + limit);
-        return { data, total: all.length };
+
+        const [{ total }] = db.select({ total: count() }).from(tasksTable).all();
+        const rows = db.select().from(tasksTable).limit(limit).offset(offset).all();
+
+        return { data: rows.map(rowToTask), total };
     });
 
     fastify.post('/', { schema: { body: CreateTaskSchema } }, async (request, reply) => {
         const body = request.body as CreateTaskPayload;
+        const now = new Date().toISOString();
         const newTask: Task = {
             id: randomUUID(),
             title: body.title ?? 'New Task',
             description: body.description ?? '',
             status: body.status ?? 'TODO',
             priority: body.priority ?? 'MEDIUM',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            assignee_id: body.assignee_id,
+            createdAt: now,
+            updatedAt: now,
         };
-        db.data.tasks.push(newTask);
-        await db.write();
+
+        db.insert(tasksTable).values({
+            id: newTask.id,
+            title: newTask.title ?? null,
+            description: newTask.description ?? null,
+            status: newTask.status,
+            priority: newTask.priority ?? null,
+            tags: stringifyJsonField(newTask.tags),
+            assignee_id: newTask.assignee_id ?? null,
+            agentId: null,
+            deliverables: null,
+            createdAt: newTask.createdAt!,
+            updatedAt: newTask.updatedAt!,
+        }).run();
 
         if (fastify.io) {
             fastify.io.emit('task_created', { id: newTask.id, title: newTask.title });
@@ -52,19 +100,25 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             return reply.status(403).send({ error: 'AI agents are not allowed to mark tasks as DONE. They must be put in REVIEW.' });
         }
 
-        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
-        if (taskIndex === -1) {
+        const existing = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!existing) {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
-        const updatedTask = {
-            ...db.data.tasks[taskIndex],
-            ...body,
-            updatedAt: new Date().toISOString()
-        };
-        db.data.tasks[taskIndex] = updatedTask;
-        await db.write();
+        const updatedRow = db.update(tasksTable).set({
+            title: body.title ?? existing.title,
+            description: body.description ?? existing.description,
+            status: body.status ?? existing.status,
+            priority: body.priority ?? existing.priority,
+            tags: body.tags !== undefined ? stringifyJsonField(body.tags) : existing.tags,
+            assignee_id: body.assignee_id ?? existing.assignee_id,
+            agentId: body.agentId ?? existing.agentId,
+            updatedAt: new Date().toISOString(),
+        }).where(eq(tasksTable.id, id)).returning().get();
 
+        if (!updatedRow) return reply.status(404).send({ error: 'Task not found' });
+
+        const updatedTask = rowToTask(updatedRow);
         if (fastify.io) {
             fastify.io.emit('task_updated', updatedTask);
         }
@@ -74,18 +128,16 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.delete('/:id', async (request, reply) => {
         const { id } = request.params as { id: string };
 
-        const initialLength = db.data.tasks.length;
-        db.data.tasks = db.data.tasks.filter((t) => t.id !== id);
-
-        if (db.data.tasks.length === initialLength) {
+        const existing = db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!existing) {
             return reply.status(404).send({ error: 'Task not found' });
         }
-        await db.write();
+
+        db.delete(tasksTable).where(eq(tasksTable.id, id)).run();
 
         if (fastify.io) {
             fastify.io.emit('task_deleted', { id });
         }
-
         return reply.status(204).send();
     });
 
@@ -98,50 +150,51 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof ActivityPayloadSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
-        if (taskIndex === -1) {
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!taskRow) {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
-        const task = db.data.tasks[taskIndex];
-        let statusChanged = false;
+        let newStatus: string | undefined;
 
-        if (task.status === 'ASSIGNED') {
-            task.status = 'IN_PROGRESS';
-            statusChanged = true;
+        if (taskRow.status === 'ASSIGNED') {
+            newStatus = 'IN_PROGRESS';
         }
 
         if (body.message && (body.message.toLowerCase().includes('done') || body.message.toLowerCase().includes('completed'))) {
-            task.status = 'REVIEW';
-            statusChanged = true;
+            newStatus = 'REVIEW';
             void routeChatToAgent('main', `Task ${id} ready for review`).catch((err: unknown) => {
-                fastify.io.emit('agent_error', {
+                fastify.io?.emit('agent_error', {
                     agentId: 'main',
                     error: err instanceof Error ? err.message : String(err),
                 });
             });
         }
 
-        if (statusChanged) {
-            task.updatedAt = new Date().toISOString();
-            db.data.tasks[taskIndex] = task;
-        }
+        const now = new Date().toISOString();
 
-        const newActivity = {
+        const newActivityRow = {
             id: randomUUID(),
             taskId: id,
-            agentId: body.agentId,
+            agentId: body.agentId ?? null,
             message: body.message,
-            timestamp: new Date().toISOString()
+            timestamp: now,
         };
-        db.data.activities.push(newActivity);
 
-        await db.write();
+        const updatedTaskRow = db.transaction(() => {
+            if (newStatus) {
+                db.update(tasksTable).set({ status: newStatus, updatedAt: now }).where(eq(tasksTable.id, id)).run();
+            }
+            db.insert(activitiesTable).values(newActivityRow).run();
+            return db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        });
+
+        const newActivity = activityRowToLog(newActivityRow);
 
         if (fastify.io) {
             fastify.io.emit('activity_added', newActivity);
-            if (statusChanged) {
-                fastify.io.emit('task_updated', task);
+            if (newStatus && updatedTaskRow) {
+                fastify.io.emit('task_updated', rowToTask(updatedTaskRow));
             }
         }
 
@@ -157,12 +210,12 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof CreateDeliverableSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
-        if (taskIndex === -1) {
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!taskRow) {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
-        const task = db.data.tasks[taskIndex];
+        const existingDeliverables = parseJsonField<Deliverable[]>(taskRow.deliverables) ?? [];
         const newDeliverable: Deliverable = {
             id: randomUUID(),
             taskId: id,
@@ -171,14 +224,16 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             status: 'PENDING',
         };
 
-        task.deliverables = task.deliverables ?? [];
-        task.deliverables.push(newDeliverable);
-        task.updatedAt = new Date().toISOString();
+        existingDeliverables.push(newDeliverable);
+        const now = new Date().toISOString();
 
-        await db.write();
+        const updatedRow = db.update(tasksTable).set({
+            deliverables: stringifyJsonField(existingDeliverables),
+            updatedAt: now,
+        }).where(eq(tasksTable.id, id)).returning().get();
 
-        if (fastify.io) {
-            fastify.io.emit('task_updated', task);
+        if (fastify.io && updatedRow) {
+            fastify.io.emit('task_updated', rowToTask(updatedRow));
         }
 
         return reply.status(201).send(newDeliverable);
@@ -193,51 +248,56 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof ReviewTaskSchema>;
 
-        const taskIndex = db.data.tasks.findIndex((t) => t.id === id);
-        if (taskIndex === -1) {
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!taskRow) {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
-        const task = db.data.tasks[taskIndex];
+        const newStatus = body.action === 'approve' ? 'DONE' : 'IN_PROGRESS';
+        const now = new Date().toISOString();
 
-        if (body.action === 'approve') {
-            task.status = 'DONE';
-        } else {
-            task.status = 'IN_PROGRESS';
-            if (body.feedback) {
-                // Determine agent ID dynamically if stored in task, else 'main'
-                const assignedAgentId = task.agentId ?? 'main';
+        const updatedRow = db.transaction(() => {
+            db.update(tasksTable).set({ status: newStatus, updatedAt: now }).where(eq(tasksTable.id, id)).run();
+
+            if (body.action === 'reject' && body.feedback) {
+                const assignedAgentId = taskRow.agentId ?? 'main';
                 void routeChatToAgent(assignedAgentId, `Review Feedback for task ${id}: ${body.feedback}`).catch((err: unknown) => {
-                    fastify.io.emit('agent_error', {
+                    fastify.io?.emit('agent_error', {
                         agentId: assignedAgentId,
                         error: err instanceof Error ? err.message : String(err),
                     });
                 });
 
-                const newActivity = {
+                db.insert(activitiesTable).values({
                     id: randomUUID(),
                     taskId: id,
                     agentId: 'system',
                     message: `Review rejected with feedback: ${body.feedback}`,
-                    timestamp: new Date().toISOString()
-                };
-                db.data.activities.push(newActivity);
-                if (fastify.io) {
-                    fastify.io.emit('activity_added', newActivity);
-                }
+                    timestamp: now,
+                }).run();
             }
-        }
 
-        task.updatedAt = new Date().toISOString();
-        db.data.tasks[taskIndex] = task;
-        await db.write();
+            return db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        });
+
+        const updatedTask = updatedRow ? rowToTask(updatedRow) : rowToTask({ ...taskRow, status: newStatus, updatedAt: now });
 
         if (fastify.io) {
             fastify.io.emit('task_reviewed', { id, action: body.action });
-            fastify.io.emit('task_updated', task);
+            fastify.io.emit('task_updated', updatedTask);
+            if (body.action === 'reject' && body.feedback) {
+                const activityLog: ActivityLog = {
+                    id: randomUUID(),
+                    taskId: id,
+                    agentId: 'system',
+                    message: `Review rejected with feedback: ${body.feedback}`,
+                    timestamp: now,
+                };
+                fastify.io.emit('activity_added', activityLog);
+            }
         }
 
-        return reply.send(task);
+        return reply.send(updatedTask);
     });
 };
 

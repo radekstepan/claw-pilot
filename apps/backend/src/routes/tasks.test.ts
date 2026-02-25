@@ -2,15 +2,15 @@
  * Integration tests for the core task workflow.
  *
  * Every test uses `fastify.inject()` — no TCP socket, no port binding.
- * A fresh in-memory LowDB instance is installed before each test via
- * `setDb()` so tests are fully isolated and leave no files on disk.
+ * A fresh in-memory SQLite database (better-sqlite3 `:memory:`) is installed
+ * before each test via `setTestDb()` + `runMigrations()` so tests are fully
+ * isolated and leave no files on disk.
  */
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
-import { Low } from 'lowdb';
-import { Memory } from 'lowdb';
+import Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
-import { setDb, defaultData, type Data } from '../db.js';
+import { setTestDb, runMigrations } from '../db/index.js';
 
 // ---------------------------------------------------------------------------
 // Prevent actual openclaw CLI calls from activity / review routes.
@@ -36,9 +36,12 @@ const AUTH = { Authorization: 'Bearer test-api-key' };
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Creates a fresh in-memory LowDB instance with clean default data. */
-function createMemoryDb(): Low<Data> {
-    return new Low<Data>(new Memory(), structuredClone(defaultData));
+/** Creates a fresh in-memory SQLite database with migrations applied. */
+function createTestDb(): Database.Database {
+    const mem = new Database(':memory:');
+    setTestDb(mem);
+    runMigrations();
+    return mem;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,10 +53,7 @@ describe('Task routes — integration', () => {
 
     beforeEach(async () => {
         // Install a fresh, isolated in-memory DB before every test.
-        const testDb = createMemoryDb();
-        await testDb.read();  // initialises in-memory data from defaults
-        setDb(testDb);
-
+        createTestDb();
         app = await buildApp();
     });
 

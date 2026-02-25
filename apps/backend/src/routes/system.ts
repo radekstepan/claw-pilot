@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
-import { db } from '../db.js';
+import { db, tasks as tasksTable } from '../db/index.js';
+import { eq, or, and, count, lt, like } from 'drizzle-orm';
 import { getAgents, getLiveSessions } from '../openclaw/cli.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -16,10 +17,18 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
             const agents = await getAgents();
             const activeSessions = await getLiveSessions();
 
-            const tasksInQueue = db.data.tasks.filter((t) => t.status === 'TODO' || t.status === 'BACKLOG').length;
+            const [{ tasksInQueue }] = db
+                .select({ tasksInQueue: count() })
+                .from(tasksTable)
+                .where(or(eq(tasksTable.status, 'TODO'), eq(tasksTable.status, 'BACKLOG')))
+                .all();
 
-            const today = new Date().toISOString().split('T')[0];
-            const completedToday = db.data.tasks.filter((t) => t.status === 'DONE' && t.updatedAt && t.updatedAt.startsWith(today)).length;
+            const today = new Date().toISOString().split('T')[0]!;
+            const [{ completedToday }] = db
+                .select({ completedToday: count() })
+                .from(tasksTable)
+                .where(and(eq(tasksTable.status, 'DONE'), like(tasksTable.updatedAt, `${today}%`)))
+                .all();
 
             return reply.send({
                 activeAgents: activeSessions.length,
@@ -52,16 +61,13 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     });
 
     fastify.get('/monitoring/stuck-tasks/check', async (request, reply) => {
-        const now = new Date();
-        const stuckThreshold = 24 * 60 * 60 * 1000;
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-        const stuckTasks = db.data.tasks.filter((task) => {
-            if (task.status === 'IN_PROGRESS' && task.updatedAt) {
-                const updatedAt = new Date(task.updatedAt);
-                return now.getTime() - updatedAt.getTime() > stuckThreshold;
-            }
-            return false;
-        });
+        const stuckTasks = db
+            .select()
+            .from(tasksTable)
+            .where(and(eq(tasksTable.status, 'IN_PROGRESS'), lt(tasksTable.updatedAt, cutoff)))
+            .all();
 
         return reply.send({ stuckTasks });
     });

@@ -1,6 +1,6 @@
-import { FastifyPluginAsync } from 'fastify';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { db } from '../db.js';
+import { db, recurringTasks as recurringTable, tasks as tasksTable } from '../db/index.js';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { RecurringTaskSchema, RecurringTask, Task } from '@claw-pilot/shared-types';
@@ -13,81 +13,116 @@ const CreateRecurringSchema = z.object({
 
 const UpdateRecurringSchema = RecurringTaskSchema.partial();
 
+type RecurringRow = typeof recurringTable.$inferSelect;
+
+function rowToRecurring(row: RecurringRow): RecurringTask {
+    return {
+        id: row.id,
+        title: row.title,
+        schedule_type: row.schedule_type,
+        schedule_value: row.schedule_value ?? undefined,
+        status: row.status as RecurringTask['status'],
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+    };
+}
+
 const recurringRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
-    fastify.get('/', async (request, reply) => {
-        return db.data.recurring;
+    fastify.get('/', async (_request, _reply) => {
+        const rows = db.select().from(recurringTable).all();
+        return rows.map(rowToRecurring);
     });
 
     fastify.post('/', { schema: { body: CreateRecurringSchema } }, async (request, reply) => {
         const body = request.body as z.infer<typeof CreateRecurringSchema>;
+        const now = new Date().toISOString();
+        const id = randomUUID();
 
-        const newTask: RecurringTask = {
-            id: randomUUID(),
+        db.insert(recurringTable).values({
+            id,
             title: body.title,
             schedule_type: body.schedule_type,
-            schedule_value: body.schedule_value,
+            schedule_value: body.schedule_value ?? null,
             status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
+            createdAt: now,
+            updatedAt: now,
+        }).run();
 
-        db.data.recurring.push(newTask);
-        await db.write();
-
-        return reply.status(201).send(newTask);
+        const row = db.select().from(recurringTable).where(eq(recurringTable.id, id)).get()!;
+        return reply.status(201).send(rowToRecurring(row));
     });
 
     fastify.patch('/:id', { schema: { body: UpdateRecurringSchema } }, async (request, reply) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof UpdateRecurringSchema>;
 
-        const index = db.data.recurring.findIndex((t) => t.id === id);
-        if (index === -1) {
+        const existing = db.select().from(recurringTable).where(eq(recurringTable.id, id)).get();
+        if (!existing) {
             return reply.status(404).send({ error: 'Recurring task not found' });
         }
 
-        const updated = Object.assign({}, db.data.recurring[index], body, {
-            updatedAt: new Date().toISOString()
-        });
-        db.data.recurring[index] = updated;
-        await db.write();
+        const updatedRow = db.update(recurringTable).set({
+            title: body.title ?? existing.title,
+            schedule_type: body.schedule_type ?? existing.schedule_type,
+            schedule_value: body.schedule_value ?? existing.schedule_value,
+            status: body.status ?? existing.status,
+            updatedAt: new Date().toISOString(),
+        }).where(eq(recurringTable.id, id)).returning().get()!;
 
-        return reply.send(updated);
+        return reply.send(rowToRecurring(updatedRow));
     });
 
     fastify.delete('/:id', async (request, reply) => {
         const { id } = request.params as { id: string };
-        const index = db.data.recurring.findIndex((t) => t.id === id);
-        if (index === -1) {
+
+        const existing = db.select({ id: recurringTable.id }).from(recurringTable).where(eq(recurringTable.id, id)).get();
+        if (!existing) {
             return reply.status(404).send({ error: 'Recurring task not found' });
         }
-        db.data.recurring.splice(index, 1);
-        await db.write();
+
+        db.delete(recurringTable).where(eq(recurringTable.id, id)).run();
         return reply.status(204).send();
     });
 
     fastify.post('/:id/trigger', async (request, reply) => {
         const { id } = request.params as { id: string };
 
-        const recurringTask = db.data.recurring.find((t) => t.id === id);
+        const recurringTask = db.select().from(recurringTable).where(eq(recurringTable.id, id)).get();
         if (!recurringTask) {
             return reply.status(404).send({ error: 'Recurring task not found' });
         }
 
+        if (recurringTask.status === 'PAUSED') {
+            return reply.status(409).send({ error: 'Cannot trigger a paused recurring task' });
+        }
+
+        const now = new Date().toISOString();
         const newTask: Task = {
             id: randomUUID(),
             title: recurringTask.title ?? 'Triggered Task',
             description: `Auto-generated from recurring template: ${recurringTask.title}`,
             status: 'TODO',
             priority: 'MEDIUM',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
         };
 
-        db.data.tasks.push(newTask);
-        await db.write();
+        db.insert(tasksTable).values({
+            id: newTask.id,
+            title: newTask.title ?? null,
+            description: newTask.description ?? null,
+            status: newTask.status,
+            priority: newTask.priority ?? null,
+            tags: null,
+            assignee_id: null,
+            agentId: null,
+            deliverables: null,
+            createdAt: now,
+            updatedAt: now,
+        }).run();
 
         if (fastify.io) {
+            fastify.io.emit('task_created', { id: newTask.id, title: newTask.title });
             fastify.io.emit('task_updated', newTask);
         }
 

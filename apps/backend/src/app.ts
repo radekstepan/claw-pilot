@@ -23,7 +23,6 @@ import modelRoutes from './routes/models.js';
 import deliverableRoutes from './routes/deliverables.js';
 import recurringRoutes from './routes/recurring.js';
 import systemRoutes from './routes/system.js';
-import configRoutes from './routes/config.js';
 import activityRoutes from './routes/activities.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -91,7 +90,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     fastify.register(deliverableRoutes, { prefix: '/api/deliverables' });
     fastify.register(recurringRoutes, { prefix: '/api/recurring' });
     fastify.register(systemRoutes, { prefix: '/api' });
-    fastify.register(configRoutes, { prefix: '/api/config' });
     fastify.register(activityRoutes, { prefix: '/api/activities' });
 
     // ---------------------------------------------------------------------------
