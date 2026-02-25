@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Shield, Trash2, Zap, Globe, RefreshCw, Wand2, ChevronRight, Plus } from 'lucide-react';
 import { Agent } from '../../types';
 import { Badge } from '../ui/Badge';
+import { api } from '../../api/client';
 
 interface SettingsModalProps {
     agents: Agent[];
@@ -20,6 +21,9 @@ const AVAILABLE_MODELS = [
 export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
     const [activeTab, setActiveTab] = useState('agents');
     const [wizardStep, setWizardStep] = useState(0);
+    const [prompt, setPrompt] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generatedConfig, setGeneratedConfig] = useState<any>(null);
 
     const renderAgentsTab = () => {
         if (wizardStep === 1) {
@@ -32,14 +36,30 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                     <div className="space-y-4">
                         <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Mission Prompt</label>
                         <textarea
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
                             placeholder="e.g. I need a python expert who specializes in data visualization..."
-                            className="w-full h-32 bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded p-3 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                            className="w-full h-32 bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded p-3 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 flex-shrink-0 whitespace-pre-wrap resize-y"
                         />
                         <button
-                            onClick={() => setWizardStep(2)}
-                            className="w-full py-3 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-violet-500"
+                            onClick={async () => {
+                                if (!prompt.trim()) return;
+                                setIsGenerating(true);
+                                try {
+                                    const config = await api.generateAgent(prompt);
+                                    setGeneratedConfig(config);
+                                    setWizardStep(2);
+                                } catch (error) {
+                                    console.error('Failed to generate agent:', error);
+                                } finally {
+                                    setIsGenerating(false);
+                                }
+                            }}
+                            disabled={isGenerating || !prompt.trim()}
+                            className="w-full py-3 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Wand2 size={14} /> Generate Configuration
+                            {isGenerating ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                            {isGenerating ? 'Generating...' : 'Generate Configuration'}
                         </button>
                     </div>
                 </div>
@@ -59,17 +79,19 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">SOUL.md</label>
-                                <div className="h-48 bg-slate-50 dark:bg-black/40 rounded border border-black/5 dark:border-white/5 p-3 font-mono text-[9px] text-emerald-600 dark:text-emerald-400/80 overflow-y-auto">
-                                    # Identity{"\n"}You are a DataViz Specialist...{"\n"}# Style{"\n"}Precise, visual, technical.
+                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">Configuration (JSON)</label>
+                                <div className="h-48 bg-slate-50 dark:bg-black/40 rounded border border-black/5 dark:border-white/5 p-3 font-mono text-[9px] text-emerald-600 dark:text-emerald-400/80 overflow-y-auto whitespace-pre">
+                                    {generatedConfig ? JSON.stringify(generatedConfig, null, 2) : 'No config generated'}
                                 </div>
                             </div>
                         </div>
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">TOOLS.md</label>
+                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">CAPABILITIES</label>
                                 <div className="h-48 bg-slate-50 dark:bg-black/40 rounded border border-black/5 dark:border-white/5 p-3 font-mono text-[9px] text-cyan-600 dark:text-cyan-400/80 overflow-y-auto">
-                                    - python_exec{"\n"}- file_reader{"\n"}- chart_gen
+                                    {generatedConfig?.capabilities?.map((cap: string, i: number) => (
+                                        <div key={i}>- {cap}</div>
+                                    ))}
                                 </div>
                             </div>
                         </div>

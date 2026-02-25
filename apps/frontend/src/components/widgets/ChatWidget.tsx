@@ -1,25 +1,38 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, X, ChevronRight, MessageSquare } from 'lucide-react';
+import { Bot, X, ChevronRight, MessageSquare, Loader2 } from 'lucide-react';
+import { useMissionStore } from '../../store/useMissionStore';
+import { api } from '../../api/client';
 
 export const ChatWidget = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [msg, setMsg] = useState("");
-    const [history, setHistory] = useState([
-        { role: 'agent', name: 'Main Frame', text: 'System ready. How can I assist the squad today?' }
-    ]);
+    const [isTyping, setIsTyping] = useState(false);
+    const chatHistory = useMissionStore(state => state.chatHistory);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Provide initial history if empty
+    const displayHistory = chatHistory.length > 0 ? chatHistory : [
+        { sender: 'agent', message: 'System ready. How can I assist the squad today?' }
+    ];
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }, [history]);
+    }, [displayHistory, isTyping]);
 
-    const handleSend = () => {
-        if (!msg.trim()) return;
-        setHistory(prev => [...prev, { role: 'user', name: 'Commander', text: msg }]);
+    const handleSend = async () => {
+        if (!msg.trim() || isTyping) return;
+
+        const messageToSend = msg;
         setMsg("");
-        setTimeout(() => {
-            setHistory(prev => [...prev, { role: 'agent', name: 'Main Frame', text: 'Tasking update received. Monitoring session v2.2.' }]);
-        }, 1000);
+        setIsTyping(true);
+
+        try {
+            await api.sendChatMessageToAgent(messageToSend);
+        } catch (error) {
+            console.error("Failed to send message", error);
+        } finally {
+            setIsTyping(false);
+        }
     };
 
     return (
@@ -36,17 +49,28 @@ export const ChatWidget = () => {
                         </button>
                     </div>
                     <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
-                        {history.map((m, i) => (
-                            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <span className="text-[8px] uppercase tracking-tighter text-slate-400 dark:text-slate-500 mb-1">{m.name}</span>
-                                <div className={`text-[11px] p-2.5 rounded max-w-[85%] border ${m.role === 'user'
+                        {displayHistory.map((m: any, i) => (
+                            <div key={i} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                                <span className="text-[8px] uppercase tracking-tighter text-slate-400 dark:text-slate-500 mb-1">
+                                    {m.sender === 'user' ? 'Commander' : 'Main Frame'}
+                                </span>
+                                <div className={`text-[11px] p-2.5 rounded max-w-[85%] border ${m.sender === 'user'
                                     ? 'bg-violet-600/10 text-violet-900 dark:text-violet-100 border-violet-500/20'
                                     : 'bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 border-black/5 dark:border-white/5'
                                     }`}>
-                                    {m.text}
+                                    {m.message}
                                 </div>
                             </div>
                         ))}
+                        {isTyping && (
+                            <div className="flex flex-col items-start">
+                                <span className="text-[8px] uppercase tracking-tighter text-slate-400 dark:text-slate-500 mb-1">Main Frame</span>
+                                <div className="text-[11px] p-2.5 rounded max-w-[85%] border bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 border-black/5 dark:border-white/5 flex items-center gap-2">
+                                    <Loader2 size={12} className="animate-spin" />
+                                    <span>Typing...</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="p-3 border-t border-black/5 dark:border-white/5">
                         <div className="relative">
@@ -58,7 +82,7 @@ export const ChatWidget = () => {
                                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                                 className="w-full bg-slate-50 dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-sm py-2 pl-3 pr-10 text-[11px] text-slate-900 dark:text-slate-200 focus:border-violet-500/50 outline-none transition-all placeholder:text-slate-400"
                             />
-                            <button onClick={handleSend} className="absolute right-2 top-1.5 text-violet-600 dark:text-violet-500">
+                            <button onClick={handleSend} disabled={isTyping} className="absolute right-2 top-1.5 text-violet-600 dark:text-violet-500 disabled:opacity-50">
                                 <ChevronRight size={18} />
                             </button>
                         </div>

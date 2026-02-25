@@ -1,7 +1,7 @@
-export const COLUMN_IDS = ['INBOX', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'DONE'];
+export const COLUMN_IDS = ['TODO', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'DONE'];
 
 export const COLUMN_TITLES: Record<string, string> = {
-    INBOX: 'Inbox',
+    TODO: 'Inbox',
     ASSIGNED: 'Assigned',
     IN_PROGRESS: 'In Progress',
     REVIEW: 'Review',

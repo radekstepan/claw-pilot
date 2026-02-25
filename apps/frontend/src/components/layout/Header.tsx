@@ -3,11 +3,12 @@ import { Terminal, Sun, Moon, Bell, Plus, ChevronDown } from 'lucide-react';
 interface HeaderProps {
     stats: { active: number; queued: number; done: number };
     theme: string;
+    isSocketConnected: boolean;
     onToggleTheme: () => void;
     onNewTask: () => void;
 }
 
-export const Header = ({ stats, theme, onToggleTheme, onNewTask }: HeaderProps) => (
+export const Header = ({ stats, theme, isSocketConnected, onToggleTheme, onNewTask }: HeaderProps) => (
     <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between px-6 sticky top-0 z-50">
         <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
@@ -42,10 +43,15 @@ export const Header = ({ stats, theme, onToggleTheme, onNewTask }: HeaderProps) 
                 {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/5 border border-emerald-500/20 mr-4 cursor-pointer hover:bg-emerald-500/10 transition-colors group">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-500 tracking-wider">Gateway Nominal</span>
-                <ChevronDown size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border mr-4 cursor-pointer transition-colors group ${isSocketConnected
+                    ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
+                    : 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10'
+                }`}>
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isSocketConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${isSocketConnected ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-600 dark:text-red-500'}`}>
+                    {isSocketConnected ? 'Gateway Nominal' : 'Disconnected'}
+                </span>
+                <ChevronDown size={12} className={`${isSocketConnected ? 'text-emerald-500' : 'text-red-500'} opacity-50 group-hover:opacity-100`} />
             </div>
 
             <button className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors relative">

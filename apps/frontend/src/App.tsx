@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Hash, ChevronRight, Search, Layout } from 'lucide-react';
+import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { KanbanColumn } from './components/kanban/KanbanColumn';
@@ -8,32 +9,56 @@ import { ChatWidget } from './components/widgets/ChatWidget';
 import { TaskModal } from './components/modals/TaskModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NewTaskModal } from './components/modals/NewTaskModal';
-import { Task, Agent } from './types';
-import { INITIAL_TASKS, INITIAL_AGENTS, COLUMN_IDS, COLUMN_TITLES } from './constants';
+import { Task } from '@claw-pilot/shared-types';
+import { COLUMN_IDS, COLUMN_TITLES } from './constants';
+import { useMissionStore } from './store/useMissionStore';
+import { useSocketListener } from './hooks/useSocketListener';
 
 export default function App() {
+    useSocketListener();
     const [theme, setTheme] = useState('dark');
-    const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-    const [agents] = useState<Agent[]>(INITIAL_AGENTS);
+
+    // Zustand Store
+    const { tasks, agents, fetchInitialData, updateTaskStatus, isSocketConnected } = useMissionStore();
+
+    // Local UI State
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [activeTask, setActiveTask] = useState<Task | null>(null);
     const [isFeedCollapsed, setIsFeedCollapsed] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
 
+    useEffect(() => {
+        fetchInitialData();
+    }, [fetchInitialData]);
+
     const stats = useMemo(() => ({
-        active: agents.filter(a => a.status === 'working').length,
-        queued: tasks.filter(t => t.status === 'INBOX' || t.status === 'ASSIGNED').length,
+        active: agents.filter(a => a.status === 'WORKING').length,
+        queued: tasks.filter(t => t.status === 'BACKLOG' || t.status === 'TODO' || t.status === 'ASSIGNED').length,
         done: tasks.filter(t => t.status === 'DONE').length,
     }), [tasks, agents]);
 
     const filteredTasks = useMemo(() => {
         if (!selectedAgentId) return tasks;
-        return tasks.filter(t => t.assignee === selectedAgentId);
+        return tasks.filter((t: any) => t.assignee === selectedAgentId);
     }, [tasks, selectedAgentId]);
 
-    const addTask = (newTask: Task) => {
-        setTasks((prev) => [newTask, ...prev]);
+    const addTask = (_newTask: any) => {
+        // setTasks((prev) => [newTask, ...prev]);
+        // TODO: Update to use Backend API
+    };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over) return;
+
+        const taskId = active.id as string;
+        const newStatus = over.id as string;
+
+        const task = tasks.find(t => t.id === taskId);
+        if (task && task.status !== newStatus) {
+            updateTaskStatus(taskId, newStatus);
+        }
     };
 
     return (
@@ -41,13 +66,14 @@ export default function App() {
             <Header
                 stats={stats}
                 theme={theme}
+                isSocketConnected={isSocketConnected}
                 onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                 onNewTask={() => setIsNewTaskOpen(true)}
             />
 
             <main className="flex-1 flex overflow-hidden">
                 <Sidebar
-                    agents={agents}
+                    agents={agents as any}
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={setSelectedAgentId}
                     onOpenSettings={() => setIsSettingsOpen(true)}
@@ -83,25 +109,27 @@ export default function App() {
                     </div>
 
                     <div className="flex-1 flex overflow-x-auto overflow-y-hidden custom-scrollbar bg-transparent">
-                        {COLUMN_IDS.map(colId => (
-                            <KanbanColumn
-                                key={colId}
-                                id={colId}
-                                title={COLUMN_TITLES[colId]}
-                                tasks={filteredTasks.filter(t => t.status === colId)}
-                                onTaskClick={setActiveTask}
-                            />
-                        ))}
+                        <DndContext onDragEnd={handleDragEnd}>
+                            {COLUMN_IDS.map(colId => (
+                                <KanbanColumn
+                                    key={colId}
+                                    id={colId}
+                                    title={COLUMN_TITLES[colId]}
+                                    tasks={filteredTasks.filter(t => t.status === colId) as any}
+                                    onTaskClick={setActiveTask as any}
+                                />
+                            ))}
+                        </DndContext>
                     </div>
                 </div>
 
-                <LiveFeed collapsed={isFeedCollapsed} agents={agents} />
+                <LiveFeed collapsed={isFeedCollapsed} agents={agents as any} />
             </main>
 
             <ChatWidget />
-            {activeTask && <TaskModal task={activeTask} onClose={() => setActiveTask(null)} agents={agents} />}
-            {isSettingsOpen && <SettingsModal agents={agents} onClose={() => setIsSettingsOpen(false)} theme={theme} />}
-            {isNewTaskOpen && <NewTaskModal agents={agents} onClose={() => setIsNewTaskOpen(false)} onAdd={addTask} />}
+            {activeTask && <TaskModal task={activeTask as any} onClose={() => setActiveTask(null)} agents={agents as any} />}
+            {isSettingsOpen && <SettingsModal agents={agents as any} onClose={() => setIsSettingsOpen(false)} theme={theme} />}
+            {isNewTaskOpen && <NewTaskModal agents={agents as any} onClose={() => setIsNewTaskOpen(false)} onAdd={addTask as any} />}
 
             <style dangerouslySetInnerHTML={{
                 __html: `
