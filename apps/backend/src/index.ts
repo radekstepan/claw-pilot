@@ -20,8 +20,9 @@ import { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-t
 import { startSessionMonitor } from './monitors/sessionMonitor.js';
 import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
 import { startPruningMonitor } from './monitors/pruningMonitor.js';
+import { startBackupMonitor } from './monitors/backupMonitor.js';
 import { startRecurringSchedulerMonitor } from './monitors/recurringSchedulerMonitor.js';
-import { runMigrations } from './db/index.js';
+import { runMigrations, closeDb } from './db/index.js';
 import { aiQueue } from './services/aiQueue.js';
 
 // Apply any pending DB schema migrations before the app starts.
@@ -52,6 +53,7 @@ io.on('connection', (socket) => {
 const sessionMonitorTimer  = startSessionMonitor(fastify);
 const stuckTaskMonitorTimer = startStuckTaskMonitor(fastify);
 const pruningMonitorTimer   = startPruningMonitor(fastify);
+const backupMonitorTimer    = startBackupMonitor(fastify);
 const recurringScheduler = startRecurringSchedulerMonitor(fastify);
 const recurringSchedulerTimer = recurringScheduler.timer;
 fastify.decorate('reconcileRecurring', recurringScheduler.reconcile);
@@ -77,6 +79,7 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(sessionMonitorTimer);
     clearInterval(stuckTaskMonitorTimer);
     clearInterval(pruningMonitorTimer);
+    clearInterval(backupMonitorTimer);
     clearInterval(recurringSchedulerTimer);
 
     // Pause and clear the AI job queue so new jobs are aborted.
@@ -92,6 +95,14 @@ async function shutdown(signal: string): Promise<void> {
         await fastify.close();
     } catch (e) {
         console.error('[claw-pilot] fastify.close() failed during shutdown:', e);
+    }
+
+    // Close the SQLite connection last — after the HTTP server has drained — so
+    // in-flight route handlers can still use the DB until they finish.
+    try {
+        closeDb();
+    } catch (e) {
+        console.error('[claw-pilot] sqlite.close() failed during shutdown:', e);
     }
 
     process.exit(0);

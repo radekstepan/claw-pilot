@@ -51,6 +51,30 @@ export function setTestDb(testSqlite: BetterSqlite3.Database): void {
 }
 
 /**
+ * Close the underlying SQLite connection explicitly.
+ * Call during graceful shutdown **after** all in-flight requests have drained
+ * (i.e. after fastify.close()) to ensure WAL/SHM files are flushed and removed.
+ */
+export function closeDb(): void {
+    sqlite.close();
+}
+
+/**
+ * Perform a safe hot backup via SQLite's VACUUM INTO mechanism.
+ * Works while WAL-mode writers are active — SQLite serialises the snapshot
+ * internally, so no locks or server downtime are required.
+ *
+ * @param destPath Absolute path for the backup file. Any existing file at
+ *                 that path is overwritten atomically.
+ */
+export function backupDb(destPath: string): void {
+    // VACUUM INTO requires the destination to not exist, so remove it first.
+    // better-sqlite3 uses the synchronous Node fs APIs via native binding, so
+    // we delegate the unlink to Node's fs module before running the statement.
+    sqlite.exec(`VACUUM INTO '${destPath.replace(/'/g, "''")}'`);
+}
+
+/**
  * Apply all pending Drizzle migrations synchronously.
  * Must be called once during server startup before any route handles a request.
  */

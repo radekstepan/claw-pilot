@@ -6,6 +6,7 @@
  * to a TCP port or starting background monitors.
  */
 import Fastify, { FastifyError, FastifyInstance } from 'fastify';
+import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import staticPlugin from '@fastify/static';
@@ -31,6 +32,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     fastify.setValidatorCompiler(validatorCompiler);
     fastify.setSerializerCompiler(serializerCompiler);
+
+    // Security headers — registered first so they apply to every response,
+    // including error replies from other plugins.
+    // CSP is disabled for now to avoid blocking Vite's inline scripts/styles in
+    // production; all other Helmet defaults remain active:
+    //   X-Content-Type-Options, X-Frame-Options, Referrer-Policy,
+    //   Strict-Transport-Security, Cross-Origin-*, Permissions-Policy.
+    await fastify.register(helmet, { contentSecurityPolicy: false });
 
     // CORS — restricted to the configured frontend origin.
     await fastify.register(cors, {
