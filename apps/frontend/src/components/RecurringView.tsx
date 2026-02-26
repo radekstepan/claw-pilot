@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, Zap, Clock, Loader2, RefreshCw, Bot, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CreateRecurringPayload, RecurringTask } from '@claw-pilot/shared-types';
+import type { CreateRecurringPayload, RecurringTask, RecurringScheduleType } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
 import { Badge } from './ui/Badge';
 import { ConfirmDialog } from './ui/ConfirmDialog';
@@ -21,7 +21,7 @@ export const RecurringView = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [newTitle, setNewTitle] = useState('');
     const [newDescription, setNewDescription] = useState('');
-    const [newScheduleType, setNewScheduleType] = useState<string>('DAILY');
+    const [newScheduleType, setNewScheduleType] = useState<RecurringScheduleType>('DAILY');
     const [newScheduleValue, setNewScheduleValue] = useState('');
     const [newAssignedAgentId, setNewAssignedAgentId] = useState('');
     const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export const RecurringView = () => {
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [editTitle, setEditTitle] = useState('');
     const [editDescription, setEditDescription] = useState('');
-    const [editScheduleType, setEditScheduleType] = useState('');
+    const [editScheduleType, setEditScheduleType] = useState<RecurringScheduleType>('DAILY');
     const [editScheduleValue, setEditScheduleValue] = useState('');
     const [editAssignedAgentId, setEditAssignedAgentId] = useState('');
 
@@ -176,19 +176,20 @@ export const RecurringView = () => {
                             <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Type</label>
                             <Select
                                 value={newScheduleType}
-                                onValueChange={setNewScheduleType}
+                                onValueChange={(v) => setNewScheduleType(v as RecurringScheduleType)}
                                 options={SCHEDULE_TYPE_OPTIONS}
                                 placeholder="— Schedule Type —"
                             />
                         </div>
                         <div className="md:col-span-2 space-y-1">
-                            <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Value <span className="text-slate-300 dark:text-slate-700 normal-case">(optional, e.g. cron expr)</span></label>
+                            <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Cron Expression <span className="text-slate-300 dark:text-slate-700 normal-case">(required for Custom)</span></label>
                             <input
                                 type="text"
                                 value={newScheduleValue}
                                 onChange={(e) => setNewScheduleValue(e.target.value)}
-                                placeholder="e.g. 0 9 * * 1 for every Monday at 9am"
-                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono"
+                                placeholder={newScheduleType === 'CUSTOM' ? '*/15 * * * *  (required)' : 'Not needed for preset schedules'}
+                                disabled={newScheduleType !== 'CUSTOM'}
+                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono disabled:opacity-40"
                             />
                         </div>
                         <div className="md:col-span-3 space-y-1">
@@ -263,19 +264,20 @@ export const RecurringView = () => {
                                                 <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Type</label>
                                                 <Select
                                                     value={editScheduleType}
-                                                    onValueChange={setEditScheduleType}
+                                                    onValueChange={(v) => setEditScheduleType(v as RecurringScheduleType)}
                                                     options={SCHEDULE_TYPE_OPTIONS}
                                                     placeholder="— Schedule Type —"
                                                 />
                                             </div>
                                             <div className="md:col-span-2 space-y-1">
-                                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Value <span className="text-slate-300 dark:text-slate-700 normal-case">(optional)</span></label>
+                                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Cron Expression <span className="text-slate-300 dark:text-slate-700 normal-case">(required for Custom)</span></label>
                                                 <input
                                                     type="text"
                                                     value={editScheduleValue}
                                                     onChange={(e) => setEditScheduleValue(e.target.value)}
-                                                    placeholder="e.g. 0 9 * * 1"
-                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono"
+                                                    placeholder={editScheduleType === 'CUSTOM' ? '*/15 * * * *  (required)' : 'Not needed for preset schedules'}
+                                                    disabled={editScheduleType !== 'CUSTOM'}
+                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono disabled:opacity-40"
                                                 />
                                             </div>
                                             <div className="md:col-span-3 space-y-1">

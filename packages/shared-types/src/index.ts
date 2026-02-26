@@ -9,11 +9,14 @@ export const DeliverableSchema = z.object({
 });
 export type Deliverable = z.infer<typeof DeliverableSchema>;
 
+export const RecurringScheduleTypeEnum = z.enum(['HOURLY', 'DAILY', 'WEEKLY', 'CUSTOM']);
+export type RecurringScheduleType = z.infer<typeof RecurringScheduleTypeEnum>;
+
 export const RecurringTaskSchema = z.object({
     id: z.string(),
     title: z.string(),
     description: z.string().optional(),
-    schedule_type: z.string(),
+    schedule_type: RecurringScheduleTypeEnum,
     schedule_value: z.string().optional(),
     /** ID of the OpenClaw agent that should automatically receive tasks spawned from this template. */
     assigned_agent_id: z.string().optional(),
@@ -125,7 +128,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 export const CreateRecurringPayloadSchema = z.object({
     title: z.string(),
     description: z.string().optional(),
-    schedule_type: z.string(),
+    schedule_type: RecurringScheduleTypeEnum,
     schedule_value: z.string().optional(),
     assigned_agent_id: z.string().optional(),
 });

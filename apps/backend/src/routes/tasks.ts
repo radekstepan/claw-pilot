@@ -11,6 +11,7 @@ import { z } from 'zod';
 declare module 'fastify' {
     interface FastifyInstance {
         io: Server<ClientToServerEvents, ServerToClientEvents>;
+        reconcileRecurring?: () => void;
     }
 }
 

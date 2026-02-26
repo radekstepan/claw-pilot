@@ -51,7 +51,9 @@ io.on('connection', (socket) => {
 const sessionMonitorTimer  = startSessionMonitor(fastify);
 const stuckTaskMonitorTimer = startStuckTaskMonitor(fastify);
 const pruningMonitorTimer   = startPruningMonitor(fastify);
-const recurringSchedulerTimer = startRecurringSchedulerMonitor(fastify);
+const recurringScheduler = startRecurringSchedulerMonitor(fastify);
+const recurringSchedulerTimer = recurringScheduler.timer;
+fastify.decorate('reconcileRecurring', recurringScheduler.reconcile);
 
 // ---------------------------------------------------------------------------
 // Start listening
