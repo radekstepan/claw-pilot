@@ -4,6 +4,7 @@ import { eq, or, and, count, lt, like } from 'drizzle-orm';
 import { getAgents, getLiveSessions, gatewayCall, GatewayOfflineError, GatewayPairingRequiredError } from '../openclaw/cli.js';
 import { env } from '../config/env.js';
 import { aiQueue } from '../services/aiQueue.js';
+import { z } from 'zod';
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     fastify.get('/stats', async (request, reply) => {
@@ -116,6 +117,43 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
             .all();
 
         return reply.send({ stuckTasks });
+    });
+
+    /**
+     * GET /api/config
+     * Returns the current runtime configuration derived from env vars.
+     * The UI uses this to pre-fill settings fields (e.g. default workspace path).
+     */
+    fastify.get('/config', async (_request, reply) => {
+        return reply.send({
+            gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+            apiPort: env.PORT,
+            autoRestart: false,
+            defaultWorkspace: env.OPENCLAW_DEFAULT_WORKSPACE,
+        });
+    });
+
+    /**
+     * POST /api/config
+     * Env-var driven — changes don't persist across restarts but the endpoint
+     * acknowledges the submission and returns the effective values.
+     */
+    fastify.post('/config', {
+        schema: {
+            body: z.object({
+                gatewayUrl: z.string().optional(),
+                apiPort: z.number().optional(),
+                autoRestart: z.boolean().optional(),
+                defaultWorkspace: z.string().optional(),
+            }),
+        },
+    }, async (_request, reply) => {
+        return reply.send({
+            gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+            apiPort: env.PORT,
+            autoRestart: false,
+            defaultWorkspace: env.OPENCLAW_DEFAULT_WORKSPACE,
+        });
     });
 };
 

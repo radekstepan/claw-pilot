@@ -1,6 +1,9 @@
 import axios from 'axios';
-import type { Task, Agent, ActivityLog, CreateTaskPayload, TaskStatus, RecurringTask, CreateRecurringPayload, AppConfig, CursorPageResponse, OffsetPageResponse } from '@claw-pilot/shared-types';
+import type { Task, Agent, ActivityLog, CreateTaskPayload, TaskStatus, RecurringTask, CreateRecurringPayload, AppConfig, CursorPageResponse, OffsetPageResponse, GeneratedAgentConfig } from '@claw-pilot/shared-types';
 import { env } from '../config/env.js';
+
+// Re-export so consumers that already imported from here continue to work.
+export type { GeneratedAgentConfig };
 
 // Types for backend API responses not covered by shared-types
 export interface Model {
@@ -16,12 +19,6 @@ export interface GatewayStatus {
     deviceId?: string;
     /** Human-readable approval instructions */
     instructions?: string;
-}
-
-export interface GeneratedAgentConfig {
-    name?: string;
-    capabilities?: string[];
-    [key: string]: unknown;
 }
 
 const API_BASE_URL = `${env.VITE_API_URL}/api`;
@@ -92,9 +89,27 @@ export const api = {
             throw error;
         }
     },
-    generateAgent: async (prompt: string): Promise<GeneratedAgentConfig> => {
-        const response = await apiClient.post('/agents/generate', { prompt });
+    generateAgent: async (prompt: string, model?: string): Promise<{ requestId: string; status: string }> => {
+        const response = await apiClient.post('/agents/generate', { prompt, ...(model ? { model } : {}) });
         return response.data;
+    },
+    deployAgent: async (payload: { name: string; capabilities?: string[]; model?: string; workspace: string; soul?: string; tools?: string }): Promise<{ requestId: string; status: string }> => {
+        const response = await apiClient.post('/agents', payload);
+        return response.data;
+    },
+    updateAgent: async (id: string, patch: { name?: string; model?: string; capabilities?: string[]; soul?: string; tools?: string }): Promise<Agent> => {
+        const response = await apiClient.patch(`/agents/${id}`, patch);
+        return response.data;
+    },
+    deleteAgent: async (id: string): Promise<void> => {
+        await apiClient.delete(`/agents/${id}`);
+    },
+    getAgentFiles: async (id: string): Promise<{ soul: string; tools: string; agentsMd: string }> => {
+        const response = await apiClient.get(`/agents/${id}/files`);
+        return response.data;
+    },
+    updateAgentFiles: async (id: string, patch: { soul?: string; tools?: string; agentsMd?: string }): Promise<void> => {
+        await apiClient.put(`/agents/${id}/files`, patch);
     },
 
     // Activity Logs — cursor-based, newest first

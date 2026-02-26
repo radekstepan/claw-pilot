@@ -1,16 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Task } from '@claw-pilot/shared-types';
+import type { Agent, Task } from '@claw-pilot/shared-types';
 
 // Mock the api module before importing the store so the store picks up the mocks
 vi.mock('../api/client', () => ({
     api: {
-        getTasks: vi.fn().mockResolvedValue([]),
-        createTask: vi.fn(),
+        getTasks:      vi.fn().mockResolvedValue({ data: [], total: 0, limit: 200, offset: 0 }),
+        createTask:    vi.fn(),
         updateTaskStatus: vi.fn(),
-        getAgents: vi.fn().mockResolvedValue([]),
+        getAgents:     vi.fn().mockResolvedValue([]),
         generateAgent: vi.fn(),
-        getActivities: vi.fn().mockResolvedValue([]),
-        getModels: vi.fn(),
+        getActivities: vi.fn().mockResolvedValue({ data: [], nextCursor: null }),
+        getAgentFiles: vi.fn().mockResolvedValue({ soul: '', tools: '', agentsMd: '' }),
+        getModels:     vi.fn().mockResolvedValue([]),
         getGatewayStatus: vi.fn(),
     },
 }));
@@ -83,5 +84,85 @@ describe('useMissionStore — updateTaskStatus', () => {
         // Second task should be untouched
         const tasks = useMissionStore.getState().tasks;
         expect(tasks.find(t => t.id === 'TASK-002')?.status).toBe('ASSIGNED');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Agent store actions
+// ---------------------------------------------------------------------------
+const AGENT_ARCHITECT: Agent = {
+    id: 'architect',
+    name: 'Architect',
+    status: 'IDLE',
+    model: 'claude-sonnet-4',
+    capabilities: ['planning', 'review'],
+};
+
+const AGENT_DEVELOPER: Agent = {
+    id: 'developer',
+    name: 'Developer',
+    status: 'WORKING',
+    model: 'claude-sonnet-4',
+    capabilities: ['coding', 'testing'],
+};
+
+describe('useMissionStore — agents', () => {
+    beforeEach(() => {
+        useMissionStore.setState({
+            tasks: [],
+            agents: [],
+            activities: [],
+            isLoading: false,
+            error: null,
+            isSocketConnected: false,
+        });
+        vi.clearAllMocks();
+    });
+
+    it('fetchInitialData populates agents from getAgents response', async () => {
+        vi.mocked(api.getAgents).mockResolvedValue([AGENT_ARCHITECT, AGENT_DEVELOPER]);
+
+        await useMissionStore.getState().fetchInitialData();
+
+        const agents = useMissionStore.getState().agents;
+        expect(agents).toHaveLength(2);
+        expect(agents.find(a => a.id === 'architect')?.model).toBe('claude-sonnet-4');
+        expect(agents.find(a => a.id === 'developer')?.status).toBe('WORKING');
+    });
+
+    it('fetchInitialData preserves model and capabilities fields', async () => {
+        vi.mocked(api.getAgents).mockResolvedValue([AGENT_ARCHITECT]);
+
+        await useMissionStore.getState().fetchInitialData();
+
+        const agent = useMissionStore.getState().agents[0];
+        expect(agent.capabilities).toEqual(['planning', 'review']);
+        expect(agent.model).toBe('claude-sonnet-4');
+    });
+
+    it('refreshAgents replaces the agents array in the store', async () => {
+        // Seed with stale data
+        useMissionStore.setState({ agents: [AGENT_ARCHITECT] });
+
+        const updated: Agent = { ...AGENT_ARCHITECT, name: 'Renamed Architect', status: 'OFFLINE' };
+        vi.mocked(api.getAgents).mockResolvedValue([updated, AGENT_DEVELOPER]);
+
+        await useMissionStore.getState().refreshAgents();
+
+        const agents = useMissionStore.getState().agents;
+        expect(agents).toHaveLength(2);
+        expect(agents.find(a => a.id === 'architect')?.name).toBe('Renamed Architect');
+        expect(agents.find(a => a.id === 'developer')?.status).toBe('WORKING');
+    });
+
+    it('refreshAgents does not throw when getAgents fails — store remains unchanged', async () => {
+        useMissionStore.setState({ agents: [AGENT_ARCHITECT] });
+        vi.mocked(api.getAgents).mockRejectedValue(new Error('gateway offline'));
+
+        // Should not throw
+        await expect(useMissionStore.getState().refreshAgents()).resolves.toBeUndefined();
+
+        // Store is unchanged
+        expect(useMissionStore.getState().agents).toHaveLength(1);
     });
 });

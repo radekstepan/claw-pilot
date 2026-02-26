@@ -90,6 +90,13 @@ const EnvSchema = z.object({
      *   5 — higher throughput for capable hosts
      */
     AI_QUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(3),
+
+    /**
+     * Default workspace base path offered to users when creating a new agent.
+     * The UI pre-fills the "Workspace Path" field with this value.
+     * Typically the directory where the OpenClaw gateway stores agent workspaces.
+     */
+    OPENCLAW_DEFAULT_WORKSPACE: z.string().default('~/.openclaw/workspace'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

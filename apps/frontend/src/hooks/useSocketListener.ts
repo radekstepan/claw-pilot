@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { toast } from 'sonner';
-import type { ClientToServerEvents, ServerToClientEvents, Task } from '@claw-pilot/shared-types';
+import type { ClientToServerEvents, ServerToClientEvents, Task, GeneratedAgentConfig } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
 import { env } from '../config/env.js';
 
@@ -124,6 +124,28 @@ export function useSocketListener() {
                 message: `Agent ${agentId}: ${error}`,
                 agentId,
             });
+        });
+
+        socket.on('agent_config_generated', ({ requestId, config }) => {
+            console.log('Socket event: agent_config_generated', { requestId, config });
+            useMissionStore.getState().resolveAgentConfig(requestId, config as GeneratedAgentConfig);
+        });
+
+        socket.on('agent_config_error', ({ requestId, error }) => {
+            console.log('Socket event: agent_config_error', { requestId, error });
+            toast.error(`Agent config generation failed: ${error}`, { duration: 8000 });
+            useMissionStore.getState().clearPendingAgent();
+        });
+
+        socket.on('agent_deployed', ({ requestId, agentId }) => {
+            console.log('Socket event: agent_deployed', { requestId, agentId });
+            toast.success(`Agent "${agentId}" deployed successfully!`);
+            useMissionStore.getState().refreshAgents().catch(console.error);
+        });
+
+        socket.on('agent_deploy_error', ({ requestId, error }) => {
+            console.log('Socket event: agent_deploy_error', { requestId, error });
+            toast.error(`Agent deployment failed: ${error}`, { duration: 8000 });
         });
 
         return () => {

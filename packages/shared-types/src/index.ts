@@ -64,6 +64,13 @@ export const UpdateTaskSchema = TaskSchema.partial().extend({
 });
 export type UpdateTaskPayload = z.infer<typeof UpdateTaskSchema>;
 
+export interface GeneratedAgentConfig {
+    name?: string;
+    capabilities?: string[];
+    model?: string;
+    [key: string]: unknown;
+}
+
 export const AgentSchema = z.object({
     id: z.string(),
     name: z.string(),
@@ -110,6 +117,10 @@ export interface ServerToClientEvents {
     agent_config_generated: (payload: { requestId: string; config: unknown }) => void;
     /** Emitted when an async /agents/generate CLI call fails. */
     agent_config_error: (payload: { requestId: string; error: string }) => void;
+    /** Emitted when an async POST /api/agents (deploy) call completes. */
+    agent_deployed: (payload: { requestId: string; agentId: string }) => void;
+    /** Emitted when an async POST /api/agents (deploy) call fails. */
+    agent_deploy_error: (payload: { requestId: string; error: string }) => void;
     /** Emitted when the OpenClaw gateway comes online or goes offline. */
     gateway_status: (payload: { online: boolean; pairingRequired?: boolean; deviceId?: string }) => void;
     /**
@@ -129,6 +140,7 @@ export const AppConfigSchema = z.object({
     gatewayUrl: z.string(),
     apiPort: z.number(),
     autoRestart: z.boolean(),
+    defaultWorkspace: z.string().optional(),
 });
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Shield, Trash2, Zap, Globe, RefreshCw, Wand2, ChevronRight, Plus, Save, Loader2 } from 'lucide-react';
+import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Trash2, Zap, Globe, RefreshCw, Plus, Save, Loader2 } from 'lucide-react';
 import type { Agent, AppConfig } from '@claw-pilot/shared-types';
-import type { Model, GatewayStatus, GeneratedAgentConfig } from '../../api/client';
+import type { Model, GatewayStatus } from '../../api/client';
 import { Badge } from '../ui/Badge';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { AgentFormModal } from './AgentFormModal';
 import { api } from '../../api/client';
+import { useMissionStore } from '../../store/useMissionStore';
 
 interface SettingsModalProps {
     agents: Agent[];
@@ -11,38 +14,50 @@ interface SettingsModalProps {
     theme: string;
 }
 
-const AVAILABLE_MODELS: Model[] = [
-    { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-    { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI' },
-    { id: 'o1-preview', name: 'o1-preview', provider: 'OpenAI' },
-    { id: 'llama-3-8b', name: 'Llama 3 8b', provider: 'Groq' },
-];
-
 export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
+    const [activeTab, setActiveTab] = useState('agents');
+
+    // Agent form modal — declared before the Escape useEffect so the variable is in scope
+    const [agentFormOpen, setAgentFormOpen] = useState(false);
+
     useEffect(() => {
+        // When the inner AgentFormModal is open, it owns the Escape key — suppress this handler
+        // so pressing Escape closes only the inner modal and not both at once.
+        if (agentFormOpen) return;
         const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [onClose]);
+    }, [onClose, agentFormOpen]);
+    const [agentFormMode, setAgentFormMode] = useState<'create' | 'edit'>('create');
+    const [agentForEdit, setAgentForEdit] = useState<Agent | null>(null);
+    const [defaultWorkspace, setDefaultWorkspace] = useState('');
 
-    const [activeTab, setActiveTab] = useState('agents');
-    const [wizardStep, setWizardStep] = useState(0);
-    const [prompt, setPrompt] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedConfig, setGeneratedConfig] = useState<GeneratedAgentConfig | null>(null);
+    // Delete confirmation state
+    const [confirmDeleteAgent, setConfirmDeleteAgent] = useState<Agent | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    const [models, setModels] = useState<Model[]>(AVAILABLE_MODELS);
+    const [models, setModels] = useState<Model[]>([]);
     const [gatewayLogs, setGatewayLogs] = useState<string>('Loading gateway status...\n');
 
+    const { refreshAgents } = useMissionStore();
+
     // Config state for System tab
-    const [config, setConfig] = useState<AppConfig>({ gatewayUrl: '', apiPort: 54321, autoRestart: false });
+    const [config, setConfig] = useState<AppConfig>({ gatewayUrl: '', apiPort: 54321, autoRestart: false, defaultWorkspace: '' });
     const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+    // Sync config once data is loaded
     useEffect(() => {
-        if (activeTab === 'models') {
+        api.getConfig().then(cfg => {
+            setConfig(cfg);
+            if (cfg.defaultWorkspace) setDefaultWorkspace(cfg.defaultWorkspace);
+        }).catch(console.error);
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'models' || activeTab === 'agents') {
             api.getModels().then(setModels).catch(console.error);
-        } else if (activeTab === 'system') {
+        }
+        if (activeTab === 'system') {
             api.getConfig().then(setConfig).catch(console.error);
             api.getGatewayStatus().then((data: GatewayStatus) => {
                 if (data.status === 'ONLINE') {
@@ -59,121 +74,87 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
         }
     }, [activeTab]);
 
-    const renderAgentsTab = () => {
-        if (wizardStep === 1) {
-            return (
-                <div className="space-y-6 animate-fadeIn">
-                    <div className="flex items-center gap-2 mb-4">
-                        <button onClick={() => setWizardStep(0)} className="p-1 hover:text-slate-900 dark:hover:text-white"><ChevronRight size={16} className="rotate-180" /></button>
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-900 dark:text-white">Create New Agent</h3>
-                    </div>
-                    <div className="space-y-4">
-                        <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Mission Prompt</label>
-                        <textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            placeholder="e.g. I need a python expert who specializes in data visualization..."
-                            className="w-full h-32 bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded p-3 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 flex-shrink-0 whitespace-pre-wrap resize-y"
-                        />
-                        <button
-                            onClick={async () => {
-                                if (!prompt.trim()) return;
-                                setIsGenerating(true);
-                                try {
-                                    const config = await api.generateAgent(prompt);
-                                    setGeneratedConfig(config);
-                                    setWizardStep(2);
-                                } catch (error) {
-                                    console.error('Failed to generate agent:', error);
-                                } finally {
-                                    setIsGenerating(false);
-                                }
-                            }}
-                            disabled={isGenerating || !prompt.trim()}
-                            className="w-full py-3 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isGenerating ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                            {isGenerating ? 'Generating...' : 'Generate Configuration'}
-                        </button>
-                    </div>
-                </div>
-            );
-        }
-
-        if (wizardStep === 2) {
-            return (
-                <div className="space-y-6 animate-fadeIn">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setWizardStep(1)} className="p-1 hover:text-slate-900 dark:hover:text-white"><ChevronRight size={16} className="rotate-180" /></button>
-                            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-900 dark:text-white">Review Configuration</h3>
-                        </div>
-                        <Badge variant="success">AI Generated</Badge>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">Configuration (JSON)</label>
-                                <div className="h-48 bg-slate-50 dark:bg-black/40 rounded border border-black/5 dark:border-white/5 p-3 font-mono text-[9px] text-emerald-600 dark:text-emerald-400/80 overflow-y-auto whitespace-pre">
-                                    {generatedConfig ? JSON.stringify(generatedConfig, null, 2) : 'No config generated'}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">CAPABILITIES</label>
-                                <div className="h-48 bg-slate-50 dark:bg-black/40 rounded border border-black/5 dark:border-white/5 p-3 font-mono text-[9px] text-cyan-600 dark:text-cyan-400/80 overflow-y-auto">
-                                    {generatedConfig?.capabilities?.map((cap: string, i: number) => (
-                                        <div key={i}>- {cap}</div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => setWizardStep(0)}
-                        className="w-full py-3 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500"
-                    >
-                        Deploy Agent
-                    </button>
-                </div>
-            );
-        }
-
-        return (
-            <div className="space-y-4 animate-fadeIn">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">Active Squad</h3>
-                    <button
-                        onClick={() => setWizardStep(1)}
-                        className="flex items-center gap-2 text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 transition-colors"
-                    >
-                        <Plus size={14} /> Add Agent
-                    </button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {agents.map(agent => (
-                        <div key={agent.id} className="p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-violet-500/30 transition-all">
-                            <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${agent.status === 'WORKING' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                    <span className="text-[11px] font-bold text-slate-900 dark:text-slate-200">{agent.name}</span>
-                                </div>
-                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><SettingsIcon size={12} /></button>
-                                    <button className="text-slate-400 hover:text-red-500"><Trash2 size={12} /></button>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4 text-[9px] font-mono text-slate-500">
-                                <div className="flex items-center gap-1"><Cpu size={10} /> {agent.model}</div>
-                                <div className="flex items-center gap-1"><Shield size={10} /> {agent.fallback}</div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+    const renderAgentsTab = () => (
+        <div className="space-y-4 animate-fadeIn">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">Active Squad</h3>
+                <button
+                    onClick={() => {
+                        setAgentForEdit(null);
+                        setAgentFormMode('create');
+                        setAgentFormOpen(true);
+                    }}
+                    className="flex items-center gap-2 text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 transition-colors"
+                >
+                    <Plus size={14} /> Add Agent
+                </button>
             </div>
-        );
-    };
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {agents.map(agent => (
+                    <div key={agent.id} className="p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-violet-500/30 transition-all">
+                        <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${agent.status === 'WORKING' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                <span className="text-[11px] font-bold text-slate-900 dark:text-slate-200">{agent.name}</span>
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    title="Edit agent"
+                                    className="text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                    onClick={() => {
+                                        setAgentForEdit(agent);
+                                        setAgentFormMode('edit');
+                                        setAgentFormOpen(true);
+                                    }}
+                                ><SettingsIcon size={12} /></button>
+                                <button
+                                    title="Delete agent"
+                                    className="text-slate-400 hover:text-red-500"
+                                    onClick={() => setConfirmDeleteAgent(agent)}
+                                ><Trash2 size={12} /></button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-[9px] font-mono text-slate-500">
+                            <div className="flex items-center gap-1"><Cpu size={10} /> {agent.model ?? '—'}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <ConfirmDialog
+                open={confirmDeleteAgent !== null}
+                title={`Delete ${confirmDeleteAgent?.name ?? 'agent'}?`}
+                message="This will remove the agent from the OpenClaw gateway and delete its workspace files. This cannot be undone."
+                confirmLabel={isDeleting ? 'Deleting…' : 'Delete Agent'}
+                variant="danger"
+                onConfirm={async () => {
+                    if (!confirmDeleteAgent || isDeleting) return;
+                    setIsDeleting(true);
+                    try {
+                        await api.deleteAgent(confirmDeleteAgent.id);
+                        setConfirmDeleteAgent(null);
+                        refreshAgents().catch(console.error);
+                    } catch (err) {
+                        console.error('Failed to delete agent:', err);
+                    } finally {
+                        setIsDeleting(false);
+                    }
+                }}
+                onCancel={() => setConfirmDeleteAgent(null)}
+            />
+
+            {agentFormOpen && (
+                <AgentFormModal
+                    mode={agentFormMode}
+                    agent={agentForEdit ?? undefined}
+                    models={models}
+                    defaultWorkspace={defaultWorkspace}
+                    onClose={() => setAgentFormOpen(false)}
+                />
+            )}
+        </div>
+    );
 
     const renderModelsTab = () => (
         <div className="space-y-6 animate-fadeIn">
@@ -239,6 +220,21 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                             className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
                         />
                     </div>
+                    <div className="space-y-1 col-span-full">
+                        <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Base Workspace Path</label>
+                        <input
+                            type="text"
+                            value={config.defaultWorkspace}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setConfig(c => ({ ...c, defaultWorkspace: val }));
+                                setDefaultWorkspace(val);
+                            }}
+                            placeholder="~/openclaw-agents"
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                        />
+                        <p className="text-[8px] text-slate-500 italic">Used as the parent directory for new agents.</p>
+                    </div>
                     <div className="flex items-center gap-2 col-span-full">
                         <input
                             type="checkbox"
@@ -282,7 +278,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60" onClick={onClose} />
-            <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden">
+            <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded-xl">
                 <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01]">
                     <div className="flex items-center gap-6 h-full">
                         <div className="flex items-center gap-2 mr-4">
@@ -296,7 +292,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                         ].map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => { setActiveTab(tab.id); setWizardStep(0); }}
+                                onClick={() => setActiveTab(tab.id)}
                                 className={`flex items-center gap-2 px-1 h-full border-b-2 transition-all text-[10px] uppercase tracking-wider font-bold ${activeTab === tab.id
                                     ? 'border-violet-600 dark:border-violet-500 text-slate-900 dark:text-white'
                                     : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'

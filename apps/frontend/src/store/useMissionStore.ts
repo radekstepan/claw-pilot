@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import type { Task, Agent, ActivityLog, TaskStatus, CreateTaskPayload, RecurringTask, CreateRecurringPayload } from '@claw-pilot/shared-types';
+import type { Task, Agent, ActivityLog, TaskStatus, CreateTaskPayload, RecurringTask, CreateRecurringPayload, GeneratedAgentConfig } from '@claw-pilot/shared-types';
 import { api } from '../api/client';
 
 export interface AppNotification {
@@ -42,6 +42,11 @@ interface MissionState {
     /** In-app notification centre entries. */
     notifications: AppNotification[];
 
+    /** requestId of the pending async agent-config generation. Set when Generate is clicked. */
+    pendingAgentRequestId: string | null;
+    /** AI-generated agent config that arrived via the agent_config_generated socket event. */
+    generatedAgentConfig: GeneratedAgentConfig | null;
+
     fetchInitialData: () => Promise<void>;
     syncData: (since: string) => Promise<void>;
     updateTaskLocally: (task: Task) => void;
@@ -67,6 +72,15 @@ interface MissionState {
     deleteRecurring: (id: string) => Promise<void>;
     updateRecurring: (id: string, patch: Partial<RecurringTask>) => Promise<void>;
     triggerRecurring: (id: string) => Promise<void>;
+    // Agent wizard
+    /** Register intent to generate — stores requestId, clears any previous config. */
+    registerPendingAgent: (requestId: string) => void;
+    /** Called by socket listener when agent_config_generated arrives for this requestId. */
+    resolveAgentConfig: (requestId: string, config: GeneratedAgentConfig) => void;
+    /** Clear both pendingAgentRequestId and generatedAgentConfig (e.g. on wizard reset). */
+    clearPendingAgent: () => void;
+    /** Re-fetch agents from the gateway (called after a successful deploy). */
+    refreshAgents: () => Promise<void>;
 }
 
 export const useMissionStore = create<MissionState>((set, get) => ({
@@ -85,6 +99,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     busyAgentIds: new Set<string>(),
     lastSyncAt: null,
     notifications: [],
+    pendingAgentRequestId: null,
+    generatedAgentConfig: null,
 
     fetchInitialData: async () => {
         set({ isLoading: true, error: null });
@@ -413,6 +429,25 @@ export const useMissionStore = create<MissionState>((set, get) => ({
             toast.success('Mission triggered — task added to board.');
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : 'Failed to trigger scheduled mission.');
+        }
+    },
+
+    registerPendingAgent: (requestId) => set({ pendingAgentRequestId: requestId, generatedAgentConfig: null }),
+
+    resolveAgentConfig: (requestId, config) =>
+        set((state) => {
+            if (state.pendingAgentRequestId !== requestId) return {}; // stale response, ignore
+            return { generatedAgentConfig: config, pendingAgentRequestId: null };
+        }),
+
+    clearPendingAgent: () => set({ pendingAgentRequestId: null, generatedAgentConfig: null }),
+
+    refreshAgents: async () => {
+        try {
+            const agents = await api.getAgents();
+            set({ agents });
+        } catch (err) {
+            console.error('[store] refreshAgents failed:', err);
         }
     },
 }));

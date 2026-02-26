@@ -217,11 +217,17 @@ export const AgentConfigSchema = z.object({
     fallback: z.string().optional(),
 }).passthrough();
 
-export const GatewayConfigPayloadSchema = z.object({
-    hash: z.string().optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    parsed: z.record(z.string(), z.unknown()).optional(),
-}).passthrough().nullable();
+export const GatewayConfigPayloadSchema = z.union([
+    z.array(z.unknown()), // Allow direct array response for scoped paths
+    z.object({
+        hash: z.string().optional(),
+        // Docs (Feb 2026): config.get returns { hash, value: { list: [...] } }
+        value: z.unknown().optional(),
+        // Legacy/fallback field names from older gateway builds
+        config: z.unknown().optional(),
+        parsed: z.unknown().optional(),
+    }).passthrough().nullable()
+]);
 
 export const GatewaySessionsPayloadSchema = z.union([
     z.array(LiveSessionSchema),
@@ -507,17 +513,31 @@ export function agentIdToSessionKey(agentId: string): string {
  */
 export function parseOpenclawConfig(parsed: unknown): Agent[] {
     let raw: unknown[] = [];
+
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const obj = parsed as Record<string, unknown>;
-        if (Array.isArray(obj.agents)) {
-            raw = obj.agents as unknown[];
-        } else if (obj.agents !== undefined && typeof obj.agents === 'object') {
-            raw = Object.entries(obj.agents as Record<string, unknown>).map(
-                ([id, data]) => ({ id, ...(data as object) }),
-            );
-        } else {
-            // Bare top-level object treated as a single-agent map
-            raw = Object.entries(obj).map(([id, data]) => ({ id, ...(data as object) }));
+        // If the object contains 'agents', we drill down into it.
+        // Otherwise, we treat the object itself as the agents container (scoped response).
+        const section = (obj.agents && typeof obj.agents === 'object' && !Array.isArray(obj.agents))
+            ? (obj.agents as Record<string, unknown>)
+            : obj;
+
+        // 1. Collect from .list array if it exists
+        if (Array.isArray(section.list)) {
+            raw.push(...section.list);
+        } else if (Array.isArray(obj.agents)) {
+            // some older formats use 'agents' directly as an array
+            raw.push(...obj.agents);
+        }
+
+        // 2. Collect from all other top-level keys (excluding reserved ones)
+        // This ensures the "defaults" agent defined as a sibling to list is included.
+        const reserved = ['list', 'hash', 'agents'];
+        for (const [key, val] of Object.entries(section)) {
+            if (reserved.includes(key)) continue;
+            if (val && typeof val === 'object' && !Array.isArray(val)) {
+                raw.push({ id: key, ...(val as object) });
+            }
         }
     } else if (Array.isArray(parsed)) {
         raw = parsed;
@@ -538,19 +558,34 @@ export function parseOpenclawConfig(parsed: unknown): Agent[] {
 }
 
 /**
+ * Robustly extracts the data payload from a config.get response.
+ * Handles { value: ... }, { config: ... }, { parsed: ... } and raw response.
+ */
+function extractValue(payload: any): any {
+    if (!payload) return null;
+    if (Array.isArray(payload)) return payload;
+    if (typeof payload !== 'object') return payload;
+
+    // Use value, config, or parsed if they exist.
+    const v = payload.value ?? payload.config ?? payload.parsed;
+    if (v !== undefined) return v;
+
+    // If payload has no wrapper but is an object, return it as is.
+    return payload;
+}
+
+/**
  * Fetches agents from the gateway via `config.get`.
  * Returns an empty array if the gateway is unreachable or returns no agents.
  */
 export async function getAgents(): Promise<Agent[]> {
     try {
+        // Use `{}` to fetch the root config. The payload will be { hash, value: { agents: { list: [...agents...] } } }
         const payload = await gatewayCall('config.get', {}, { schema: GatewayConfigPayloadSchema });
-        if (!payload) return [];
-        // config.get returns { hash, config, parsed } — prefer `config`, fall back to `parsed`
-        const cfg = (payload.config ?? payload.parsed) as Record<string, unknown> | undefined;
-        // Only proceed if the config actually has an `agents` key — bare gateway configs
-        // that have other top-level keys (channels, etc.) must not be misinterpreted as agents.
-        if (!cfg || !Object.prototype.hasOwnProperty.call(cfg, 'agents')) return [];
-        return parseOpenclawConfig(cfg);
+        const value = extractValue(payload);
+
+        if (!value) return [];
+        return parseOpenclawConfig(value);
     } catch (e) {
         if (e instanceof GatewayPairingRequiredError) throw e;
         if (isConnectionError(e)) throw new GatewayOfflineError('config.get', e as Error);
@@ -604,21 +639,217 @@ export async function routeChatToAgent(agentId: string, message: string): Promis
 /**
  * Sends a prompt to the gateway main agent session and returns the response.
  * Used to generate new agent configurations.
+ *
+ * @param prompt  Natural-language description of the desired agent.
+ * @param model   Optional model ID to embed in the generation hint (e.g. 'claude-3-5-sonnet').
+ *
+ * The function parses the AI's text reply to extract the JSON configuration object.
+ * If JSON cannot be extracted, a best-effort object is returned with the raw response.
  */
-export async function generateAgentConfig(prompt: string): Promise<unknown> {
+export async function generateAgentConfig(prompt: string, model?: string): Promise<Record<string, unknown>> {
     try {
         const sessionKey = `mc-gateway:${env.OPENCLAW_GATEWAY_ID}:main`;
-        const fullPrompt = `Generate a JSON configuration for a new AI agent based on this request: ${prompt}. Return ONLY a JSON object with 'name' (string) and 'capabilities' (array of strings).`;
+        const modelHint = model
+            ? ` The agent should be assigned the model ID '${model}'.`
+            : '';
+        const fallbackModel = model ?? 'claude-3-5-sonnet';
+        const fullPrompt =
+            `Generate a JSON configuration for a new AI agent based on this request: ${prompt}.${modelHint} ` +
+            `Return ONLY a valid JSON object with exactly these keys: ` +
+            `'name' (string, a short slug-style id, e.g. "data-viz-expert"), ` +
+            `'capabilities' (array of strings describing what the agent can do), ` +
+            `and 'model' (string — use '${fallbackModel}' unless the request specifies otherwise). ` +
+            `Do not include any markdown or explanation — just the raw JSON object.`;
         await gatewayCall('sessions.patch', { key: sessionKey }, { timeout: WS_TIMEOUT });
-        return await gatewayCall(
+        const raw = await gatewayCall(
             'chat.send',
             { sessionKey, message: fullPrompt, deliver: false, idempotencyKey: randomUUID() },
             { timeout: AI_TIMEOUT },
-        );
+        ) as Record<string, unknown> | string | null;
+
+        // The gateway wraps the AI reply in { message: "<text>" }.
+        // Extract the text, then parse the JSON the AI produced.
+        const text =
+            typeof raw === 'string'
+                ? raw
+                : typeof raw?.message === 'string'
+                    ? raw.message
+                    : JSON.stringify(raw ?? {});
+
+        // Try parsing the full text first. Fall back to extracting the first {...} block
+        // in case the model wrapped the JSON in markdown fences or added surrounding prose.
+        let parsed: Record<string, unknown> | null = null;
+        try {
+            parsed = JSON.parse(text) as Record<string, unknown>;
+        } catch {
+            const match = text.match(/\{[\s\S]*\}/);
+            if (match) {
+                try {
+                    parsed = JSON.parse(match[0]) as Record<string, unknown>;
+                } catch { /* give up — return graceful degradation below */ }
+            }
+        }
+
+        if (parsed && typeof parsed === 'object') {
+            return parsed;
+        }
+
+        // Graceful fallback: return a minimal config with the raw response so the UI
+        // can at least show something meaningful instead of an empty object.
+        return { name: 'new-agent', capabilities: [], model: fallbackModel, _raw: text };
     } catch (e) {
         if (e instanceof GatewayPairingRequiredError) throw e;
         if (isConnectionError(e)) throw new GatewayOfflineError('chat.send', e as Error);
         console.error('[openclaw] generateAgentConfig unexpected error:', e);
+        throw e;
+    }
+}
+
+/**
+ * Creates (registers) a new agent on the OpenClaw gateway.
+ *
+ * Uses the `agents.create` RPC directly (documented in openclaw_api.md):
+ *   1. `agents.create { name, workspace }` — registers the entry in the gateway config
+ *   2. `updateAgentMeta` (scoped config.patch) — applies model if provided
+ *   3. `exec.shell` (non-fatal) — scaffolds workspace directory + template files
+ *
+ * @param name       Agent ID / slug (e.g. "data-viz-expert").
+ * @param workspace  Absolute path on the gateway host for the agent's workspace folder.
+ * @param model      Optional model ID; applied afterwards via updateAgentMeta.
+ */
+export async function createAgent(name: string, workspace: string, model?: string): Promise<void> {
+    try {
+        // Step 1: register the agent via agents.create
+        try {
+            await gatewayCall('agents.create', { name, workspace }, { timeout: WS_TIMEOUT });
+        } catch (createErr) {
+            const msg = (createErr as Error).message ?? '';
+            // Non-fatal if the agent already exists
+            if (/already exists|duplicate|conflict/i.test(msg)) {
+                console.log(`[openclaw] createAgent: "${name}" already registered — skipping`);
+            } else {
+                throw createErr;
+            }
+        }
+
+        // Step 2: set model via scoped config.patch (agents.create doesn't support it)
+        if (model) {
+            await updateAgentMeta(name, { model });
+        }
+
+        // Step 3: scaffold workspace directory + template files on the gateway host (non-fatal)
+        try {
+            const mainSessionKey = `mc-gateway:${env.OPENCLAW_GATEWAY_ID}:main`;
+            await gatewayCall('sessions.patch', { key: mainSessionKey }, { timeout: WS_TIMEOUT });
+            await gatewayCall(
+                'exec.shell',
+                {
+                    sessionKey: mainSessionKey,
+                    command: [
+                        `mkdir -p "${workspace}"`,
+                        `[ -d ~/.openclaw/workspace/.openclaw/templates ] && cp -rn ~/.openclaw/workspace/.openclaw/templates/. "${workspace}/" || true`,
+                    ].join(' && '),
+                },
+                { timeout: WS_TIMEOUT },
+            );
+        } catch (scaffoldErr) {
+            console.warn('[openclaw] createAgent: workspace scaffold failed (non-fatal):', scaffoldErr);
+        }
+    } catch (e) {
+        if (e instanceof GatewayPairingRequiredError) throw e;
+        if (isConnectionError(e)) throw new GatewayOfflineError('createAgent', e as Error);
+        console.error('[openclaw] createAgent unexpected error:', e);
+        throw e;
+    }
+}
+
+/**
+ * Updates an existing agent's display name, model, and/or capabilities.
+ *
+ * - Name changes use `agents.update` RPC (purpose-built, does not touch other config).
+ * - Model/capabilities use a scoped `config.get { path: "agents.list" }` + `config.patch`
+ *   so only the clean agents array is round-tripped — avoiding full-config schema errors.
+ *
+ * @param agentId   The stable agent ID to update.
+ * @param patch     Object containing the fields to change (`name`, `model`, `capabilities`).
+ */
+export async function updateAgentMeta(
+    agentId: string,
+    patch: { name?: string; model?: string; capabilities?: string[] },
+): Promise<void> {
+    const { name: newName, model: newModel, capabilities: newCapabilities } = patch;
+    if (!newName && !newModel && !newCapabilities) return;
+
+    try {
+        // Name change: use agents.update — also requires the current workspace path.
+        if (newName) {
+            const listPayload = await gatewayCall('config.get', { path: 'agents.list' }, { schema: GatewayConfigPayloadSchema });
+            const listValue = extractValue(listPayload);
+            const agentsList: Record<string, unknown>[] = Array.isArray(listValue) ? listValue : [];
+            const current = agentsList.find((a) => (a.id ?? a.name) === agentId) as Record<string, unknown> | undefined;
+            const workspace = typeof current?.workspace === 'string' ? current.workspace : '';
+            await gatewayCall('agents.update', { agentId, name: newName, workspace }, { timeout: WS_TIMEOUT });
+        }
+
+        // Model / capabilities: patch only those fields using the scoped agents list.
+        if (newModel || newCapabilities) {
+            const listPayload = await gatewayCall('config.get', { path: 'agents.list' }, { schema: GatewayConfigPayloadSchema });
+            const hash = (listPayload && !Array.isArray(listPayload) && typeof listPayload.hash === 'string') ? listPayload.hash : undefined;
+            const listValue = extractValue(listPayload);
+            const rawList: Record<string, unknown>[] = Array.isArray(listValue) ? listValue : [];
+
+            if (!rawList.some((a) => (a.id ?? a.name) === agentId)) {
+                console.warn(`[openclaw] updateAgentMeta: agent "${agentId}" not found in agents.list`);
+                return;
+            }
+
+            const updatedList = rawList.map((a) => {
+                if ((a.id ?? a.name) !== agentId) return a;
+                const updated = { ...a };
+                if (newModel) updated.model = newModel;
+                if (newCapabilities) updated.capabilities = newCapabilities;
+                return updated;
+            });
+
+            // config.patch requires `raw` as a JSON *string* (merge-patch), not an object.
+            await gatewayCall(
+                'config.patch',
+                { baseHash: hash, raw: JSON.stringify({ agents: { list: updatedList } }) },
+                { timeout: WS_TIMEOUT },
+            );
+        }
+    } catch (e) {
+        if (e instanceof GatewayPairingRequiredError) throw e;
+        if (isConnectionError(e)) throw new GatewayOfflineError('updateAgentMeta', e as Error);
+        console.error('[openclaw] updateAgentMeta unexpected error:', e);
+        throw e;
+    }
+}
+
+/**
+ * Updates agent behavioral files (SOUL.md, TOOLS.md, etc.) on the gateway.
+ */
+export async function setAgentFiles(
+    agentId: string,
+    files: { soul?: string; tools?: string; agentsMd?: string },
+): Promise<void> {
+    const updates: Promise<unknown>[] = [];
+    if (files.soul !== undefined) {
+        updates.push(gatewayCall('agents.files.set', { agentId, name: 'SOUL.md', content: files.soul }));
+    }
+    if (files.tools !== undefined) {
+        updates.push(gatewayCall('agents.files.set', { agentId, name: 'TOOLS.md', content: files.tools }));
+    }
+    if (files.agentsMd !== undefined) {
+        updates.push(gatewayCall('agents.files.set', { agentId, name: 'AGENTS.md', content: files.agentsMd }));
+    }
+
+    try {
+        await Promise.all(updates);
+    } catch (e) {
+        if (e instanceof GatewayPairingRequiredError) throw e;
+        if (isConnectionError(e)) throw new GatewayOfflineError('agents.files.set', e as Error);
+        console.error('[openclaw] setAgentFiles unexpected error:', e);
         throw e;
     }
 }
@@ -639,6 +870,21 @@ export async function spawnTaskSession(agentId: string, taskId: string, prompt: 
         if (e instanceof GatewayPairingRequiredError) throw e;
         if (isConnectionError(e)) throw new GatewayOfflineError('chat.send', e as Error);
         console.error('[openclaw] spawnTaskSession unexpected error:', e);
+        throw e;
+    }
+}
+
+/**
+ * Deletes an agent from the OpenClaw gateway via `agents.delete`.
+ * By default also removes the agent's workspace files from disk.
+ */
+export async function deleteAgent(agentId: string, deleteFiles = true): Promise<unknown> {
+    try {
+        return await gatewayCall('agents.delete', { agentId, deleteFiles }, { timeout: WS_TIMEOUT });
+    } catch (e) {
+        if (e instanceof GatewayPairingRequiredError) throw e;
+        if (isConnectionError(e)) throw new GatewayOfflineError('agents.delete', e as Error);
+        console.error('[openclaw] deleteAgent unexpected error:', e);
         throw e;
     }
 }
