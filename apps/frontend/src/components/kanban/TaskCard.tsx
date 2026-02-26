@@ -10,16 +10,23 @@ interface TaskCardProps {
     task: Task;
     onClick: () => void;
     isOverlay?: boolean;
+    /** True when this card's swimlane changed since the user last opened it. */
+    isUnread?: boolean;
 }
 
-export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
+export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: task.id,
         data: { task },
         disabled: isOverlay,
     });
     const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
-    const isAgentBusy = useMissionStore((s) => !!task.agentId && s.busyAgentIds.has(task.agentId));
+    const isLocallyBusy = useMissionStore((s) => !!task.agentId && s.busyAgentIds.has(task.agentId));
+    // Also surface "busy" when the session monitor has flipped the agent to WORKING status
+    const agentIsWorking = useMissionStore((s) =>
+        task.agentId ? s.agents.find(a => a.id === task.agentId)?.status === 'WORKING' : false
+    );
+    const isAgentBusy = isLocallyBusy || agentIsWorking;
 
     const style = {
         transform: CSS.Translate.toString(transform),
@@ -38,7 +45,7 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
         >
             <Card
                 onClick={onClick}
-                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''}`}
+                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''} ${isUnread && !isStuck ? 'border-l-2 border-l-violet-500 dark:border-l-violet-400' : ''}`}
                 role="button"
                 aria-label={`Task: ${task.title}. Priority: ${task.priority ?? 'LOW'}. Drag to move.`}
                 tabIndex={isOverlay ? -1 : 0}
@@ -47,9 +54,18 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
                     <span className="text-[9px] font-mono text-slate-400 dark:text-slate-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
                         {task.id}
                     </span>
-                    <Badge variant={task.priority === 'HIGH' ? 'urgent' : 'default'}>
-                        {task.priority ?? 'LOW'}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                        {isUnread && (
+                            <span
+                                className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0 animate-pulse"
+                                aria-label="Unread — task was updated since you last opened it"
+                                title="Updated since last viewed"
+                            />
+                        )}
+                        <Badge variant={task.priority === 'HIGH' ? 'urgent' : 'default'}>
+                            {task.priority ?? 'LOW'}
+                        </Badge>
+                    </div>
                 </div>
                 {isStuck && (
                     <div className="flex items-center gap-1 mb-2">

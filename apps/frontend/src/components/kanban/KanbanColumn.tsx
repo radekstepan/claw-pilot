@@ -14,9 +14,11 @@ interface KanbanColumnProps {
     isLoading?: boolean;
     /** True while any card is being dragged (globally). Used to show no-drop cues on the DONE column. */
     isDragging?: boolean;
+    /** Set of "taskId:status" read keys — cards not in this set are highlighted as unread. */
+    readSet?: Set<string>;
 }
 
-export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragging }: KanbanColumnProps) => {
+export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragging, readSet }: KanbanColumnProps) => {
     const isDoneColumn = id === 'DONE';
     const isStuckColumn = id === 'STUCK';
     // Show no-drop warning when any card is being dragged AND this is the DONE column
@@ -114,7 +116,11 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                                     }}
                                     role="listitem"
                                 >
-                                    <TaskCard task={task} onClick={() => onTaskClick(task)} />
+                                    <TaskCard
+                                        task={task}
+                                        onClick={() => onTaskClick(task)}
+                                        isUnread={readSet ? !readSet.has(`${task.id}:${task.status}`) : false}
+                                    />
                                 </div>
                             );
                         })}

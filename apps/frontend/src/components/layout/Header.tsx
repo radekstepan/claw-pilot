@@ -1,4 +1,5 @@
 import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu, WifiOff, Link2, Copy } from 'lucide-react';
+import { Agent } from '@claw-pilot/shared-types';
 
 interface HeaderProps {
     stats: { active: number; queued: number; done: number };
@@ -10,6 +11,8 @@ interface HeaderProps {
     gatewayPairingRequired: boolean;
     /** Stable device ID to show in pairing instructions. */
     gatewayDeviceId: string | null;
+    /** Agents currently in WORKING status — used for the active agents indicator. */
+    activeAgents: Agent[];
     onToggleTheme: () => void;
     onNewTask: () => void;
     onToggleSidebar: () => void;
@@ -55,7 +58,7 @@ const PILL_STYLES: Record<PillState, { container: string; dot: string; text: str
     },
 };
 
-export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => {
+export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, activeAgents, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => {
     const pillState = getPillState(isSocketConnected, gatewayPairingRequired, gatewayOnline);
     const pill = PILL_STYLES[pillState];
 
@@ -85,8 +88,40 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gateway
             </div>
 
             <nav className="hidden md:flex items-center gap-6" aria-label="Key metrics">
+                {/* ── Active Agents — glowing indicator with hover tooltip ── */}
+                <div className="flex flex-col relative group/agents">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-500">Active Agents</span>
+                    <div className="flex items-center gap-1.5">
+                        {stats.active > 0 ? (
+                            <>
+                                {/* Layered glow: outer ring animates at a different timing for a breathing effect */}
+                                <span className="relative flex items-center justify-center" aria-hidden="true">
+                                    <span className="absolute w-3.5 h-3.5 rounded-full bg-emerald-500/20 animate-ping" style={{ animationDuration: '1.8s' }} />
+                                    <span className="relative w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_2px_rgba(16,185,129,0.5)]" />
+                                </span>
+                                <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400" aria-label={`Active Agents: ${stats.active}`}>{stats.active}</span>
+                            </>
+                        ) : (
+                            <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400" aria-label="Active Agents: 0">0</span>
+                        )}
+                    </div>
+                    {/* Hover tooltip listing working agents */}
+                    {stats.active > 0 && (
+                        <div className="absolute top-full left-0 mt-2 z-50 hidden group-hover/agents:block pointer-events-none">
+                            <div className="bg-white dark:bg-[#0e0c14] border border-black/10 dark:border-white/10 rounded shadow-xl p-2 min-w-[160px]">
+                                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1.5 font-bold">Working now</p>
+                                {activeAgents.map(a => (
+                                    <div key={a.id} className="flex items-center gap-1.5 py-0.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                                        <span className="text-[10px] text-slate-700 dark:text-slate-300 font-medium truncate">{a.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 {[
-                    { label: 'Active Agents', val: stats.active, color: 'text-emerald-600 dark:text-emerald-400' },
                     { label: 'Tasks Queue', val: stats.queued, color: 'text-violet-600 dark:text-violet-400' },
                     { label: 'Done Today', val: stats.done, color: 'text-slate-500 dark:text-slate-400' }
                 ].map(stat => (

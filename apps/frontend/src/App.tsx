@@ -23,6 +23,12 @@ export default function App() {
 
     // Persist theme to localStorage
     const [theme, setTheme] = useState<string>(() => localStorage.getItem('theme') ?? 'dark');
+
+    // ── Read/Unread tracking ─────────────────────────────────────────────────
+    // A "read key" is `${taskId}:${status}`. A card is unread if its current key
+    // isn't in the set (e.g. it was never opened, or it moved to a new swimlane).
+    const [readSet, setReadSet] = useState<Set<string>>(new Set());
+    const [readSetInitialised, setReadSetInitialised] = useState(false);
     const toggleTheme = useCallback(() => {
         setTheme(prev => {
             const next = prev === 'dark' ? 'light' : 'dark';
@@ -56,15 +62,30 @@ export default function App() {
         fetchRecurring();
     }, [fetchInitialData, fetchRecurring]);
 
+    // Mark all tasks as "read" once the initial load completes.
+    // From that point on, a task becomes unread when its status changes (swimlane move).
+    useEffect(() => {
+        if (!readSetInitialised && !isLoading && tasks.length > 0) {
+            setReadSet(new Set(tasks.map(t => `${t.id}:${t.status}`)));
+            setReadSetInitialised(true);
+        }
+    }, [isLoading, tasks, readSetInitialised]);
+
+    const activeAgents = useMemo(() => agents.filter(a => a.status === 'WORKING'), [agents]);
+
     const stats = useMemo(() => ({
-        active: agents.filter(a => a.status === 'WORKING').length,
+        active: activeAgents.length,
         queued: tasks.filter(t => t.status === 'BACKLOG' || t.status === 'TODO' || t.status === 'ASSIGNED').length,
         done: tasks.filter(t => t.status === 'DONE').length,
-    }), [tasks, agents]);
+    }), [tasks, activeAgents]);
 
     const filteredTasks = useMemo(() => {
-        if (!selectedAgentId) return tasks;
-        return tasks.filter((t) => t.assignee_id === selectedAgentId);
+        const base = selectedAgentId ? tasks.filter((t) => t.assignee_id === selectedAgentId) : tasks;
+        // Sort newest-updated first within each swimlane
+        return base.slice().sort((a, b) =>
+            new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() -
+            new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
+        );
     }, [tasks, selectedAgentId]);
 
     const addTask = async (payload: CreateTaskPayload) => {
@@ -75,7 +96,11 @@ export default function App() {
         }
     };
 
-    const handleTaskClick = (task: Task) => setActiveTask(task);
+    const handleTaskClick = (task: Task) => {
+        setActiveTask(task);
+        // Mark this task's current swimlane position as "read"
+        setReadSet(prev => new Set([...prev, `${task.id}:${task.status}`]));
+    };
 
     const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 5 } });
     const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } });
@@ -118,6 +143,7 @@ export default function App() {
                 gatewayOnline={gatewayOnline}
                 gatewayPairingRequired={gatewayPairingRequired}
                 gatewayDeviceId={gatewayDeviceId}
+                activeAgents={activeAgents}
                 onToggleTheme={toggleTheme}
                 onNewTask={() => setIsNewTaskOpen(true)}
                 onToggleSidebar={() => setIsSidebarOpen(o => !o)}
@@ -201,6 +227,7 @@ export default function App() {
                                     onTaskClick={handleTaskClick}
                                     isLoading={isLoading}
                                     isDragging={activeDragTask !== null}
+                                    readSet={readSet}
                                 />
                             ))}
                             <DragOverlay dropAnimation={null}>
