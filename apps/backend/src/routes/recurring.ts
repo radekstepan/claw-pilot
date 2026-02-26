@@ -112,10 +112,6 @@ const recurringRoutes: FastifyPluginAsyncZod = async (fastify) => {
             return reply.status(404).send({ error: 'Recurring task not found' });
         }
 
-        if (recurringTask.status === 'PAUSED') {
-            return reply.status(409).send({ error: 'Cannot trigger a paused recurring task' });
-        }
-
         const result = await triggerRecurringTemplate(fastify, recurringTask);
         if (result.dispatchAccepted) {
             return reply.status(202).send({ id: result.task.id, status: 'pending' });
