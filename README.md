@@ -153,6 +153,35 @@ Claw-Pilot is designed for an autonomous task loop. You move tasks from **Inbox*
 
 ---
 
+## Prompt Engineering & Callback Format
+
+When interacting with tasks via the OpenClaw gateway, agents notify the backend of their progress or completion using the API callback URL injected into their prompt.
+
+### Formatting the Callback Payload
+Agents MUST format their completion message so the backend correctly transitions the task status. The backend parses the `"message"` field to determine if the task is complete.
+
+To successfully mark a task as ready for Human Review (moving it to the `REVIEW` column), the `message` string **MUST** start with `completed:` or `done:` (case-insensitive). Optional Markdown bolding like `**completed:**` is supported.
+
+**✅ Correct examples that trigger REVIEW transition:**
+```json
+{
+  "agent_id": "developer",
+  "message": "completed: I have successfully implemented the requested feature..."
+}
+```
+```json
+{
+  "agent_id": "developer",
+  "message": "**Done:** Refactored the authentication module."
+}
+```
+
+**❌ Incorrect examples (Task will stay IN PROGRESS):**
+- `"message": "Task completed successfully"` (Starts with "Task", not "completed:")
+- `"message": "I am done parsing the log."` (Starts with "I am")
+
+---
+
 ## Monorepo Structure
 
 ```

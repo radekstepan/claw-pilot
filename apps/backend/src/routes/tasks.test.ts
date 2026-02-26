@@ -188,7 +188,7 @@ describe('Task routes — integration', () => {
                 method: 'POST',
                 url: `/api/tasks/${id}/activity`,
                 headers: AUTH,
-                payload: { message: 'Task completed successfully' },
+                payload: { message: 'Completed: Task finished successfully' },
             });
 
             expect((await getTask(id))?.status).toBe('REVIEW');
@@ -208,7 +208,7 @@ describe('Task routes — integration', () => {
                 method: 'POST',
                 url: `/api/tasks/${id}/activity`,
                 headers: AUTH,
-                payload: { message: 'All done!' },
+                payload: { message: 'Done: All finished!' },
             });
 
             expect((await getTask(id))?.status).toBe('REVIEW');

@@ -27,7 +27,7 @@ import activityRoutes from './routes/activities.js';
 import syncRoutes from './routes/sync.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
-    const fastify = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
+    const fastify = Fastify({ logger: process.env.NODE_ENV !== 'test' }).withTypeProvider<ZodTypeProvider>();
 
     fastify.setValidatorCompiler(validatorCompiler);
     fastify.setSerializerCompiler(serializerCompiler);

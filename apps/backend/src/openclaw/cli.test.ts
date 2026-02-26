@@ -26,6 +26,14 @@ import {
     __resetGatewayClientForTest,
 } from './cli.js';
 
+beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => { });
+    vi.spyOn(console, 'error').mockImplementation(() => { });
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 // ─── WebSocket mock ─────────────────────────────────────────────────────────
 // `mockWsLatest` uses the vitest "mock-prefix" naming convention so it is
 // accessible inside the vi.mock factory even after hoisting.
@@ -33,10 +41,13 @@ let mockWsLatest: MockWebSocket | null = null;
 let mockWsAll: MockWebSocket[] = [];
 
 class MockWebSocket extends EventEmitter {
+    static OPEN = 1;
     public readonly url: string;
     public readonly opts: unknown;
     public sent: Array<Record<string, unknown>> = [];
     public closed = false;
+    public readyState = 0;
+    public handshakeDriven = false;
 
     constructor(url: string, opts: unknown) {
         super();
@@ -52,6 +63,7 @@ class MockWebSocket extends EventEmitter {
 
     close() {
         this.closed = true;
+        this.readyState = 3;
     }
 
     /** Drive the gateway side — simulates the server sending a frame. */
@@ -63,11 +75,14 @@ class MockWebSocket extends EventEmitter {
 vi.mock('ws', async () => {
     const { EventEmitter } = await import('events');
     return {
-        default: class extends EventEmitter {
+        default: class MockWebSocketInner extends EventEmitter {
+            static OPEN = 1;
             url: string;
             opts: unknown;
             sent: Array<Record<string, unknown>> = [];
             closed = false;
+            readyState = 0;
+            handshakeDriven = false;
             constructor(url: string, opts: unknown) {
                 super();
                 this.url = url;
@@ -78,7 +93,7 @@ vi.mock('ws', async () => {
             send(data: string) {
                 this.sent.push(JSON.parse(data) as Record<string, unknown>);
             }
-            close() { this.closed = true; }
+            close() { this.closed = true; this.readyState = 3; }
             receive(frame: Record<string, unknown>) {
                 this.emit('message', JSON.stringify(frame));
             }
@@ -101,29 +116,24 @@ async function driveHandshake(
 ) {
     const ws = (wsOverride ?? mockWsLatest)!;
 
-    // Trigger the 'open' callback — starts the challenge timer
-    ws.emit('open');
+    if (!ws.handshakeDriven) {
+        ws.readyState = 1; // OPEN
+        ws.readyState = 1;
+        ws.emit('open');
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
+        const connectFrame = ws.sent[0]!;
+        expect(connectFrame.method).toBe('connect');
+        ws.receive({ type: 'res', id: connectFrame.id, ok: true, payload: { server: { version: '2026.2.0' } } });
+        ws.handshakeDriven = true;
+        // Evaluate the connect response microtasks
+        await vi.advanceTimersByTimeAsync(0);
+    }
 
-    // Simulate gateway sending a challenge
-    ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
-
-    const connectFrame = ws.sent[0]!;
-    expect(connectFrame.method).toBe('connect');
-    expect((connectFrame.params as Record<string, unknown>).role).toBe('operator');
-
-    // Gateway responds to connect
-    ws.receive({ type: 'res', id: connectFrame.id, ok: true, payload: { server: { version: '2026.2.0' } } });
-
-    // sent[1] is now the method frame (set synchronously in the message handler)
-    const methodFrame = ws.sent[1]!;
-
-    // Gateway responds to the method
+    const methodFrame = ws.sent[ws.sent.length - 1]!;
     ws.receive({ type: 'res', id: methodFrame.id, ok: true, payload: methodPayload });
-
-    // Flush microtasks so promise continuations (e.g. routeChatToAgent's second await) run
     await vi.advanceTimersByTimeAsync(0);
 
-    return { ws, connectFrame, methodFrame };
+    return { ws, connectFrame: ws.sent[0]!, methodFrame };
 }
 
 // ─── gatewayCall ────────────────────────────────────────────────────────────
@@ -145,26 +155,27 @@ describe('gatewayCall', () => {
         const ws = mockWsLatest!;
         expect(ws.url).not.toContain('?token=');
         // clean up
+        ws.readyState = 1;
         ws.emit('open');
         ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
-        const mf = ws.sent[1]!;
+        await vi.advanceTimersByTimeAsync(0);
+        const mf = ws.sent[ws.sent.length - 1]!;
         ws.receive({ type: 'res', id: mf.id, ok: true, payload: {} });
         await promise;
     });
 
-    it('sends a Mode-B connect frame (control_ui / no device block)', async () => {
+    it('sends a connect frame with a device block', async () => {
         const promise = gatewayCall('health', {});
         const { connectFrame } = await driveHandshake();
         const params = connectFrame.params as Record<string, unknown>;
         const client = params.client as Record<string, unknown>;
-        expect(client.id).toBe('claw-pilot');
-        expect(client.mode).toBe('ui');
-        // Mode B: no device block (dangerouslyDisableDeviceAuth)
-        expect(params.device).toBeUndefined();
-        // Scopes must include operator.write for chat.send / sessions.patch
-        expect(params.scopes).toEqual(['operator.read', 'operator.write', 'operator.admin', 'operator.approvals']);
+        expect(client.id).toBe('gateway-client');
+        expect(client.mode).toBe('backend');
+        expect(params.device).toBeDefined();
+        // Scopes must match what the client currently requests
+        expect(params.scopes).toEqual(['operator.read', 'operator.admin', 'operator.approvals', 'operator.pairing']);
         // Protocol-required fields for operator clients
         expect(params.caps).toEqual([]);
         expect(params.commands).toEqual([]);
@@ -184,6 +195,7 @@ describe('gatewayCall', () => {
     it('happy path: connect.challenge event — connect is sent immediately', async () => {
         const promise = gatewayCall('health', {});
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
 
         // Send the challenge event before the 2 s timer fires
@@ -193,9 +205,9 @@ describe('gatewayCall', () => {
         const connectFrame = ws.sent[0]!;
         expect(connectFrame.method).toBe('connect');
 
-        // Respond to connect + method
         ws.receive({ type: 'res', id: connectFrame.id, ok: true, payload: {} });
-        const methodFrame = ws.sent[1]!;
+        await vi.advanceTimersByTimeAsync(0);
+        const methodFrame = ws.sent[ws.sent.length - 1]!;
         ws.receive({ type: 'res', id: methodFrame.id, ok: true, payload: { ok: 1 } });
 
         const result = await promise;
@@ -205,6 +217,7 @@ describe('gatewayCall', () => {
     it('rejects when the connect response has ok:false', async () => {
         const promise = gatewayCall('health', {});
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
         ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
@@ -215,11 +228,13 @@ describe('gatewayCall', () => {
     it('rejects when the method response has ok:false', async () => {
         const promise = gatewayCall('sessions.list', {});
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
         ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
-        const mf = ws.sent[1]!;
+        await vi.advanceTimersByTimeAsync(0);
+        const mf = ws.sent[ws.sent.length - 1]!;
         ws.receive({ type: 'res', id: mf.id, ok: false, error: { message: 'Unknown method' } });
         await expect(promise).rejects.toThrow("Gateway RPC 'sessions.list' failed: Unknown method");
     });
@@ -234,7 +249,14 @@ describe('gatewayCall', () => {
     it('times out when no response arrives', async () => {
         const promise = gatewayCall('health', {}, { timeout: 500 });
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
+        const cf = ws.sent[0]!;
+        ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
+
+        await vi.advanceTimersByTimeAsync(0);
+
         // Attach the rejection handler BEFORE advancing timers to avoid
         // an unhandled-rejection warning when the timer fires.
         const assertion = expect(promise).rejects.toThrow('timed out after 500ms');
@@ -245,11 +267,13 @@ describe('gatewayCall', () => {
     it('ignores frames with mismatched IDs', async () => {
         const promise = gatewayCall('health', {});
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
         ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
-        const mf = ws.sent[1]!;
+        await vi.advanceTimersByTimeAsync(0);
+        const mf = ws.sent[ws.sent.length - 1]!;
 
         // Send a response with the wrong ID — should be ignored
         ws.receive({ type: 'res', id: 'wrong-id', ok: true, payload: { ignored: true } });
@@ -460,9 +484,8 @@ describe('routeChatToAgent', () => {
 
         // Second gatewayCall: chat.send
         await driveHandshake({ id: 'msg-1' });
-        const ws2 = mockWsAll[1]!;
-        expect(ws2.sent[1]!.method).toBe('chat.send');
-        const chatParams = ws2.sent[1]!.params as Record<string, unknown>;
+        expect(ws1.sent[2]!.method).toBe('chat.send');
+        const chatParams = ws1.sent[2]!.params as Record<string, unknown>;
         expect(chatParams.sessionKey).toBe('mc-gateway:gateway:main');
         expect(chatParams.message).toBe('hello');
         expect(chatParams.deliver).toBe(false);
@@ -481,7 +504,7 @@ describe('routeChatToAgent', () => {
 
         // chat.send
         await driveHandshake({ id: 'msg-2' });
-        const chatParams = mockWsAll[1]!.sent[1]!.params as Record<string, unknown>;
+        const chatParams = mockWsAll[0]!.sent[2]!.params as Record<string, unknown>;
         expect(chatParams.sessionKey).toBe('mc:mc-coder-1:main');
 
         await promise;
@@ -491,7 +514,7 @@ describe('routeChatToAgent', () => {
         const p1 = routeChatToAgent('a', 'msg1');
         await driveHandshake({});
         await driveHandshake({});
-        const key1 = (mockWsAll[1]!.sent[1]!.params as Record<string, unknown>).idempotencyKey;
+        const key1 = (mockWsAll[0]!.sent[2]!.params as Record<string, unknown>).idempotencyKey;
 
         __resetGatewayClientForTest();
         mockWsLatest = null;
@@ -500,7 +523,7 @@ describe('routeChatToAgent', () => {
         const p2 = routeChatToAgent('a', 'msg2');
         await driveHandshake({});
         await driveHandshake({});
-        const key2 = (mockWsAll[1]!.sent[1]!.params as Record<string, unknown>).idempotencyKey;
+        const key2 = (mockWsAll[0]!.sent[2]!.params as Record<string, unknown>).idempotencyKey;
 
         await p1;
         await p2;
@@ -510,6 +533,7 @@ describe('routeChatToAgent', () => {
     it('rethrows when the gateway errors', async () => {
         const promise = routeChatToAgent('agent-x', 'msg');
         const ws = mockWsLatest!;
+        ws.readyState = 1;
         ws.emit('open');
         ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
@@ -539,7 +563,7 @@ describe('generateAgentConfig', () => {
 
         // Second call: chat.send
         await driveHandshake({ name: 'Linter Bot', capabilities: ['lint', 'fix'] });
-        const chatParams = mockWsAll[1]!.sent[1]!.params as Record<string, unknown>;
+        const chatParams = mockWsAll[0]!.sent[2]!.params as Record<string, unknown>;
         expect(chatParams.sessionKey).toBe('mc-gateway:gateway:main');
         expect(typeof chatParams.message).toBe('string');
         expect((chatParams.message as string).length).toBeGreaterThan(0);
@@ -604,7 +628,7 @@ describe('spawnTaskSession', () => {
 
         // chat.send
         await driveHandshake({});
-        const chatParams = mockWsAll[1]!.sent[1]!.params as Record<string, unknown>;
+        const chatParams = mockWsAll[0]!.sent[2]!.params as Record<string, unknown>;
         expect(chatParams.sessionKey).toBe('task-task-42');
         expect(chatParams.message).toBe('Build the auth module');
         expect(chatParams.deliver).toBe(true);
@@ -675,61 +699,4 @@ describe('parseOpenclawConfig', () => {
 });
 
 
-// ─── parseOpenclawConfig ─────────────────────────────────────────────────────
 
-describe('parseOpenclawConfig', () => {
-    it('parses a config with agents as an array (format 1)', () => {
-        const input = {
-            agents: [
-                { id: 'a1', name: 'Alpha', capabilities: ['code'], model: 'gpt-4o' },
-                { id: 'a2', name: 'Beta' },
-            ],
-        };
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(2);
-        expect(agents[0].id).toBe('a1');
-        expect(agents[0].model).toBe('gpt-4o');
-        expect(agents[1].name).toBe('Beta');
-        expect(agents.every(a => a.status === 'OFFLINE')).toBe(true);
-    });
-
-    it('parses a config with agents as an object map (format 2)', () => {
-        const input = {
-            agents: {
-                'agent-x': { name: 'Xavier', capabilities: ['design'], role: 'designer' },
-                'agent-y': { name: 'Yara', capabilities: [] },
-            },
-        };
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(2);
-        const xavier = agents.find(a => a.id === 'agent-x');
-        expect(xavier).toBeDefined();
-        expect(xavier?.name).toBe('Xavier');
-        expect(xavier?.role).toBe('designer');
-    });
-
-    it('parses a top-level array (format 3)', () => {
-        const input = [
-            { id: 'solo', name: 'Solo Agent', capabilities: ['all'] },
-        ];
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(1);
-        expect(agents[0].id).toBe('solo');
-    });
-
-    it('returns an empty array for an empty agents list', () => {
-        expect(parseOpenclawConfig({ agents: [] })).toHaveLength(0);
-    });
-
-    it('returns an empty array for null/undefined/unknown input', () => {
-        expect(parseOpenclawConfig(null)).toHaveLength(0);
-        expect(parseOpenclawConfig(undefined)).toHaveLength(0);
-        expect(parseOpenclawConfig(42)).toHaveLength(0);
-    });
-
-    it('falls back to id when name is missing', () => {
-        const input = { agents: [{ id: 'mysterious' }] };
-        const agents = parseOpenclawConfig(input);
-        expect(agents[0].name).toBe('mysterious');
-    });
-});

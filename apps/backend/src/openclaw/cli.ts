@@ -116,7 +116,9 @@ let _identity: DeviceIdentity | null = null;
 function getIdentity(): DeviceIdentity {
     if (!_identity) {
         _identity = loadOrCreateDeviceIdentity();
-        console.log(`[openclaw] Device identity loaded: ${_identity.deviceId}`);
+        if (process.env.NODE_ENV !== 'test') {
+            console.log(`[openclaw] Device identity loaded: ${_identity.deviceId}`);
+        }
     }
     return _identity;
 }
@@ -256,6 +258,9 @@ class GatewayClient {
         this.connected = false;
         this.connectPromise = null;
         const err = new Error('Gateway connection closed unexpectedly');
+        if (this.pendingRequests.size > 0) {
+            require('fs').appendFileSync('leak.txt', Array.from(this.pendingRequests.values()).map((r: any) => r.method).join(',') + '\n');
+        }
         for (const req of this.pendingRequests.values()) {
             if (req.timer) clearTimeout(req.timer);
             req.reject(err);

@@ -164,7 +164,8 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             newStatus = 'IN_PROGRESS';
         }
 
-        if (body.message && (body.message.toLowerCase().includes('done') || body.message.toLowerCase().includes('completed'))) {
+        const isCompleted = /^\s*(\*\*)?(completed|done):?\s*(\*\*)?/i.test(body.message || '');
+        if (isCompleted) {
             newStatus = 'REVIEW';
             enqueueAiJob('activity-route', AI_PRIORITY_NORMAL, async () => {
                 await routeChatToAgent('main', `Task ${id} ready for review`);
