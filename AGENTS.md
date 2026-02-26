@@ -7,8 +7,7 @@ Read these rules carefully before writing or modifying any code.
 ## 1. Monorepo Architecture & Stack
 - **Workspace:** Yarn workspaces / Turborepo.
 - **`packages/shared-types`**: Contains Zod schemas and TypeScript interfaces. Both frontend and backend must import types from here.
-- **`apps/backend`**: Node.js, Express, Socket.io, `lowdb` (JSON file database). 
-  - *Note on LowDB:* Use the modern ESM version of LowDB. Ensure `tsconfig.json` and `package.json` are set up for ESM (`"type": "module"`). Do NOT use SQL or ORMs.
+- **`apps/backend`**: Node.js, Express, Socket.io, **Drizzle ORM + SQLite** (`better-sqlite3`, WAL mode). The database file lives at `apps/backend/data/claw-pilot.db`. Do NOT use lowdb, JSON flat files, or raw SQL strings — use the Drizzle query builder.
 - **`apps/frontend`**: React (Vite), TypeScript, TailwindCSS, Zustand. A mock UI already exists; your job is often to wire this UI to the backend and Zustand state.
 
 ## 2. The OpenClaw Gateway Client (CRITICAL)
@@ -68,16 +67,19 @@ const payload = await gatewayCall('chat.send', { sessionKey, message, deliver: f
 3. Run the RPC call in a detached `void (async () => { ... })()`.
 4. On success/error, emit the result via `fastify.io.emit(...)` to the frontend.
 
-## 3. Dual Source of Truth
-1. **LowDB (`apps/backend/data/db.json`):** Stores `Tasks`, `ActivityLogs`, `ChatMessages`, and `RecurringTasks`.
-2. **OpenClaw Config (`~/.openclaw/openclaw.json`):** Stores Agent definitions, models, and workspace paths. Do NOT duplicate agent definitions in LowDB. Read them dynamically.
+## 3. Data Layer
+1. **SQLite (`apps/backend/data/claw-pilot.db`, via Drizzle ORM):** Stores `Tasks`, `ActivityLogs`, `ChatMessages`, and `RecurringTasks`. Use the `db` singleton from `apps/backend/src/db/index.ts` and table refs from `apps/backend/src/db/schema.ts`. For single-table reads/writes use Drizzle's synchronous API (`db.select().from(...).all()`, `db.insert(...).values(...).run()`, etc.). For multi-step atomic writes use `db.transaction(() => { ... })`.
+2. **OpenClaw Config (`~/.openclaw/openclaw.json`):** Stores Agent definitions, models, and workspace paths. Do NOT duplicate agent definitions in SQLite. Read them dynamically via the gateway RPC (`config.get`).
 
 ## 4. Strict Task Workflow Enforcement
-Enforce the task lifecycle: `INBOX -> ASSIGNED -> IN_PROGRESS -> REVIEW -> DONE`.
+Enforce the task lifecycle: `BACKLOG → TODO → ASSIGNED → IN_PROGRESS → REVIEW → DONE`.
+
+`STUCK` is a special status set automatically by the boot-recovery monitor for any task that was `IN_PROGRESS` when the server last shut down but has no matching live gateway session on restart. The valid `TaskStatus` enum values (from `@claw-pilot/shared-types`) are: `BACKLOG`, `TODO`, `ASSIGNED`, `IN_PROGRESS`, `REVIEW`, `DONE`, `STUCK`.
+
 - **The Review Gate:** AI Agents CANNOT mark tasks as `DONE`. If a `PATCH /api/tasks/:id` request attempts to set `status: 'DONE'`, verify it is a human/lead action. If requested by a worker AI, return `403 Forbidden`.
-- **Auto-Transitions (Backend Logic):** 
-  - When `POST /api/tasks/:id/activity` is called on an `ASSIGNED` task, auto-transition the task to `IN_PROGRESS` in LowDB.
-  - If the `activity` message contains the exact strings "completed" or "done", auto-transition the task to `REVIEW` in LowDB and emit a notification to the Lead Agent via CLI.
+- **Auto-Transitions (Backend Logic):**
+  - When `POST /api/tasks/:id/activity` is called on an `ASSIGNED` task, auto-transition the task to `IN_PROGRESS` in SQLite.
+  - If the `activity` message contains the exact strings "completed" or "done", auto-transition the task to `REVIEW` in SQLite and emit a notification to the Lead Agent via the gateway.
 
 ## 5. Frontend State Management (Zustand)
 - All server state must be held in a Zustand store.
@@ -106,9 +108,9 @@ The ESLint `no-alert` rule enforces the confirm/alert/prompt restriction at lint
 
 ## 7. Background Monitors Pattern
 - Background monitors live in `apps/backend/src/monitors/`.
-- Each monitor's `start*` function **must return its `NodeJS.Timeout` handle** so `index.ts` can `clearInterval` it during graceful shutdown.
-- Monitors emit Socket.io events via `fastify.io` — never write directly to LowDB without going through the shared `db.write()` or `updateDb()` mutex.
-- `updateDb(fn)` is the preferred mutation API: it holds the write lock for the duration of `fn` + the disk flush together, preventing interleaved writes.
+- Each periodic monitor's `start*` function **must return its `NodeJS.Timeout` handle** so `index.ts` can `clearInterval` it during graceful shutdown.
+- Monitors emit Socket.io events via `fastify.io?.emit(...)`.
+- Use Drizzle's synchronous query API for reads and writes inside monitors. For operations that must be atomic (e.g. insert an activity row AND update a task status in one step), wrap them in `db.transaction(() => { ... })`.
 
 **Existing monitors:**
 
@@ -116,15 +118,29 @@ The ESLint `no-alert` rule enforces the confirm/alert/prompt restriction at lint
 | :--- | :--- | :--- | :--- |
 | `startSessionMonitor` | `monitors/sessionMonitor.ts` | 10 s | Polls OpenClaw sessions, diffs agent statuses, emits `agent_status_changed` when a status flips. |
 | `startStuckTaskMonitor` | `monitors/stuckTaskMonitor.ts` | 60 s | Scans `IN_PROGRESS` tasks older than 24 h, posts a system alert to chat, emits `chat_message`. Tracks notified IDs in a `Set` to avoid repeat spam. |
+| `bootRecovery` | `monitors/bootRecovery.ts` | On startup (once) | Marks any orphaned `IN_PROGRESS` tasks (no live gateway session) as `STUCK` and emits `task_updated`. |
+| `startRecurringSchedulerMonitor` | `monitors/recurringSchedulerMonitor.ts` | Continuous (croner) | Reconciles `ACTIVE` recurring templates against running cron jobs; spawns new Tasks when schedules fire. Returns `{ timer, reconcile }` — register in `fastify.addHook('onClose', ...)`. |
 
 **Template for a new monitor:**
 ```typescript
+import { db } from '../db/index.js';
+import { tasksTable, activitiesTable } from '../db/schema.js';
+
 export function startMyMonitor(fastify: FastifyInstance): NodeJS.Timeout {
-    return setInterval(async () => {
+    return setInterval(() => {
         try {
-            await updateDb(async (data) => {
-                // mutate data here — changes are flushed atomically after fn returns
+            // Single-table read:
+            const rows = db.select().from(tasksTable).where(...).all();
+
+            // Single-table write:
+            db.update(tasksTable).set({ status: 'DONE' }).where(...).run();
+
+            // Multi-step atomic write:
+            db.transaction(() => {
+                db.insert(activitiesTable).values({ ... }).run();
+                db.update(tasksTable).set({ ... }).where(...).run();
             });
+
             fastify.io?.emit('my_event', payload);
         } catch (err) {
             fastify.log.error(`myMonitor: ${err}`);
@@ -141,30 +157,33 @@ clearInterval(myHandle);
 
 ## 8. Recurring Tasks (Cron) Pattern
 
-Recurring tasks are **templates** stored in LowDB (`db.data.recurring`). They describe a repeating unit of work but are **not** themselves Kanban tasks. A concrete `Task` is only created when the template is triggered.
+Recurring tasks are **templates** stored in SQLite (`recurring_tasks` table). They describe a repeating unit of work but are **not** themselves Kanban tasks. A concrete `Task` is only created when the template is triggered.
 
 ### Data model (`RecurringTask` from `@claw-pilot/shared-types`)
 
 ```typescript
 {
-  id: string;              // UUID
-  title: string;           // displayed name of the template
-  schedule_type: 'daily' | 'weekly' | 'manual';
-  schedule_value?: string; // e.g. "monday" for weekly tasks
+  id: string;                 // UUID
+  title: string;              // displayed name of the template
+  description?: string;       // optional prompt / instructions for spawned Tasks
+  schedule_type: 'HOURLY' | 'DAILY' | 'WEEKLY' | 'CUSTOM';
+  schedule_value?: string;    // e.g. "monday" for WEEKLY; cron expression for CUSTOM
+  assigned_agent_id?: string; // if set, spawned Task is auto-routed to this agent
   status: 'ACTIVE' | 'PAUSED';
-  createdAt: string;       // ISO-8601
+  last_triggered_at?: string; // ISO-8601, updated on each trigger
+  createdAt: string;          // ISO-8601
   updatedAt: string;
 }
 ```
 
 ### Trigger mechanics
 
-1. **Manual trigger** — `POST /api/recurring/:id/trigger` creates a new `Task` in `INBOX` status with its description set to `"Auto-generated from recurring template: <title>"`. Returns the created `Task`.
-2. **Auto-trigger (future)** — if a time-based scheduler is wired up, it must call the same trigger logic as the HTTP handler (do *not* duplicate it). Emit `task_created` via Socket.io after writing to LowDB.
+1. **Manual trigger** — `POST /api/recurring/:id/trigger` creates a new `Task` in `TODO` status with its description set to `"Auto-generated from recurring template: <title>"`. Returns the created `Task`.
+2. **Auto-trigger** — `recurringSchedulerMonitor.ts` uses `croner` to fire schedules automatically. It must call the same `triggerRecurringTemplate()` service function as the HTTP handler (do *not* duplicate the logic). Emit `task_created` via Socket.io after writing to SQLite.
 
 ### Rules
 
 - **Never** set a recurring template's status directly to `DONE`. Templates are paused (`PAUSED`) or active (`ACTIVE`); only concrete Tasks progress through the Kanban lifecycle.
-- **Use `updateDb(fn)`** when writing the spawned Task to LowDB inside a trigger, to keep the write atomic.
+- **Use `db.transaction(fn)`** when writing the spawned Task to SQLite inside a trigger, to keep the write atomic.
 - If the trigger is fired while the template is `PAUSED`, return `409 Conflict` — do not silently create a task.
-- Templates are **not** sent to the OpenClaw CLI automatically. If an AI agent should act on the spawned task, call `POST /api/tasks/:id/route` as a follow-up step.
+- Templates are **not** routed to the gateway automatically. If an AI agent should act on the spawned task, call `POST /api/tasks/:id/route` as a follow-up step (or set `assigned_agent_id` on the template so the scheduler can auto-route).

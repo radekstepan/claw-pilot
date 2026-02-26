@@ -25,16 +25,16 @@
 | `POST` | `/api/agents/:id/model-failure` | Increments failure count. Automatically swaps agent to `fallback_model` if it exists, and notifies the Lead AI. | Config + `gateway: chat.send` |
 | `POST` | `/api/agents/:id/restore-primary-model`| Resets failure count to 0 and switches back to the primary model. | Config |
 
-## 3. Task Kanban API (LowDB)
-*These endpoints manage the core workflow. State is stored in LowDB (`db.json`).*
+## 3. Task Kanban API (SQLite)
+*These endpoints manage the core workflow. State is stored in SQLite (`claw-pilot.db`) via Drizzle ORM.*
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| `GET` | `/api/tasks` | Returns all tasks. Accepts query params `?status=INBOX&assignee_id=dev`. |
+| `GET` | `/api/tasks` | Returns all tasks. Accepts query params `?status=TODO&assignee_id=dev`. |
 | `POST` | `/api/tasks` | **Body:** `{ title, description, priority, tags, assignee_id }`<br>Creates task. Auto-assigns based on tags if `assignee_id` is missing. |
-| `GET` | `/api/tasks/:id` | Returns task details including nested `deliverables` and `comments`. |
+| `GET` | `/api/tasks/:id` | Returns task details including nested `deliverables`. |
 | `PATCH` | `/api/tasks/:id` | Updates task fields. **Rule:** If `status === 'DONE'`, return `403 Forbidden` if requested by an AI. AI can only transition to `REVIEW`. |
-| `DELETE` | `/api/tasks/:id` | Deletes a task and cascades deletion to its activities/comments in LowDB. |
+| `DELETE` | `/api/tasks/:id` | Deletes a task and cascades deletion to its activities in SQLite. |
 
 ## 4. Task Execution & Routing (The Gateway Bridge)
 *This is where Claw-Pilot communicates with OpenClaw agents via the WebSocket gateway RPC.*
@@ -58,12 +58,12 @@
 | `DELETE` | `/api/chat` | Wipes all chat history. Emits the `chat_cleared` Socket.io event. |
 
 ## 6. App Configuration API
-*Persists runtime config in LowDB (gateway URL, port, auto-restart flag).*
+*Persists runtime config in SQLite (gateway URL, port, auto-restart flag).*
 
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
 | `GET`  | `/api/config` | Returns the current `AppConfig` object. |
-| `POST` | `/api/config` | **Body:** Partial `AppConfig` — merges the supplied fields into the stored config and writes to LowDB. |
+| `POST` | `/api/config` | **Body:** Partial `AppConfig` — merges the supplied fields into the stored config and writes to SQLite. |
 
 **AppConfig schema:**
 ```json
@@ -116,12 +116,12 @@ When `nextCursor` is `null`, the client has reached the beginning of the log. Pa
 ```json
 {
   "title": "Weekly status report",
-  "schedule_type": "weekly",
+  "schedule_type": "WEEKLY",
   "schedule_value": "monday"
 }
 ```
 
-Valid `schedule_type` values: `"daily"` | `"weekly"` | `"manual"`. `schedule_value` is only meaningful for `"weekly"` (day name, e.g., `"monday"`).
+Valid `schedule_type` values: `"HOURLY"` | `"DAILY"` | `"WEEKLY"` | `"CUSTOM"`. `schedule_value` is only meaningful for `"WEEKLY"` (day name, e.g., `"monday"`) and `"CUSTOM"` (cron expression).
 
 **RecurringTask PATCH payload** (pause/resume or rename):
 ```json
@@ -143,7 +143,7 @@ or
   "id": "uuid",
   "title": "Weekly status report",
   "description": "Auto-generated from recurring template: Weekly status report",
-  "status": "INBOX",
+  "status": "TODO",
   "priority": "MEDIUM",
   "createdAt": "2026-02-24T10:00:00.000Z",
   "updatedAt": "2026-02-24T10:00:00.000Z"
@@ -162,7 +162,7 @@ or
 ---
 
 ## 10. WebSocket Events (Socket.io)
-Because the frontend must be highly reactive, the Node.js server emits the following Socket.io events whenever LowDB is updated by an API call or a background monitor.
+Because the frontend must be highly reactive, the Node.js server emits the following Socket.io events whenever SQLite is updated by an API call or a background monitor.
 
 ### Backend Emits → Client Listens:
 | Event | Payload | Trigger |
@@ -173,7 +173,7 @@ Because the frontend must be highly reactive, the Node.js server emits the follo
 | `task_reviewed` | `{ id, action: 'approve' \| 'reject' }` | `POST /api/tasks/:id/review` |
 | `activity_added` | `ActivityLog` object | `POST /api/tasks/:id/activity` |
 | `agent_status_changed` | `Agent` object | Session monitor (every 10 s) |
-| `chat_message` | `ChatMessage` object | Any message saved to LowDB |
+| `chat_message` | `ChatMessage` object | Any message saved to SQLite |
 | `chat_cleared` | _(no payload)_ | `DELETE /api/chat` |
 | `agent_error` | `{ agentId, error }` | Async CLI call fails in `/send-to-agent`, activity, or review routes |
 | `agent_config_generated` | `{ requestId, config }` | `POST /api/agents/generate` CLI succeeds |

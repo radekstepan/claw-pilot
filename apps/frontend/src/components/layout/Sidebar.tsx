@@ -1,7 +1,7 @@
 import { Settings, CalendarClock, LayoutDashboard } from 'lucide-react';
 import { StatusDot } from '../ui/StatusDot';
 import { SkeletonAgentItem } from '../ui/SkeletonCard';
-import { Agent } from '../../types';
+import type { Agent } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../../store/useMissionStore';
 
 interface SidebarProps {

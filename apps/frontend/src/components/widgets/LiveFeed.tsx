@@ -1,6 +1,6 @@
 import { Activity } from 'lucide-react';
 import { useMissionStore } from '../../store/useMissionStore';
-import { Agent } from '../../types';
+import type { Agent } from '@claw-pilot/shared-types';
 
 interface LiveFeedProps {
     collapsed: boolean;

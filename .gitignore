@@ -43,4 +43,9 @@ repomix-output.xml
 
 data/
 
+# SQLite database files (local only — never commit)
+apps/backend/data/claw-pilot.db
+apps/backend/data/claw-pilot.db-wal
+apps/backend/data/claw-pilot.db-shm
+
 *.py
