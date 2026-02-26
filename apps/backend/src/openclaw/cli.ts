@@ -4,6 +4,7 @@ import { dirname } from 'path';
 import WebSocket from 'ws';
 import { Agent } from '@claw-pilot/shared-types';
 import { env } from '../config/env.js';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Error classes
@@ -196,12 +197,43 @@ const AI_TIMEOUT = env.OPENCLAW_AI_TIMEOUT;
 const CHALLENGE_WAIT_MS = 5_000;
 
 /** Shape returned by `sessions.list`. */
-interface LiveSession {
-    key?: string;
-    agent?: string;
-    agentId?: string;
-    status?: string;
-}
+export const LiveSessionSchema = z.object({
+    key: z.string().optional(),
+    agent: z.string().optional(),
+    agentId: z.string().optional(),
+    status: z.string().optional(),
+}).passthrough();
+
+export type LiveSession = z.infer<typeof LiveSessionSchema>;
+
+export const AgentConfigSchema = z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    capabilities: z.array(z.string()).optional(),
+    role: z.string().optional(),
+    model: z.string().optional(),
+    fallback: z.string().optional(),
+}).passthrough();
+
+export const GatewayConfigPayloadSchema = z.object({
+    hash: z.string().optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
+    parsed: z.record(z.string(), z.unknown()).optional(),
+}).passthrough().nullable();
+
+export const GatewaySessionsPayloadSchema = z.union([
+    z.array(LiveSessionSchema),
+    z.object({
+        sessions: z.array(LiveSessionSchema)
+    }).passthrough()
+]);
+
+export const GatewayModelsPayloadSchema = z.union([
+    z.array(z.unknown()),
+    z.object({
+        models: z.array(z.unknown())
+    }).passthrough()
+]).nullable().optional();
 
 // ---------------------------------------------------------------------------
 // Core gateway call
@@ -212,7 +244,7 @@ class GatewayClient {
     private connectPromise: Promise<void> | null = null;
     private pendingRequests = new Map<
         string,
-        { resolve: (value: unknown) => void; reject: (err: Error) => void; timer?: NodeJS.Timeout; method: string }
+        { resolve: (value: unknown) => void; reject: (err: Error) => void; timer?: NodeJS.Timeout; method: string; schema?: z.ZodType<any> }
     >();
     private connected = false;
 
@@ -379,7 +411,16 @@ class GatewayClient {
                             const msg = (frame.error as Record<string, unknown> | undefined)?.message ?? 'unknown';
                             req.reject(new Error(`Gateway RPC '${req.method}' failed: ${msg}`));
                         } else {
-                            req.resolve(frame.payload);
+                            if (req.schema) {
+                                try {
+                                    const parsed = req.schema.parse(frame.payload);
+                                    req.resolve(parsed);
+                                } catch (err) {
+                                    req.reject(new Error(`Gateway response validation failed for '${req.method}': ${(err as Error).message}`));
+                                }
+                            } else {
+                                req.resolve(frame.payload);
+                            }
                         }
                     }
                 }
@@ -389,7 +430,7 @@ class GatewayClient {
         return this.connectPromise;
     }
 
-    async request(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+    async request<T = unknown>(method: string, params: Record<string, unknown>, timeoutMs: number, schema?: z.ZodType<T>): Promise<T> {
         await this.connect();
 
         return new Promise((resolve, reject) => {
@@ -399,7 +440,7 @@ class GatewayClient {
                 reject(new Error(`Gateway call '${method}' timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
-            this.pendingRequests.set(requestId, { resolve, reject, timer, method });
+            this.pendingRequests.set(requestId, { resolve: resolve as (v: unknown) => void, reject, timer, method, schema });
             this.ws!.send(JSON.stringify({ type: 'req', id: requestId, method, params }));
         });
     }
@@ -421,12 +462,12 @@ const sharedClient = new GatewayClient();
  * @param options Optional per-call overrides (timeout)
  * @returns       The `payload` field from the successful response frame
  */
-export async function gatewayCall(
+export async function gatewayCall<T = unknown>(
     method: string,
     params: Record<string, unknown>,
-    { timeout = WS_TIMEOUT }: { timeout?: number } = {},
-): Promise<unknown> {
-    return sharedClient.request(method, params, timeout);
+    { timeout = WS_TIMEOUT, schema }: { timeout?: number; schema?: z.ZodType<T> } = {},
+): Promise<T> {
+    return sharedClient.request<T>(method, params, timeout, schema);
 }
 
 /**
@@ -497,7 +538,7 @@ export function parseOpenclawConfig(parsed: unknown): Agent[] {
  */
 export async function getAgents(): Promise<Agent[]> {
     try {
-        const payload = (await gatewayCall('config.get', {})) as Record<string, unknown> | null;
+        const payload = await gatewayCall('config.get', {}, { schema: GatewayConfigPayloadSchema });
         if (!payload) return [];
         // config.get returns { hash, config, parsed } — prefer `config`, fall back to `parsed`
         const cfg = (payload.config ?? payload.parsed) as Record<string, unknown> | undefined;
@@ -519,8 +560,8 @@ export async function getAgents(): Promise<Agent[]> {
  */
 export async function getLiveSessions(): Promise<LiveSession[]> {
     try {
-        const payload = await gatewayCall('sessions.list', {});
-        if (Array.isArray(payload)) return payload as LiveSession[];
+        const payload = await gatewayCall('sessions.list', {}, { schema: GatewaySessionsPayloadSchema });
+        if (Array.isArray(payload)) return payload;
         if (payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).sessions)) {
             return (payload as Record<string, unknown[]>).sessions as LiveSession[];
         }
@@ -602,7 +643,7 @@ export async function spawnTaskSession(agentId: string, taskId: string, prompt: 
  */
 export async function getModels(): Promise<unknown> {
     try {
-        const payload = await gatewayCall('models.list', {});
+        const payload = await gatewayCall('models.list', {}, { schema: GatewayModelsPayloadSchema });
         if (Array.isArray(payload)) return payload;
         if (payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).models)) {
             return (payload as Record<string, unknown>).models;
