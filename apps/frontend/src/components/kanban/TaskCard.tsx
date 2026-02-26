@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Task } from '@claw-pilot/shared-types';
+import { useMissionStore } from '../../store/useMissionStore';
 
 interface TaskCardProps {
     task: Task;
@@ -17,6 +18,7 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
         data: { task },
         disabled: isOverlay,
     });
+    const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
 
     const style = {
         transform: CSS.Translate.toString(transform),
@@ -28,7 +30,11 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
     const isStuck = task.status === 'STUCK';
 
     return (
-        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+        <div ref={setNodeRef} style={style} {...listeners} {...attributes}
+            className={`transition-opacity duration-300 ${
+                isUpdating ? 'opacity-50 animate-pulse pointer-events-none' : ''
+            }`}
+        >
             <Card
                 onClick={onClick}
                 className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''}`}

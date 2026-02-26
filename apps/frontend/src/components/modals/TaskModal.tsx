@@ -13,6 +13,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Select } from '../ui/Select';
 import { EmptyState } from '../ui/EmptyState';
+import { MarkdownContent } from '../ui/MarkdownContent';
 
 const updateFormSchema = z.object({
     title: z.string().min(1, 'Title cannot be empty.'),
@@ -47,6 +48,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const [routeAgentId, setRouteAgentId] = useState<string>(task?.agentId ?? task?.assignee_id ?? '');
     const [taskActivities, setTaskActivities] = useState<ActivityLog[]>([]);
     const [activitiesLoading, setActivitiesLoading] = useState(false);
+    const [descPreview, setDescPreview] = useState(false);
 
     const {
         register,
@@ -366,7 +368,9 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                                 <span className="font-semibold text-slate-700 dark:text-slate-300">{a.agentId ?? 'system'}</span>
                                                 <span className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
                                             </div>
-                                            <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{a.message}</p>
+                                            <p className="text-slate-600 dark:text-slate-300">
+                                                <MarkdownContent content={a.message} />
+                                            </p>
                                         </div>
                                     ))}
                                 </div>
@@ -374,13 +378,50 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         </section>
 
                         <section className="mb-8">
-                            <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Project Description</h3>
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500">Project Description</h3>
+                                <div className="flex items-center gap-px border border-black/[0.06] dark:border-white/[0.06] rounded overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDescPreview(false)}
+                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
+                                            !descPreview
+                                                ? 'bg-violet-600 text-white'
+                                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                        }`}
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDescPreview(true)}
+                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
+                                            descPreview
+                                                ? 'bg-violet-600 text-white'
+                                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                        }`}
+                                    >
+                                        Preview
+                                    </button>
+                                </div>
+                            </div>
                             <textarea
                                 rows={5}
                                 {...register('description')}
                                 placeholder="No description…"
-                                className="w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none"
+                                className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none ${
+                                    descPreview ? 'hidden' : ''
+                                }`}
                             />
+                            {descPreview && (
+                                <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
+                                    {watch('description') ? (
+                                        <MarkdownContent content={watch('description') ?? ''} />
+                                    ) : (
+                                        <p className="text-slate-400 dark:text-slate-600 text-sm italic">No description…</p>
+                                    )}
+                                </div>
+                            )}
                         </section>
 
                         <section className="mb-8">

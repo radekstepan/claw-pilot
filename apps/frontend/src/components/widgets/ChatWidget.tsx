@@ -3,6 +3,7 @@ import { Bot, X, ChevronRight, MessageSquare, Loader2, Trash2 } from 'lucide-rea
 import { useMissionStore } from '../../store/useMissionStore';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { MarkdownContent } from '../ui/MarkdownContent';
 
 export const ChatWidget = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -92,7 +93,9 @@ export const ChatWidget = () => {
                                     ? 'bg-violet-600/10 text-violet-900 dark:text-violet-100 border-violet-500/20'
                                     : 'bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 border-black/5 dark:border-white/5'
                                     }`}>
-                                    {m.content}
+                                    {m.role === 'user'
+                                        ? m.content
+                                        : <MarkdownContent content={m.content} className="[&_*]:text-[11px] [&_pre]:text-[10px]" />}
                                 </div>
                             </div>
                         ))}

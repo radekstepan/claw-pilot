@@ -22,6 +22,8 @@ interface MissionState {
     activitiesCursor: string | null;
     /** Cursor for the next page of chat history (null = no more pages). */
     chatCursor: string | null;
+    /** IDs of tasks whose status PATCH is currently in-flight (optimistic update pending confirmation). */
+    updatingTaskIds: Set<string>;
 
     fetchInitialData: () => Promise<void>;
     updateTaskLocally: (task: Task) => void;
@@ -62,6 +64,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     gatewayDeviceId: null,
     activitiesCursor: null,
     chatCursor: null,
+    updatingTaskIds: new Set<string>(),
 
     fetchInitialData: async () => {
         set({ isLoading: true, error: null });
@@ -112,9 +115,15 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
         if (!taskToUpdate) return;
 
+        // Mark in-flight
+        set((s) => ({ updatingTaskIds: new Set(s.updatingTaskIds).add(taskId) }));
+
         // 1. Optimistic UI update
         const optimisticTask: Task = { ...taskToUpdate, status };
         updateTaskLocally(optimisticTask);
+
+        const clearUpdating = () =>
+            set((s) => { const next = new Set(s.updatingTaskIds); next.delete(taskId); return { updatingTaskIds: next }; });
 
         try {
             // 2. Fire the API call
@@ -135,6 +144,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
                     error instanceof Error ? error.message : 'Failed to update task. Changes reverted.'
                 );
             }
+        } finally {
+            clearUpdating();
         }
     },
 
@@ -264,6 +275,10 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         const { tasks, updateTaskLocally } = get();
         const snapshot = tasks.find(t => t.id === taskId);
         if (!snapshot) return;
+        // Mark in-flight
+        set((s) => ({ updatingTaskIds: new Set(s.updatingTaskIds).add(taskId) }));
+        const clearUpdating = () =>
+            set((s) => { const next = new Set(s.updatingTaskIds); next.delete(taskId); return { updatingTaskIds: next }; });
         // Optimistic update: mark as ASSIGNED with the chosen agent
         updateTaskLocally({ ...snapshot, agentId, status: 'ASSIGNED' });
         try {
@@ -273,6 +288,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
             updateTaskLocally(snapshot);
             toast.error(error instanceof Error ? error.message : 'Failed to route task. Changes reverted.');
             throw error;
+        } finally {
+            clearUpdating();
         }
     },
 
