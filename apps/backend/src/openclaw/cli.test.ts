@@ -23,6 +23,7 @@ import {
     generateAgentConfig,
     getModels,
     spawnTaskSession,
+    __resetGatewayClientForTest,
 } from './cli.js';
 
 // ─── WebSocket mock ─────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ async function driveHandshake(
 
 describe('gatewayCall', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -347,6 +349,7 @@ describe('parseOpenclawConfig', () => {
 
 describe('getAgents', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -406,6 +409,7 @@ describe('getAgents', () => {
 
 describe('getLiveSessions', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -438,6 +442,7 @@ describe('getLiveSessions', () => {
 
 describe('routeChatToAgent', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -488,6 +493,7 @@ describe('routeChatToAgent', () => {
         await driveHandshake({});
         const key1 = (mockWsAll[1]!.sent[1]!.params as Record<string, unknown>).idempotencyKey;
 
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
 
@@ -516,6 +522,7 @@ describe('routeChatToAgent', () => {
 
 describe('generateAgentConfig', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -547,6 +554,7 @@ describe('generateAgentConfig', () => {
 
 describe('getModels', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();
@@ -578,6 +586,7 @@ describe('getModels', () => {
 
 describe('spawnTaskSession', () => {
     beforeEach(() => {
+        __resetGatewayClientForTest();
         mockWsLatest = null;
         mockWsAll = [];
         vi.useFakeTimers();

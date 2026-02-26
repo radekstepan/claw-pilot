@@ -207,25 +207,214 @@ interface LiveSession {
 // Core gateway call
 // ---------------------------------------------------------------------------
 
+class GatewayClient {
+    private ws: WebSocket | null = null;
+    private connectPromise: Promise<void> | null = null;
+    private pendingRequests = new Map<
+        string,
+        { resolve: (value: unknown) => void; reject: (err: Error) => void; timer?: NodeJS.Timeout; method: string }
+    >();
+    private connected = false;
+
+    private cleanup() {
+        if (this.ws) {
+            try { this.ws.close(); } catch { /* ignore */ }
+            this.ws = null;
+        }
+        this.connected = false;
+        this.connectPromise = null;
+        const err = new Error('Gateway connection closed unexpectedly');
+        for (const req of this.pendingRequests.values()) {
+            if (req.timer) clearTimeout(req.timer);
+            req.reject(err);
+        }
+        this.pendingRequests.clear();
+    }
+
+    /**
+     * Ensures we have an active, paired connection to the gateway.
+     */
+    connect(): Promise<void> {
+        if (this.connectPromise) return this.connectPromise;
+        if (this.connected && this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
+
+        this.connectPromise = new Promise((resolve, reject) => {
+            const gatewayUrl = env.OPENCLAW_GATEWAY_URL;
+            const origin = gatewayUrl.replace(/^ws(s?):\/\/([^/]+).*$/, 'http$1://$2');
+            const identity = getIdentity();
+
+            let ws: WebSocket;
+            try {
+                ws = new WebSocket(gatewayUrl, { headers: { Origin: origin } });
+            } catch (err) {
+                this.connectPromise = null;
+                reject(err);
+                return;
+            }
+
+            this.ws = ws;
+            let challengeTimer: NodeJS.Timeout | undefined;
+            const connectId = randomUUID();
+            let settled = false;
+
+            const settleConnect = (err?: Error) => {
+                if (settled) return;
+                settled = true;
+                if (challengeTimer) clearTimeout(challengeTimer);
+                this.connectPromise = null;
+                if (err) {
+                    this.cleanup();
+                    reject(err);
+                } else {
+                    this.connected = true;
+                    resolve();
+                }
+            };
+
+            const sendConnect = (nonce: string) => {
+                const authToken = identity.deviceToken ?? env.OPENCLAW_GATEWAY_TOKEN;
+                const { signature, signedAt } = signConnect(nonce, identity, authToken);
+
+                const connectParams: Record<string, unknown> = {
+                    minProtocol: 3,
+                    maxProtocol: 3,
+                    role: GATEWAY_ROLE,
+                    scopes: GATEWAY_SCOPES,
+                    client: {
+                        id: GATEWAY_CLIENT_ID,
+                        mode: GATEWAY_CLIENT_MODE,
+                        version: '1.0.0',
+                        platform: 'node',
+                    },
+                    caps: [],
+                    commands: [],
+                    permissions: {},
+                    locale: 'en-US',
+                    userAgent: 'claw-pilot/1.0.0',
+                    device: {
+                        id: identity.deviceId,
+                        publicKey: identity.publicKeyRaw,
+                        signature,
+                        signedAt,
+                        nonce,
+                    },
+                };
+
+                if (authToken) {
+                    connectParams.auth = { token: authToken };
+                }
+
+                ws.send(JSON.stringify({ type: 'req', id: connectId, method: 'connect', params: connectParams }));
+            };
+
+            ws.on('error', (err) => {
+                if (!settled) settleConnect(err);
+                else this.cleanup();
+            });
+
+            ws.on('open', () => {
+                challengeTimer = setTimeout(() => {
+                    if (!this.connected && !settled) {
+                        settleConnect(new Error(`Gateway did not send connect.challenge within ${CHALLENGE_WAIT_MS}ms`));
+                    }
+                }, CHALLENGE_WAIT_MS);
+            });
+
+            ws.on('close', (code, reasonBuf) => {
+                const reason = reasonBuf.toString('utf8');
+                if (!settled) {
+                    if (code === 1008 || /pairing/i.test(reason)) {
+                        settleConnect(new GatewayPairingRequiredError(identity.deviceId));
+                    } else {
+                        settleConnect(new Error(`Gateway connection closed (${code}): ${reason || 'no reason'}`));
+                    }
+                } else {
+                    this.cleanup();
+                }
+            });
+
+            ws.on('message', (raw) => {
+                let frame: Record<string, unknown>;
+                try {
+                    frame = JSON.parse(String(raw));
+                } catch {
+                    return;
+                }
+
+                if (!this.connected) {
+                    if (frame.type === 'event' && frame.event === 'connect.challenge') {
+                        if (challengeTimer) clearTimeout(challengeTimer);
+                        const challengePayload = frame.payload as Record<string, unknown> | undefined;
+                        const nonce = String(challengePayload?.nonce ?? randomUUID());
+                        sendConnect(nonce);
+                        return;
+                    }
+
+                    if (frame.type === 'res' && frame.id === connectId) {
+                        if (frame.ok === false) {
+                            const msg = (frame.error as Record<string, unknown> | undefined)?.message ?? 'unknown';
+                            settleConnect(new Error(`Gateway connect failed: ${msg}`));
+                            return;
+                        }
+
+                        try {
+                            const authPayload = (frame.payload as Record<string, unknown> | undefined)?.auth as Record<string, unknown> | undefined;
+                            const freshToken = authPayload?.deviceToken as string | undefined;
+                            if (freshToken) saveDeviceToken(freshToken);
+                        } catch { /* ignored */ }
+
+                        settleConnect();
+                        return;
+                    }
+                    return;
+                }
+
+                // Phase 2: Responses to multiplexed requests
+                if (frame.type === 'res' && typeof frame.id === 'string') {
+                    const req = this.pendingRequests.get(frame.id);
+                    if (req) {
+                        this.pendingRequests.delete(frame.id);
+                        if (req.timer) clearTimeout(req.timer);
+                        if (frame.ok === false || Object.prototype.hasOwnProperty.call(frame, 'error')) {
+                            const msg = (frame.error as Record<string, unknown> | undefined)?.message ?? 'unknown';
+                            req.reject(new Error(`Gateway RPC '${req.method}' failed: ${msg}`));
+                        } else {
+                            req.resolve(frame.payload);
+                        }
+                    }
+                }
+            });
+        });
+
+        return this.connectPromise;
+    }
+
+    async request(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+        await this.connect();
+
+        return new Promise((resolve, reject) => {
+            const requestId = randomUUID();
+            const timer = setTimeout(() => {
+                this.pendingRequests.delete(requestId);
+                reject(new Error(`Gateway call '${method}' timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            this.pendingRequests.set(requestId, { resolve, reject, timer, method });
+            this.ws!.send(JSON.stringify({ type: 'req', id: requestId, method, params }));
+        });
+    }
+
+    /** For testing only */
+    _reset() {
+        this.cleanup();
+    }
+}
+
+const sharedClient = new GatewayClient();
+
 /**
- * Opens a fresh WebSocket connection to the OpenClaw gateway, performs the
- * Mode-A (device identity) authentication handshake, executes one RPC method,
- * then closes the connection.
- *
- * Flow:
- *   1. Gateway sends `connect.challenge` event with a nonce.
- *   2. We sign the nonce with our Ed25519 private key and send a `connect` request
- *      that includes the `device` block (id, publicKey, signature, signedAt, nonce).
- *   3a. If approved/already paired: gateway responds ok:true — we fire the RPC method.
- *   3b. If the device is new and not yet approved: gateway closes with 1008 "pairing required".
- *       → We throw GatewayPairingRequiredError so callers can surface the approval instructions.
- *   4. On successful connect with a `deviceToken` in the response auth block, we persist
- *      it to the identity file so all future connections are auto-approved.
- *
- * Wire protocol: every message is a JSON text frame.
- *   Request:  { type: "req", id: uuid, method: string, params: {} }
- *   Response: { type: "res", id: uuid, ok: boolean, payload: any } | { ..., ok: false, error: { message } }
- *   Event:    { type: "event", event: string, payload: {} }
+ * Executes an RPC method against the OpenClaw gateway over a persistent WebSocket connection.
+ * Multiplexes multiple concurrent calls onto the same underlying socket.
  *
  * @param method  Gateway RPC method name (e.g. "chat.send", "sessions.list")
  * @param params  Method parameters object
@@ -237,165 +426,16 @@ export async function gatewayCall(
     params: Record<string, unknown>,
     { timeout = WS_TIMEOUT }: { timeout?: number } = {},
 ): Promise<unknown> {
-    const gatewayUrl = env.OPENCLAW_GATEWAY_URL;
-    const identity = getIdentity();
+    return sharedClient.request(method, params, timeout);
+}
 
-    // Derive WS URL — no ?token= on the URL; auth goes in the connect frame
-    const wsUrl = gatewayUrl;
-    const origin = gatewayUrl.replace(/^ws(s?):\/\/([^/]+).*$/, 'http$1://$2');
-
-    return new Promise<unknown>((resolve, reject) => {
-        let settled = false;
-        let ws: WebSocket;
-        let timer: NodeJS.Timeout | undefined;
-        let challengeTimer: NodeJS.Timeout | undefined;
-        let connected = false;
-
-        const connectId = randomUUID();
-        const requestId = randomUUID();
-
-        function settle(fn: () => void) {
-            if (settled) return;
-            settled = true;
-            if (timer) clearTimeout(timer);
-            if (challengeTimer) clearTimeout(challengeTimer);
-            fn();
-            try { ws.close(); } catch { /* ignore */ }
-        }
-
-        function sendConnect(nonce: string) {
-            const authToken = identity.deviceToken ?? env.OPENCLAW_GATEWAY_TOKEN;
-            const { signature, signedAt } = signConnect(nonce, identity, authToken);
-
-            const connectParams: Record<string, unknown> = {
-                minProtocol: 3,
-                maxProtocol: 3,
-                role: GATEWAY_ROLE,
-                scopes: GATEWAY_SCOPES,
-                client: {
-                    id: GATEWAY_CLIENT_ID,
-                    mode: GATEWAY_CLIENT_MODE,
-                    version: '1.0.0',
-                    platform: 'node',
-                },
-                caps: [],
-                commands: [],
-                permissions: {},
-                locale: 'en-US',
-                userAgent: 'claw-pilot/1.0.0',
-                // Device identity block — required for Mode A (device pairing)
-                device: {
-                    id: identity.deviceId,
-                    publicKey: identity.publicKeyRaw,
-                    signature,
-                    signedAt,
-                    nonce,
-                },
-            };
-
-            // Auth: prefer deviceToken (post-approval persistent token) over gateway bearer token.
-            // authToken is already captured above for the signature — reuse it here.
-            if (authToken) {
-                connectParams.auth = { token: authToken };
-            }
-
-            ws.send(JSON.stringify({ type: 'req', id: connectId, method: 'connect', params: connectParams }));
-        }
-
-        function sendRequest() {
-            ws.send(JSON.stringify({ type: 'req', id: requestId, method, params }));
-        }
-
-        try {
-            ws = new WebSocket(wsUrl, { headers: { Origin: origin } });
-        } catch (err) {
-            reject(err);
-            return;
-        }
-
-        // Overall call timeout
-        timer = setTimeout(() => {
-            settle(() => reject(new Error(`Gateway call '${method}' timed out after ${timeout}ms`)));
-        }, timeout);
-
-        ws.on('error', (err) => settle(() => reject(err)));
-
-        ws.on('open', () => {
-            // If the gateway doesn't send a challenge within CHALLENGE_WAIT_MS, abort.
-            // Mode A always issues a challenge — if we don't get one, something is wrong.
-            challengeTimer = setTimeout(() => {
-                if (!connected && !settled) {
-                    settle(() => reject(new Error(`Gateway did not send connect.challenge within ${CHALLENGE_WAIT_MS}ms`)));
-                }
-            }, CHALLENGE_WAIT_MS);
-        });
-
-        ws.on('close', (code, reasonBuf) => {
-            const reason = reasonBuf.toString('utf8');
-            if (!settled) {
-                // Code 1008 or a "pairing" reason string means the gateway received our
-                // device identity but has not yet approved it. Surface as a distinct error.
-                if (code === 1008 || /pairing/i.test(reason)) {
-                    settle(() => reject(new GatewayPairingRequiredError(identity.deviceId)));
-                    return;
-                }
-                settle(() => reject(new Error(`Gateway connection closed (${code}): ${reason || 'no reason'}`)));
-            }
-        });
-
-        ws.on('message', (raw) => {
-            let frame: Record<string, unknown>;
-            try {
-                frame = JSON.parse(String(raw));
-            } catch {
-                return; // ignore malformed frames
-            }
-
-            // ── Phase 1: handshake ──────────────────────────────────────────
-            if (!connected) {
-                if (frame.type === 'event' && frame.event === 'connect.challenge') {
-                    if (challengeTimer) {
-                        clearTimeout(challengeTimer);
-                        challengeTimer = undefined;
-                    }
-                    const challengePayload = frame.payload as Record<string, unknown> | undefined;
-                    const nonce = String(challengePayload?.nonce ?? randomUUID());
-                    sendConnect(nonce);
-                    return;
-                }
-
-                if (frame.type === 'res' && frame.id === connectId) {
-                    if (frame.ok === false) {
-                        const msg = (frame.error as Record<string, unknown> | undefined)?.message ?? 'unknown';
-                        settle(() => reject(new Error(`Gateway connect failed: ${msg}`)));
-                        return;
-                    }
-
-                    // Persist deviceToken if the gateway returned one (first successful connect post-approval)
-                    try {
-                        const authPayload = (frame.payload as Record<string, unknown> | undefined)?.auth as Record<string, unknown> | undefined;
-                        const freshToken = authPayload?.deviceToken as string | undefined;
-                        if (freshToken) saveDeviceToken(freshToken);
-                    } catch { /* non-critical */ }
-
-                    connected = true;
-                    sendRequest();
-                    return;
-                }
-                return;
-            }
-
-            // ── Phase 2: await method response ──────────────────────────────
-            if (frame.type === 'res' && frame.id === requestId) {
-                if (frame.ok === false || Object.prototype.hasOwnProperty.call(frame, 'error')) {
-                    const msg = (frame.error as Record<string, unknown> | undefined)?.message ?? 'unknown';
-                    settle(() => reject(new Error(`Gateway RPC '${method}' failed: ${msg}`)));
-                } else {
-                    settle(() => resolve(frame.payload));
-                }
-            }
-        });
-    });
+/**
+ * Resets the shared GatewayClient instance. Exposed strictly for unit testing
+ * to ensure fresh mock WebSockets and handshake logic per test.
+ * @internal
+ */
+export function __resetGatewayClientForTest() {
+    sharedClient._reset();
 }
 
 /**
