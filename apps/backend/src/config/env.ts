@@ -65,6 +65,16 @@ const EnvSchema = z.object({
      * Override this in Docker / VPS deployments to point at a persistent volume.
      */
     OPENCLAW_DEVICE_IDENTITY_PATH: z.string().default(resolve('data/device-identity.json')),
+
+    /**
+     * Publicly reachable base URL of this Claw-Pilot backend.
+     * Used to build the callback URL that is embedded in every agent prompt so remote
+     * agents know where to POST their progress/completion updates.
+     * Example: http://100.78.90.125:54321  (Tailscale IP)
+     *          http://claw-pilot:54321      (Docker service name)
+     * Defaults to http://localhost:{PORT} — only correct when the agent runs on the same machine.
+     */
+    PUBLIC_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

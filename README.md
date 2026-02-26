@@ -25,6 +25,7 @@ graph LR
     subgraph "OpenClaw (Python)"
         GW["WebSocket Gateway\nws://localhost:18789"]
         CFG["Agent Config\nRPC: config.get / agents.*"]
+        AGENT["Agent Session\n(Remote or Local)"]
     end
 
     UI -- "fetch + Bearer token" --> API
@@ -37,9 +38,11 @@ graph LR
     API -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
     MON -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
     GW --> CFG
+    GW -- "sessions.patch + chat.send" --> AGENT
+    AGENT -- "POST /api/tasks/:id/activity\n(Callback)" --> API
 ```
 
-> **Data flow summary:** The React UI communicates with the Fastify server via REST (Bearer-token auth) and Socket.io. The server communicates with OpenClaw agents through the **WebSocket gateway RPC API** — never via CLI subprocess. Each RPC call (`gatewayCall`) opens a fresh WebSocket connection, performs a Mode-B (control_ui) handshake, fires one JSON-RPC method, reads the response, and closes. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io, eliminating the need for frontend polling.
+> **Data flow summary:** The React UI communicates with the Fastify server via REST (Bearer-token auth) and Socket.io. The server communicates with OpenClaw agents through the **WebSocket gateway RPC API** — never via CLI subprocess. Each RPC call (`gatewayCall`) opens a fresh WebSocket connection, performs a **Mode-A (Device Identity)** handshake, fires one JSON-RPC method, reads the response, and closes. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io. Agents can report progress or completion by calling back to the backend's REST API, triggering automatic status transitions in the Kanban board.
 
 ---
 
@@ -77,9 +80,9 @@ printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `API_KEY` | ✅ | — | Shared secret — frontend must send `Authorization: Bearer <key>` |
+| `API_KEY` | ✅ | — | Shared secret — frontend must send `Authorization: Bearer <key>`. Also used by agents for remote callbacks. |
 | `PORT` | | `54321` | HTTP port for the Fastify server |
-| `HOST` | | `127.0.0.1` | Interface to bind — use `0.0.0.0` inside Docker |
+| `HOST` | | `127.0.0.1` | Interface to bind — use `0.0.0.0` for Docker or Tailscale/remote visibility |
 | `ALLOWED_ORIGIN` | | `http://localhost:5173` | CORS origin for the frontend |
 | `NODE_ENV` | | `development` | `development` / `production` / `test` |
 | `OPENCLAW_GATEWAY_URL` | | `ws://localhost:18789` | WebSocket URL of the OpenClaw gateway |
@@ -87,6 +90,8 @@ printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54
 | `OPENCLAW_GATEWAY_ID` | | `gateway` | Gateway identifier — used to build the main agent session key |
 | `OPENCLAW_WS_TIMEOUT` | | `15000` | Timeout (ms) for fast RPC calls (health, sessions list, models) |
 | `OPENCLAW_AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
+| `OPENCLAW_DEVICE_IDENTITY_PATH`| | `data/device-identity.json` | Path to the Ed25519 key pair + deviceToken file |
+| `PUBLIC_URL` | | `http://localhost:{PORT}` | Publicly reachable base URL of this server. Embedded in every dispatched agent prompt as the callback URL. **Must be set when Claw-Pilot and OpenClaw run on different machines** (e.g. `http://100.78.90.125:54321`). |
 
 **Frontend variables** (`apps/frontend/.env`):
 
@@ -125,6 +130,25 @@ The container:
 - Persists `data/db.json` in the `claw_data` Docker volume
 - Serves the pre-built Vite frontend statically from Fastify at port `54321`
 - Receives `SIGTERM` for graceful shutdown (15 s grace period)
+
+---
+
+## Workflow: Task Execution
+
+Claw-Pilot is designed for an autonomous task loop. You move tasks from **Inbox** to **Assigned** (manually), then dispatch them to agents.
+
+1.  **Creation**: Create a task in the **Inbox**.
+2.  **Assignment**: Drag the task to the **Assigned** column.
+3.  **Dispatch**: Open the Task Modal, select an agent from the "Dispatch to Agent" drop-down, and click **Route Task**.
+    *   The backend creates an isolated OpenClaw session (`mc-gateway:{id}:main`) using the specified model.
+    *   The task title + description are sent as the initial prompt with `deliver: true`.
+    *   The `taskId`, full callback URL, and `API_KEY` are **automatically appended** to the prompt — the agent knows exactly where to POST back without any manual configuration.
+    *   The task automatically moves to **In Progress**.
+4.  **Work**: The agent performs its work.
+5.  **Completion**: When the agent finishes, it calls back to the backend. If it includes the word `completed` or `done` in its message, the task moves to **Review**.
+6.  **Human Review**: You approve or reject the work. Approval moves it to **Done**. Rejection moves it back to **In Progress** with your feedback.
+
+> **Remote Agents:** See [docs/api.md](docs/api.md#8-agent-callback-protocol-remote-setup) for how to configure agents running on a separate VPS (e.g., via Tailscale) to call back to your local machine.
 
 ---
 
@@ -168,10 +192,11 @@ claw-pilot/
 
 | Decision | Rationale |
 | :--- | :--- |
-| WebSocket RPC not `execFile` | Each `gatewayCall` opens a fresh WS, authenticates (Mode B / control_ui), issues one JSON-RPC method, and closes — no persistent socket or CLI process needed |
-| Mode B auth (control_ui) | No Ed25519 key pair management required; gateway must have `disable_device_pairing: true` |
+| WebSocket RPC not `execFile` | Each `gatewayCall` opens a fresh WS, authenticates (Mode A / backend), issues one JSON-RPC method, and closes — no persistent socket or CLI process needed |
+| Mode A Auth (Device Identity) | Provides secure, persistent pairing without passwords. A stable Ed25519 key pair is stored in `data/device-identity.json` |
 | Atomic db writes | Drizzle ORM with SQLite transactions + WAL mode — a mid-write crash never corrupts the database |
-| 202 Accepted for AI calls | AI gateway calls can take minutes; HTTP requests must not block. The result is pushed via Socket.io |
+| 202 Accepted for AI calls | AI gateway calls take minutes; HTTP requests must not block. The result is pushed via Socket.io |
+| Agent Callback Logic | Remote agents notify the backend of completion via HTTP POST, moving tasks to `REVIEW` autonomously |
 | `timingSafeEqual` for API key | Prevents timing side-channel attacks |
 | Fresh WS per RPC call | No connection-state management; failures are isolated; the gateway is stateless from the client's perspective |
 

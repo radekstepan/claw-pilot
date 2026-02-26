@@ -177,3 +177,67 @@ Because the frontend must be highly reactive, the Node.js server emits the follo
 | `agent_error` | `{ agentId, error }` | Async CLI call fails in `/send-to-agent`, activity, or review routes |
 | `agent_config_generated` | `{ requestId, config }` | `POST /api/agents/generate` CLI succeeds |
 | `agent_config_error` | `{ requestId, error }` | `POST /api/agents/generate` CLI fails |
+
+## 8. Agent Callback Protocol (Remote Setup)
+
+When Claw-Pilot and OpenClaw run on **different machines** (e.g. OpenClaw on a VPS, Claw-Pilot on a local Mac connected via Tailscale), there is no automatic notification from the gateway when an agent finishes. The agent must call back to Claw-Pilot over HTTP.
+
+### How it works
+
+1. `POST /api/tasks/:id/route` dispatches the task. The backend **automatically appends** the `taskId`, the full callback URL (built from `PUBLIC_URL`), and the `API_KEY` to the bottom of the prompt the agent receives — no manual configuration of the agent is needed for it to know where to POST.
+2. The agent does its work.
+3. When done, the agent calls the URL it was given in the prompt:
+
+```
+POST http://<PUBLIC_URL>/api/tasks/<taskId>/activity
+Authorization: Bearer <API_KEY>
+Content-Type: application/json
+
+{ "agent_id": "<agentId>", "message": "completed: <summary of what was done>" }
+```
+
+The word `completed` (or `done`) in the message body triggers the automatic `IN_PROGRESS -> REVIEW` transition, moving the task to the Review swimlane.
+
+### What the agent receives
+
+Every dispatched prompt ends with a section like this (injected automatically by the backend):
+
+```
+---
+TASK METADATA (do not include in your work output):
+taskId: 3f7a9b2c-...
+When you have finished, report your result by calling:
+  POST http://100.78.90.125:54321/api/tasks/3f7a9b2c-.../activity
+  Authorization: Bearer <API_KEY>
+  Content-Type: application/json
+  Body: { "agent_id": "dev", "message": "completed: <your summary>" }
+The word "completed" in the message is required to move this task to Review.
+On error use: { "agent_id": "dev", "message": "error: <description>" }
+```
+
+### Optional: TOOLS.md reinforcement
+
+The injected footer is sufficient for most agents. For extra reliability you can also add the following to the agent's **`TOOLS.md`** (editable via the Agent Files panel in Settings) to reinforce the protocol:
+
+```
+## Claw-Pilot Task Reporting
+
+Every task prompt you receive will end with a TASK METADATA block containing a
+pre-built callback URL, taskId, and Authorization header. Use those exact values.
+Always include the word "completed" in your message so the task moves to Review.
+On error, use: { "message": "error: <description>" }
+```
+
+### Environment variable checklist for remote access
+
+| Variable | Required value | Notes |
+| :--- | :--- | :--- |
+| `HOST` | `0.0.0.0` | Must not be `127.0.0.1` — loopback is invisible to Tailscale/external interfaces |
+| `PORT` | `54321` | The port the agent will POST to |
+| `PUBLIC_URL` | `http://100.x.x.x:54321` | **Critical for remote agents.** This exact URL is embedded by the backend into every agent prompt as the callback address. If unset, agents receive `http://localhost:54321`, which they cannot reach. |
+| `API_KEY` | any string | The bearer token the agent includes in `Authorization` |
+| `ALLOWED_ORIGIN` | frontend origin | Only affects browser CORS — agent REST calls bypass CORS |
+
+### Future: co-located deployment
+
+When Claw-Pilot runs in Docker on the same machine as OpenClaw, the callback URL becomes `http://claw-pilot:54321` (Docker service name). No other changes needed.

@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable, ActivityLog } from '@claw-pilot/shared-types';
 import { randomUUID } from 'crypto';
 import { routeChatToAgent, spawnTaskSession } from '../openclaw/cli.js';
+import { env } from '../config/env.js';
 import { z } from 'zod';
 
 declare module 'fastify' {
@@ -257,7 +258,22 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         // Return 202 immediately — the heavy AI work runs detached
         reply.status(202).send({ id, status: 'pending' });
 
-        const prompt = body.prompt ?? [taskRow.title, taskRow.description].filter(Boolean).join('\n\n');
+        const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
+        const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
+        const taskContext = [
+            body.prompt ?? [taskRow.title, taskRow.description].filter(Boolean).join('\n\n'),
+            `---`,
+            `TASK METADATA (do not include in your work output):`,
+            `taskId: ${id}`,
+            `When you have finished, report your result by calling:`,
+            `  POST ${callbackUrl}`,
+            `  Authorization: Bearer ${env.API_KEY}`,
+            `  Content-Type: application/json`,
+            `  Body: { "agent_id": "${body.agentId}", "message": "completed: <your summary>" }`,
+            `The word "completed" in the message is required to move this task to Review.`,
+            `On error use: { "agent_id": "${body.agentId}", "message": "error: <description>" }`,
+        ].join('\n');
+        const prompt = taskContext;
 
         void (async () => {
             try {
