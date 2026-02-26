@@ -19,6 +19,10 @@ import { env } from '../config/env.js';
  * timing-based side-channel attacks that could leak the API key length or value.
  */
 export async function authHook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    // Let CORS preflight requests pass through without authentication.
+    // OPTIONS is a browser-internal mechanism with no user identity context.
+    if (request.method === 'OPTIONS') return;
+
     // Only protect the API surface. Static assets, the SPA entry-point, and the
     // health-check root are all public. This keeps the browser able to load the
     // frontend in production without requiring an Authorization header for every

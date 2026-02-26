@@ -34,6 +34,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // CORS — restricted to the configured frontend origin.
     await fastify.register(cors, {
         origin: env.ALLOWED_ORIGIN,
+        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     });
 
     // Global rate limit: 100 requests per minute per IP.
