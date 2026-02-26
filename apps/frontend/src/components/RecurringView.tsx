@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Zap, Clock, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Zap, Clock, Loader2, RefreshCw, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CreateRecurringPayload, RecurringTask } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
@@ -16,14 +16,21 @@ const SCHEDULE_TYPE_OPTIONS = [
 ];
 
 export const RecurringView = () => {
-    const { recurringTasks, createRecurring, deleteRecurring, updateRecurring, triggerRecurring } = useMissionStore();
+    const { recurringTasks, createRecurring, deleteRecurring, updateRecurring, triggerRecurring, agents } = useMissionStore();
 
     const [isCreating, setIsCreating] = useState(false);
     const [newTitle, setNewTitle] = useState('');
+    const [newDescription, setNewDescription] = useState('');
     const [newScheduleType, setNewScheduleType] = useState<string>('DAILY');
     const [newScheduleValue, setNewScheduleValue] = useState('');
+    const [newAssignedAgentId, setNewAssignedAgentId] = useState('');
     const [loadingId, setLoadingId] = useState<string | null>(null);
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+    const agentOptions = [
+        { value: '', label: '— None (manual routing) —' },
+        ...agents.map((a) => ({ value: a.id, label: a.name })),
+    ];
 
     const handleCreate = async () => {
         if (!newTitle.trim()) {
@@ -32,13 +39,17 @@ export const RecurringView = () => {
         }
         const payload: CreateRecurringPayload = {
             title: newTitle.trim(),
+            description: newDescription.trim() || undefined,
             schedule_type: newScheduleType,
             schedule_value: newScheduleValue.trim() || undefined,
+            assigned_agent_id: newAssignedAgentId || undefined,
         };
         try {
             await createRecurring(payload);
             setNewTitle('');
+            setNewDescription('');
             setNewScheduleValue('');
+            setNewAssignedAgentId('');
             setIsCreating(false);
         } catch {
             // error toast handled in store
@@ -109,6 +120,16 @@ export const RecurringView = () => {
                                 autoFocus
                             />
                         </div>
+                        <div className="md:col-span-3 space-y-1">
+                            <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Task Content / Instructions <span className="text-slate-300 dark:text-slate-700 normal-case">(what the agent should do)</span></label>
+                            <textarea
+                                value={newDescription}
+                                onChange={(e) => setNewDescription(e.target.value)}
+                                placeholder="Describe what should happen each time this mission triggers…"
+                                rows={3}
+                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 resize-y"
+                            />
+                        </div>
                         <div className="space-y-1">
                             <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Schedule Type</label>
                             <Select
@@ -128,6 +149,15 @@ export const RecurringView = () => {
                                 className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono"
                             />
                         </div>
+                        <div className="md:col-span-3 space-y-1">
+                            <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Pre-assigned Agent <span className="text-slate-300 dark:text-slate-700 normal-case">(auto-routed when triggered)</span></label>
+                            <Select
+                                value={newAssignedAgentId}
+                                onValueChange={setNewAssignedAgentId}
+                                options={agentOptions}
+                                placeholder="— None (manual routing) —"
+                            />
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
@@ -137,7 +167,7 @@ export const RecurringView = () => {
                             Create Mission
                         </button>
                         <button
-                            onClick={() => setIsCreating(false)}
+                            onClick={() => { setIsCreating(false); setNewTitle(''); setNewDescription(''); setNewScheduleValue(''); setNewAssignedAgentId(''); }}
                             className="px-5 py-2 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-widest font-bold hover:bg-black/5 dark:hover:bg-white/5 transition-all"
                         >
                             Cancel
@@ -169,6 +199,17 @@ export const RecurringView = () => {
                                             {task.status}
                                         </Badge>
                                     </div>
+                                    {task.description && (
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 line-clamp-2">{task.description}</p>
+                                    )}
+                                    {task.assigned_agent_id && (
+                                        <div className="flex items-center gap-1 mb-1">
+                                            <Bot size={9} className="text-violet-500 dark:text-violet-400 flex-shrink-0" />
+                                            <span className="text-[9px] font-mono text-violet-600 dark:text-violet-400">
+                                                {agents.find((a) => a.id === task.assigned_agent_id)?.name ?? task.assigned_agent_id}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div className="flex items-center gap-2 text-[9px] font-mono text-slate-400 dark:text-slate-600">
                                         <Clock size={10} />
                                         <span>{task.schedule_type}</span>
@@ -176,6 +217,12 @@ export const RecurringView = () => {
                                             <>
                                                 <span className="text-slate-300 dark:text-slate-700">·</span>
                                                 <span>{task.schedule_value}</span>
+                                            </>
+                                        )}
+                                        {task.last_triggered_at && (
+                                            <>
+                                                <span className="text-slate-300 dark:text-slate-700">·</span>
+                                                <span>last run {new Date(task.last_triggered_at).toLocaleString()}</span>
                                             </>
                                         )}
                                     </div>

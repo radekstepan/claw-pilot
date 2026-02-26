@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { toast } from 'sonner';
 import type { ClientToServerEvents, ServerToClientEvents, Task } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../store/useMissionStore';
 import { env } from '../config/env.js';
@@ -91,6 +92,14 @@ export function useSocketListener() {
                 setGatewayPairing(false);
                 setGatewayOnline(online);
             }
+        });
+
+        socket.on('agent_error', ({ agentId, error }) => {
+            console.log('Socket event: agent_error', { agentId, error });
+            toast.error(`Agent error (${agentId}): ${error}`, {
+                duration: 8000,
+                description: 'The task has been marked as Stuck. Open the task to re-route it to an agent.',
+            });
         });
 
         return () => {

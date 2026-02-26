@@ -1,4 +1,4 @@
-import { Clock, User } from 'lucide-react';
+import { Clock, User, AlertTriangle } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Card } from '../ui/Card';
@@ -25,11 +25,13 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
         position: 'relative' as const,
     };
 
+    const isStuck = task.status === 'STUCK';
+
     return (
         <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
             <Card
                 onClick={onClick}
-                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''}`}
+                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''}`}
                 role="button"
                 aria-label={`Task: ${task.title}. Priority: ${task.priority ?? 'LOW'}. Drag to move.`}
                 tabIndex={isOverlay ? -1 : 0}
@@ -42,6 +44,12 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
                         {task.priority ?? 'LOW'}
                     </Badge>
                 </div>
+                {isStuck && (
+                    <div className="flex items-center gap-1 mb-2">
+                        <AlertTriangle size={10} className="text-rose-500 flex-shrink-0" aria-hidden="true" />
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Stuck / Error</span>
+                    </div>
+                )}
                 <h3 className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 mb-2 leading-snug">
                     {task.title}
                 </h3>
@@ -54,8 +62,14 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
                 </div>
                 <div className="flex items-center justify-between border-t border-black/[0.04] dark:border-white/[0.04] pt-2 mt-2">
                     <div className="flex items-center gap-1">
-                        <Clock size={10} className="text-slate-400 dark:text-slate-600" aria-hidden="true" />
-                        <span className="text-[9px] text-slate-400 dark:text-slate-600 uppercase font-bold tracking-tighter">NEW</span>
+                        {isStuck ? (
+                            <AlertTriangle size={10} className="text-rose-400" aria-hidden="true" />
+                        ) : (
+                            <Clock size={10} className="text-slate-400 dark:text-slate-600" aria-hidden="true" />
+                        )}
+                        <span className={`text-[9px] uppercase font-bold tracking-tighter ${isStuck ? 'text-rose-400' : 'text-slate-400 dark:text-slate-600'}`}>
+                            {isStuck ? 'Error' : 'NEW'}
+                        </span>
                     </div>
                     <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full flex items-center justify-center" aria-hidden="true">
                         <User size={10} className="text-slate-500 dark:text-slate-700" />

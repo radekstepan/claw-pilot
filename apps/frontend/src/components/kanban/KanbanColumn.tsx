@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Plus, Activity, Lock } from 'lucide-react';
+import { Plus, Activity, Lock, AlertTriangle } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { TaskCard } from './TaskCard';
@@ -18,6 +18,7 @@ interface KanbanColumnProps {
 
 export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragging }: KanbanColumnProps) => {
     const isDoneColumn = id === 'DONE';
+    const isStuckColumn = id === 'STUCK';
     // Show no-drop warning when any card is being dragged AND this is the DONE column
     const showNoDrop = isDoneColumn && isDragging;
 
@@ -46,11 +47,19 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                 ${isOver ? 'bg-violet-500/5 dark:bg-violet-400/5' : ''}
                 ${isDoneColumn && !showNoDrop ? 'opacity-80' : ''}
                 ${showNoDrop ? 'opacity-100 ring-1 ring-inset ring-red-500/40 bg-red-500/[0.03]' : ''}
+                ${isStuckColumn ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''}
             `}
         >
-            <div className="p-3 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] bg-[#f8fafc]/80 dark:bg-white/[0.01]">
+            <div className={`p-3 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] ${isStuckColumn ? 'bg-rose-50/60 dark:bg-rose-950/20' : 'bg-[#f8fafc]/80 dark:bg-white/[0.01]'}`}>
                 <div className="flex items-center gap-2">
-                    <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">{title}</h2>
+                    {isStuckColumn && (
+                        <AlertTriangle
+                            size={10}
+                            className="text-rose-400 animate-pulse"
+                            aria-label="Tasks in error state"
+                        />
+                    )}
+                    <h2 className={`text-[10px] uppercase tracking-[0.2em] font-bold ${isStuckColumn ? 'text-rose-500 dark:text-rose-400' : 'text-slate-500'}`}>{title}</h2>
                     <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 bg-black/5 dark:bg-white/5 px-1.5 rounded-sm" aria-hidden="true">{tasks.length}</span>
                     {isDoneColumn && (
                         <Lock
@@ -65,7 +74,7 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                         </span>
                     )}
                 </div>
-                {!isDoneColumn && (
+                {!isDoneColumn && !isStuckColumn && (
                     <Plus
                         size={14}
                         className="text-slate-400 dark:text-slate-700 hover:text-slate-900 dark:hover:text-slate-400 cursor-pointer transition-colors"

@@ -53,11 +53,15 @@ export const chatMessages = sqliteTable('chat_messages', {
 // schedule_type / schedule_value as defined in shared-types).
 // ---------------------------------------------------------------------------
 export const recurringTasks = sqliteTable('recurring_tasks', {
-    id:             text('id').primaryKey(),
-    title:          text('title').notNull(),
-    schedule_type:  text('schedule_type').notNull(),
-    schedule_value: text('schedule_value'),
-    status:         text('status').notNull().default('ACTIVE'),
-    createdAt:      text('createdAt').notNull(),
-    updatedAt:      text('updatedAt').notNull(),
+    id:                 text('id').primaryKey(),
+    title:              text('title').notNull(),
+    description:        text('description'),
+    schedule_type:      text('schedule_type').notNull(),
+    schedule_value:     text('schedule_value'),
+    /** ID of the OpenClaw agent auto-assigned when this template triggers. */
+    assigned_agent_id:  text('assigned_agent_id'),
+    status:             text('status').notNull().default('ACTIVE'),
+    last_triggered_at:  text('last_triggered_at'),
+    createdAt:          text('createdAt').notNull(),
+    updatedAt:          text('updatedAt').notNull(),
 });

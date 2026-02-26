@@ -181,7 +181,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-[10px] font-mono text-violet-600 dark:text-violet-400">{task.id}</span>
                             <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-slate-700" />
-                            <Badge variant={task.status === 'DONE' ? 'success' : 'violet'}>{COLUMN_TITLES[task.status]}</Badge>
+                            <Badge variant={task.status === 'DONE' ? 'success' : task.status === 'STUCK' ? 'danger' : 'violet'}>{COLUMN_TITLES[task.status]}</Badge>
                         </div>
                         <input
                             type="text"
@@ -211,7 +211,56 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                 <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-8">
                     <div className="flex-1">
 
-                        {task.status !== 'IN_PROGRESS' && task.status !== 'REVIEW' && task.status !== 'DONE' && (
+                        {task.status === 'STUCK' && (
+                            <section className="mb-8 p-4 border border-rose-500/30 bg-rose-500/[0.04] rounded">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <AlertTriangle size={14} className="text-rose-500" />
+                                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-rose-600 dark:text-rose-400">Agent Error — Task Stuck</h3>
+                                </div>
+                                {(() => {
+                                    const lastError = taskActivities.find(a => a.message.startsWith('error:'));
+                                    return lastError ? (
+                                        <p className="text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 rounded p-2 mb-4 leading-relaxed font-mono">
+                                            {lastError.message}
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+                                            The agent encountered an error and could not complete this task.
+                                        </p>
+                                    );
+                                })()}
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+                                    Re-route this task to retry with the same or a different agent.
+                                </p>
+                                {agents.length === 0 ? (
+                                    <EmptyState icon={AlertTriangle} title="No agents available" description="No agents are connected. Check the gateway." />
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <Select
+                                                value={routeAgentId || '__NONE__'}
+                                                onValueChange={(v) => setRouteAgentId(v === '__NONE__' ? '' : v)}
+                                                options={[
+                                                    { value: '__NONE__', label: '— Pick an agent —' },
+                                                    ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
+                                                ]}
+                                                placeholder="— Pick an agent —"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleRouteToAgent}
+                                            disabled={isRouting || !routeAgentId}
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
+                                        >
+                                            {isRouting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                            Retry
+                                        </button>
+                                    </div>
+                                )}
+                            </section>
+                        )}
+
+                        {task.status !== 'IN_PROGRESS' && task.status !== 'REVIEW' && task.status !== 'DONE' && task.status !== 'STUCK' && (
                             <section className="mb-8 p-4 border border-violet-500/20 bg-violet-500/[0.04] rounded">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Zap size={14} className="text-violet-500" />

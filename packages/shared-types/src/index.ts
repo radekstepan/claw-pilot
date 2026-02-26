@@ -12,9 +12,13 @@ export type Deliverable = z.infer<typeof DeliverableSchema>;
 export const RecurringTaskSchema = z.object({
     id: z.string(),
     title: z.string(),
+    description: z.string().optional(),
     schedule_type: z.string(),
     schedule_value: z.string().optional(),
+    /** ID of the OpenClaw agent that should automatically receive tasks spawned from this template. */
+    assigned_agent_id: z.string().optional(),
     status: z.enum(['ACTIVE', 'PAUSED']).default('ACTIVE'),
+    last_triggered_at: z.string().optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
 });
@@ -120,8 +124,10 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const CreateRecurringPayloadSchema = z.object({
     title: z.string(),
+    description: z.string().optional(),
     schedule_type: z.string(),
     schedule_value: z.string().optional(),
+    assigned_agent_id: z.string().optional(),
 });
 export type CreateRecurringPayload = z.infer<typeof CreateRecurringPayloadSchema>;
 

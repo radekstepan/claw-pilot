@@ -334,10 +334,33 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                 }
             } catch (err: unknown) {
                 fastify.log.error(err, `spawnTaskSession failed for task ${id}`);
-                fastify.io?.emit('agent_error', {
+                const errNow = new Date().toISOString();
+                const errMsg = err instanceof Error ? err.message : String(err);
+                const errActivityId = randomUUID();
+
+                // Mark task STUCK so the board reflects the failure
+                const stuckRow = db.update(tasksTable).set({ status: 'STUCK', updatedAt: errNow })
+                    .where(eq(tasksTable.id, id)).returning().get();
+
+                db.insert(activitiesTable).values({
+                    id: errActivityId,
+                    taskId: id,
                     agentId: body.agentId,
-                    error: err instanceof Error ? err.message : String(err),
-                });
+                    message: `error: Agent dispatch failed — ${errMsg}`,
+                    timestamp: errNow,
+                }).run();
+
+                if (fastify.io) {
+                    if (stuckRow) fastify.io.emit('task_updated', rowToTask(stuckRow));
+                    fastify.io.emit('activity_added', {
+                        id: errActivityId,
+                        taskId: id,
+                        agentId: body.agentId,
+                        message: `error: Agent dispatch failed — ${errMsg}`,
+                        timestamp: errNow,
+                    });
+                    fastify.io.emit('agent_error', { agentId: body.agentId, error: errMsg });
+                }
             }
         })();
     });
@@ -466,10 +489,33 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                     await spawnTaskSession(assignedAgentId, id, retryPrompt);
                 } catch (err: unknown) {
                     fastify.log.error(err, `spawnTaskSession (retry) failed for task ${id}`);
-                    fastify.io?.emit('agent_error', {
+                    const retryErrNow = new Date().toISOString();
+                    const retryErrMsg = err instanceof Error ? err.message : String(err);
+                    const retryErrActivityId = randomUUID();
+
+                    // Mark task STUCK so the board reflects the retry failure
+                    const retryStuckRow = db.update(tasksTable).set({ status: 'STUCK', updatedAt: retryErrNow })
+                        .where(eq(tasksTable.id, id)).returning().get();
+
+                    db.insert(activitiesTable).values({
+                        id: retryErrActivityId,
+                        taskId: id,
                         agentId: assignedAgentId,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
+                        message: `error: Agent retry failed — ${retryErrMsg}`,
+                        timestamp: retryErrNow,
+                    }).run();
+
+                    if (fastify.io) {
+                        if (retryStuckRow) fastify.io.emit('task_updated', rowToTask(retryStuckRow));
+                        fastify.io.emit('activity_added', {
+                            id: retryErrActivityId,
+                            taskId: id,
+                            agentId: assignedAgentId,
+                            message: `error: Agent retry failed — ${retryErrMsg}`,
+                            timestamp: retryErrNow,
+                        });
+                        fastify.io.emit('agent_error', { agentId: assignedAgentId, error: retryErrMsg });
+                    }
                 }
             })();
 

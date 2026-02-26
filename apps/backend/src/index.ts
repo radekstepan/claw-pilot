@@ -20,6 +20,7 @@ import { ClientToServerEvents, ServerToClientEvents } from '@claw-pilot/shared-t
 import { startSessionMonitor } from './monitors/sessionMonitor.js';
 import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
 import { startPruningMonitor } from './monitors/pruningMonitor.js';
+import { startRecurringSchedulerMonitor } from './monitors/recurringSchedulerMonitor.js';
 import { runMigrations } from './db/index.js';
 
 // Apply any pending DB schema migrations before the app starts.
@@ -50,6 +51,7 @@ io.on('connection', (socket) => {
 const sessionMonitorTimer  = startSessionMonitor(fastify);
 const stuckTaskMonitorTimer = startStuckTaskMonitor(fastify);
 const pruningMonitorTimer   = startPruningMonitor(fastify);
+const recurringSchedulerTimer = startRecurringSchedulerMonitor(fastify);
 
 // ---------------------------------------------------------------------------
 // Start listening
@@ -72,6 +74,7 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(sessionMonitorTimer);
     clearInterval(stuckTaskMonitorTimer);
     clearInterval(pruningMonitorTimer);
+    clearInterval(recurringSchedulerTimer);
 
     try {
         await fastify.close();
