@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import type { Task, Agent, ActivityLog, ChatMessage, TaskStatus, CreateTaskPayload, RecurringTask, CreateRecurringPayload } from '@claw-pilot/shared-types';
+import type { Task, Agent, ActivityLog, TaskStatus, CreateTaskPayload, RecurringTask, CreateRecurringPayload } from '@claw-pilot/shared-types';
 import { api } from '../api/client';
 
 export interface AppNotification {
@@ -19,7 +19,6 @@ interface MissionState {
     tasks: Task[];
     agents: Agent[];
     activities: ActivityLog[];
-    chatHistory: ChatMessage[];
     recurringTasks: RecurringTask[];
     isLoading: boolean;
     error: string | null;
@@ -32,8 +31,6 @@ interface MissionState {
     gatewayDeviceId: string | null;
     /** Cursor for the next page of activities (null = no more pages). */
     activitiesCursor: string | null;
-    /** Cursor for the next page of chat history (null = no more pages). */
-    chatCursor: string | null;
     /** IDs of tasks whose status PATCH is currently in-flight (optimistic update pending confirmation). */
     updatingTaskIds: Set<string>;
     /** Agent IDs for which claw-pilot currently has an in-flight AI gateway request.
@@ -56,13 +53,10 @@ interface MissionState {
     toggleDeliverable: (deliverableId: string, parentTaskId: string) => Promise<void>;
     reorderDeliverables: (taskId: string, orderedIds: string[]) => Promise<void>;
     createTask: (payload: CreateTaskPayload) => Promise<void>;
-    addChatMessage: (msg: ChatMessage) => void;
-    clearChatHistory: () => Promise<void>;
     setSocketConnected: (connected: boolean) => void;
     setGatewayOnline: (online: boolean) => void;
     setGatewayPairing: (required: boolean, deviceId?: string) => void;
     loadMoreActivities: () => Promise<void>;
-    loadMoreChat: () => Promise<void>;
     routeTask: (taskId: string, agentId: string, prompt?: string) => Promise<void>;
     setBusyAgent: (agentId: string, busy: boolean) => void;
     addNotification: (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => void;
@@ -79,7 +73,6 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     tasks: [],
     agents: [],
     activities: [],
-    chatHistory: [],
     recurringTasks: [],
     isLoading: false,
     error: null,
@@ -88,7 +81,6 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     gatewayPairingRequired: false,
     gatewayDeviceId: null,
     activitiesCursor: null,
-    chatCursor: null,
     updatingTaskIds: new Set<string>(),
     busyAgentIds: new Set<string>(),
     lastSyncAt: null,
@@ -97,19 +89,16 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     fetchInitialData: async () => {
         set({ isLoading: true, error: null });
         try {
-            const [tasksPage, agents, activitiesPage, chatPage] = await Promise.all([
+            const [tasksPage, agents, activitiesPage] = await Promise.all([
                 api.getTasks(),
                 api.getAgents(),
                 api.getActivities(),
-                api.getChatHistory(),
             ]);
             set({
                 tasks: tasksPage.data,
                 agents,
                 activities: activitiesPage.data,
                 activitiesCursor: activitiesPage.nextCursor,
-                chatHistory: chatPage.data.slice().reverse(), // oldest first for display
-                chatCursor: chatPage.nextCursor,
                 isLoading: false,
                 lastSyncAt: new Date().toISOString(),
             });
@@ -145,17 +134,10 @@ export const useMissionStore = create<MissionState>((set, get) => ({
                 const nextActivities = Array.from(actMap.values())
                     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-                // Merge chat (prevent dupes, keep ascending order)
-                const chatMap = new Map(state.chatHistory.map(c => [c.id, c]));
-                for (const c of syncPayload.chatHistory) chatMap.set(c.id, c);
-                const nextChat = Array.from(chatMap.values())
-                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
                 return {
                     tasks: nextTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
                     recurringTasks: nextRecurring,
                     activities: nextActivities,
-                    chatHistory: nextChat,
                     agents,
                     lastSyncAt: new Date().toISOString(),
                 };
@@ -307,24 +289,6 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         }
     },
 
-    addChatMessage: (msg: ChatMessage) => {
-        set((state) => ({
-            chatHistory: [...state.chatHistory, msg],
-        }));
-    },
-
-    clearChatHistory: async () => {
-        try {
-            await api.clearChatHistory();
-            // Optimistic: clear local state immediately (the socket event will
-            // also clear other connected clients)
-            set({ chatHistory: [], chatCursor: null });
-            toast.success('Chat history cleared.');
-        } catch (error: unknown) {
-            toast.error(error instanceof Error ? error.message : 'Failed to clear chat history.');
-        }
-    },
-
     setSocketConnected: (connected: boolean) => set({ isSocketConnected: connected }),
     setGatewayOnline: (online: boolean) => set({ gatewayOnline: online }),
     setGatewayPairing: (required: boolean, deviceId?: string) => {
@@ -346,21 +310,6 @@ export const useMissionStore = create<MissionState>((set, get) => ({
             }));
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : 'Failed to load more activity.');
-        }
-    },
-
-    loadMoreChat: async () => {
-        const { chatCursor } = get();
-        if (chatCursor === null) return; // already at end
-        try {
-            const page = await api.getChatHistory(chatCursor);
-            // Prepend older messages in chronological order before existing history
-            set((state) => ({
-                chatHistory: [...page.data.slice().reverse(), ...state.chatHistory],
-                chatCursor: page.nextCursor,
-            }));
-        } catch (error: unknown) {
-            toast.error(error instanceof Error ? error.message : 'Failed to load more chat history.');
         }
     },
 

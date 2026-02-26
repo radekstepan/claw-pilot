@@ -6,7 +6,6 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { KanbanColumn } from './components/kanban/KanbanColumn';
 import { LiveFeed } from './components/widgets/LiveFeed';
-import { ChatWidget } from './components/widgets/ChatWidget';
 import { TaskModal } from './components/modals/TaskModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NewTaskModal } from './components/modals/NewTaskModal';
@@ -267,7 +266,6 @@ export default function App() {
                 <LiveFeed collapsed={isFeedCollapsed} agents={agents} />
             </main>
 
-            <ChatWidget />
             {activeTask && <TaskModal task={activeTask} onClose={() => setActiveTask(null)} agents={agents} />}
             {isSettingsOpen && <SettingsModal agents={agents} onClose={() => setIsSettingsOpen(false)} theme={theme} />}
             {isNewTaskOpen && <NewTaskModal agents={agents} onClose={() => setIsNewTaskOpen(false)} onAdd={addTask} />}

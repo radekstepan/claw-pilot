@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Task, Agent, ActivityLog, ChatMessage, CreateTaskPayload, TaskStatus, RecurringTask, CreateRecurringPayload, AppConfig, CursorPageResponse, OffsetPageResponse } from '@claw-pilot/shared-types';
+import type { Task, Agent, ActivityLog, CreateTaskPayload, TaskStatus, RecurringTask, CreateRecurringPayload, AppConfig, CursorPageResponse, OffsetPageResponse } from '@claw-pilot/shared-types';
 import { env } from '../config/env.js';
 
 // Types for backend API responses not covered by shared-types
@@ -79,12 +79,6 @@ export const api = {
         return response.data;
     },
 
-    // Chat
-    sendChatMessageToAgent: async (message: string, agentId?: string): Promise<ChatMessage> => {
-        const response = await apiClient.post('/chat/send-to-agent', { message, agentId });
-        return response.data;
-    },
-
     // Agents
     getAgents: async (): Promise<Agent[]> => {
         try {
@@ -107,16 +101,6 @@ export const api = {
     getActivities: async (cursor?: string, limit = 50): Promise<CursorPageResponse<ActivityLog>> => {
         const response = await apiClient.get('/activities', { params: { cursor, limit } });
         return response.data;
-    },
-
-    // Chat history — cursor-based, newest first
-    getChatHistory: async (cursor?: string, limit = 50): Promise<CursorPageResponse<ChatMessage>> => {
-        const response = await apiClient.get('/chat', { params: { cursor, limit } });
-        return response.data;
-    },
-
-    clearChatHistory: async (): Promise<void> => {
-        await apiClient.delete('/chat');
     },
 
     // Recurring tasks
