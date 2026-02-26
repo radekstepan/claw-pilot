@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Hash, ChevronRight, Search, Layout, Menu } from 'lucide-react';
-import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, pointerWithin } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, pointerWithin, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { Toaster } from 'sonner';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -76,6 +76,10 @@ export default function App() {
     };
 
     const handleTaskClick = (task: Task) => setActiveTask(task);
+
+    const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 5 } });
+    const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } });
+    const sensors = useSensors(mouseSensor, touchSensor);
 
     const handleDragStart = (event: DragStartEvent) => {
         const draggedTask = tasks.find(t => t.id === event.active.id);
@@ -183,6 +187,7 @@ export default function App() {
 
                     <div className="flex-1 flex overflow-x-auto overflow-y-hidden custom-scrollbar bg-transparent">
                         <DndContext
+                            sensors={sensors}
                             onDragStart={handleDragStart}
                             onDragEnd={handleDragEnd}
                             collisionDetection={pointerWithin}

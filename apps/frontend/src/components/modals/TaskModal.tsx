@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package } from 'lucide-react';
+import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Agent, Task } from '@claw-pilot/shared-types';
 import { Badge } from '../ui/Badge';
@@ -43,6 +43,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isRouting, setIsRouting] = useState(false);
+    const [routeAgentId, setRouteAgentId] = useState<string>(task?.agentId ?? task?.assignee_id ?? '');
 
     const {
         register,
@@ -62,7 +64,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
 
     const assigneeId = watch('assignee_id');
 
-    const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable } = useMissionStore();
+    const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable, routeTask } = useMissionStore();
 
     if (!task) return null;
     const agent = agents.find(a => a.id === (assigneeId || task.assignee_id));
@@ -71,6 +73,21 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         { value: NONE_VALUE, label: '— Unassigned —' },
         ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
     ];
+
+    const handleRouteToAgent = async () => {
+        if (!routeAgentId) {
+            return;
+        }
+        setIsRouting(true);
+        try {
+            await routeTask(task!.id, routeAgentId);
+            onClose();
+        } catch {
+            // error toast is handled in store
+        } finally {
+            setIsRouting(false);
+        }
+    };
 
     const handleApprove = async () => {
         setIsSubmitting(true);
@@ -182,6 +199,43 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
 
                 <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-8">
                     <div className="flex-1">
+
+                        {task.status !== 'IN_PROGRESS' && task.status !== 'REVIEW' && task.status !== 'DONE' && (
+                            <section className="mb-8 p-4 border border-violet-500/20 bg-violet-500/[0.04] rounded">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Zap size={14} className="text-violet-500" />
+                                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-violet-600 dark:text-violet-400">Dispatch to Agent</h3>
+                                </div>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+                                    Route this task to an AI agent. The agent will receive the title and description as its prompt and begin working immediately.
+                                </p>
+                                {agents.length === 0 ? (
+                                    <EmptyState icon={Zap} title="No agents available" description="No agents are connected. Check the gateway." />
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <Select
+                                                value={routeAgentId || '__NONE__'}
+                                                onValueChange={(v) => setRouteAgentId(v === '__NONE__' ? '' : v)}
+                                                options={[
+                                                    { value: '__NONE__', label: '— Pick an agent —' },
+                                                    ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
+                                                ]}
+                                                placeholder="— Pick an agent —"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleRouteToAgent}
+                                            disabled={isRouting || !routeAgentId}
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
+                                        >
+                                            {isRouting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                            Route
+                                        </button>
+                                    </div>
+                                )}
+                            </section>
+                        )}
 
                         {task.status === 'REVIEW' && (
                             <section className="mb-8 p-4 border border-amber-400/40 bg-amber-400/[0.06] rounded">

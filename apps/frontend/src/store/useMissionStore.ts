@@ -39,6 +39,7 @@ interface MissionState {
     setGatewayPairing: (required: boolean, deviceId?: string) => void;
     loadMoreActivities: () => Promise<void>;
     loadMoreChat: () => Promise<void>;
+    routeTask: (taskId: string, agentId: string, prompt?: string) => Promise<void>;
     // Recurring
     fetchRecurring: () => Promise<void>;
     createRecurring: (payload: CreateRecurringPayload) => Promise<void>;
@@ -256,6 +257,22 @@ export const useMissionStore = create<MissionState>((set, get) => ({
             }));
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : 'Failed to load more chat history.');
+        }
+    },
+
+    routeTask: async (taskId: string, agentId: string, prompt?: string) => {
+        const { tasks, updateTaskLocally } = get();
+        const snapshot = tasks.find(t => t.id === taskId);
+        if (!snapshot) return;
+        // Optimistic update: mark as ASSIGNED with the chosen agent
+        updateTaskLocally({ ...snapshot, agentId, status: 'ASSIGNED' });
+        try {
+            await api.routeTask(taskId, agentId, prompt);
+            toast.success('Task dispatched to agent.');
+        } catch (error: unknown) {
+            updateTaskLocally(snapshot);
+            toast.error(error instanceof Error ? error.message : 'Failed to route task. Changes reverted.');
+            throw error;
         }
     },
 

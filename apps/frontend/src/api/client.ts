@@ -60,6 +60,10 @@ export const api = {
         const response = await apiClient.post(`/tasks/${taskId}/review`, { action, feedback });
         return response.data;
     },
+    routeTask: async (taskId: string, agentId: string, prompt?: string): Promise<{ id: string; status: string }> => {
+        const response = await apiClient.post(`/tasks/${taskId}/route`, { agentId, prompt });
+        return response.data;
+    },
 
     // Deliverables
     toggleDeliverable: async (deliverableId: string): Promise<Task> => {

@@ -4,7 +4,7 @@ import { eq, count, desc } from 'drizzle-orm';
 import { Server } from 'socket.io';
 import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable, ActivityLog } from '@claw-pilot/shared-types';
 import { randomUUID } from 'crypto';
-import { routeChatToAgent } from '../openclaw/cli.js';
+import { routeChatToAgent, spawnTaskSession } from '../openclaw/cli.js';
 import { z } from 'zod';
 
 declare module 'fastify' {
@@ -199,6 +199,105 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         }
 
         return reply.status(201).send(newActivity);
+    });
+
+    // POST /api/tasks/:id/route — dispatch a task to an AI agent via spawnTaskSession
+    const RouteTaskSchema = z.object({
+        agentId: z.string(),
+        prompt: z.string().optional(),
+    });
+
+    fastify.post('/:id/route', { schema: { body: RouteTaskSchema } }, async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const body = request.body as z.infer<typeof RouteTaskSchema>;
+
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!taskRow) {
+            return reply.status(404).send({ error: 'Task not found' });
+        }
+
+        if (taskRow.status === 'IN_PROGRESS' || taskRow.status === 'REVIEW' || taskRow.status === 'DONE') {
+            return reply.status(409).send({ error: `Task is already in '${taskRow.status}' state and cannot be re-routed.` });
+        }
+
+        const now = new Date().toISOString();
+
+        // Persist agentId + ASSIGNED status synchronously before returning
+        const updatedRow = db.update(tasksTable).set({
+            agentId: body.agentId,
+            status: 'ASSIGNED',
+            updatedAt: now,
+        }).where(eq(tasksTable.id, id)).returning().get();
+
+        if (!updatedRow) return reply.status(404).send({ error: 'Task not found' });
+
+        const updatedTask = rowToTask(updatedRow);
+
+        // Persist the routing activity log
+        const routeActivityId = randomUUID();
+        db.insert(activitiesTable).values({
+            id: routeActivityId,
+            taskId: id,
+            agentId: 'system',
+            message: `Task routed to agent '${body.agentId}' — dispatching…`,
+            timestamp: now,
+        }).run();
+
+        if (fastify.io) {
+            fastify.io.emit('task_updated', updatedTask);
+            fastify.io.emit('activity_added', {
+                id: routeActivityId,
+                taskId: id,
+                agentId: 'system',
+                message: `Task routed to agent '${body.agentId}' — dispatching…`,
+                timestamp: now,
+            });
+        }
+
+        // Return 202 immediately — the heavy AI work runs detached
+        reply.status(202).send({ id, status: 'pending' });
+
+        const prompt = body.prompt ?? [taskRow.title, taskRow.description].filter(Boolean).join('\n\n');
+
+        void (async () => {
+            try {
+                await spawnTaskSession(body.agentId, id, prompt);
+
+                const successNow = new Date().toISOString();
+                const successActivityId = randomUUID();
+
+                // Transition to IN_PROGRESS
+                const inProgressRow = db.update(tasksTable).set({
+                    status: 'IN_PROGRESS',
+                    updatedAt: successNow,
+                }).where(eq(tasksTable.id, id)).returning().get();
+
+                db.insert(activitiesTable).values({
+                    id: successActivityId,
+                    taskId: id,
+                    agentId: body.agentId,
+                    message: `Agent '${body.agentId}' picked up the task and is now working on it.`,
+                    timestamp: successNow,
+                }).run();
+
+                if (fastify.io) {
+                    if (inProgressRow) fastify.io.emit('task_updated', rowToTask(inProgressRow));
+                    fastify.io.emit('activity_added', {
+                        id: successActivityId,
+                        taskId: id,
+                        agentId: body.agentId,
+                        message: `Agent '${body.agentId}' picked up the task and is now working on it.`,
+                        timestamp: successNow,
+                    });
+                }
+            } catch (err: unknown) {
+                fastify.log.error(err, `spawnTaskSession failed for task ${id}`);
+                fastify.io?.emit('agent_error', {
+                    agentId: body.agentId,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        })();
     });
 
     const CreateDeliverableSchema = z.object({
