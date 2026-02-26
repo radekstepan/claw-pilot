@@ -117,19 +117,19 @@ export function NotificationsPanel() {
                     </div>
 
                     {/* Body */}
-                    <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                        {notifications.length === 0 ? (
-                            <div className="py-6">
-                                <EmptyState
-                                    icon={Bell}
-                                    title="No notifications"
-                                    description="Agent errors and review requests will appear here."
-                                />
-                            </div>
-                        ) : (
-                            notifications.map(n => <NotificationRow key={n.id} n={n} />)
-                        )}
-                    </div>
+                    {notifications.length === 0 ? (
+                        <div className="py-6">
+                            <EmptyState
+                                icon={Bell}
+                                title="No notifications"
+                                description="Agent errors and review requests will appear here."
+                            />
+                        </div>
+                    ) : (
+                        <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                            {notifications.map(n => <NotificationRow key={n.id} n={n} />)}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

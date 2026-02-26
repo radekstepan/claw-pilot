@@ -15,7 +15,7 @@ export const LiveFeed = () => {
                 {activities.map(item => (
                     <div key={item.id} className="relative pl-4 border-l border-black/5 dark:border-white/5 group">
                         <div className="absolute top-1 -left-[3px] w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 group-hover:bg-violet-500 transition-colors" />
-                        <div className="text-[10px] text-slate-600 dark:text-slate-300 mb-0.5 leading-relaxed">
+                        <div className="text-[10px] text-slate-600 dark:text-slate-300 mb-0.5 leading-relaxed line-clamp-3">
                             <span className="font-bold text-violet-600 dark:text-violet-400 mr-1">
                                 {!item.agentId ? 'SYSTEM' : agents.find(a => a.id === item.agentId)?.name || item.agentId}
                             </span>

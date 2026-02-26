@@ -66,10 +66,10 @@ export const Select = ({
             <RadixSelect.Portal>
                 <RadixSelect.Content
                     position="popper"
-                    sideOffset={4}
+                    sideOffset={0}
                     className={[
                         'z-[300] overflow-hidden',
-                        'bg-[#0c0a14] border border-white/10 shadow-xl',
+                        'bg-white border border-slate-200 shadow-xl dark:bg-[#0c0a14] dark:border-white/10',
                         'w-[var(--radix-select-trigger-width)]',
                         'max-h-60',
                         'animate-fadeIn',
@@ -87,11 +87,11 @@ export const Select = ({
                                 className={[
                                     'relative flex items-center gap-2',
                                     'px-2 py-1.5 pr-7',
-                                    'text-[11px] text-slate-300',
+                                    'text-[11px] text-slate-700 dark:text-slate-300',
                                     'cursor-pointer select-none outline-none',
-                                    'hover:bg-white/5',
-                                    'focus:bg-violet-600/20 focus:text-white',
-                                    'data-[state=checked]:text-violet-300',
+                                    'hover:bg-slate-100 dark:hover:bg-white/5',
+                                    'focus:bg-violet-100 focus:text-violet-700 dark:focus:bg-violet-600/20 dark:focus:text-white',
+                                    'data-[state=checked]:text-violet-600 dark:data-[state=checked]:text-violet-300',
                                     'data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed',
                                 ].join(' ')}
                             >

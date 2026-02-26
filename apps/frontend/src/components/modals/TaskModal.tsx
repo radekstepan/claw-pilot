@@ -138,6 +138,12 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
             .finally(() => setActivitiesLoading(false));
     }, [task?.id]);
 
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [onClose]);
+
     if (!task) return null;
     const agent = agents.find(a => a.id === (assigneeId || task.assignee_id));
 
@@ -278,7 +284,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-8">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 flex flex-col md:flex-row gap-8">
                     <div className="flex-1">
 
                         {task.status === 'STUCK' && (

@@ -6,6 +6,20 @@ import { Badge } from '../ui/Badge';
 import { Task } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../../store/useMissionStore';
 
+function formatTimeAgo(iso: string | undefined): string {
+    if (!iso) return 'NEW';
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
+}
+
 interface TaskCardProps {
     task: Task;
     onClick: () => void;
@@ -97,7 +111,7 @@ export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) 
                             <Clock size={10} className="text-slate-400 dark:text-slate-600" aria-hidden="true" />
                         )}
                         <span className={`text-[9px] uppercase font-bold tracking-tighter ${isStuck ? 'text-rose-400' : 'text-slate-400 dark:text-slate-600'}`}>
-                            {isStuck ? 'Error' : 'NEW'}
+                            {isStuck ? 'Error' : formatTimeAgo(task.updatedAt ?? task.createdAt)}
                         </span>
                     </div>
                     <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full flex items-center justify-center" aria-hidden="true">
