@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Hash, ChevronRight, Search, Layout, Menu } from 'lucide-react';
+import { Hash, ChevronRight, Search, Layout, Menu, X } from 'lucide-react';
 import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, pointerWithin, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { Toaster } from 'sonner';
 import { Header } from './components/layout/Header';
@@ -49,6 +49,7 @@ export default function App() {
 
     // Local UI State
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [filterText, setFilterText] = useState('');
     const [activeView, setActiveView] = useState<'kanban' | 'recurring'>('kanban');
     const [activeTask, setActiveTask] = useState<Task | null>(null);
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
@@ -80,13 +81,20 @@ export default function App() {
     }), [tasks, activeAgents]);
 
     const filteredTasks = useMemo(() => {
-        const base = selectedAgentId ? tasks.filter((t) => t.assignee_id === selectedAgentId) : tasks;
+        let base = selectedAgentId ? tasks.filter((t) => t.assignee_id === selectedAgentId) : tasks;
+        if (filterText.trim()) {
+            const q = filterText.toLowerCase();
+            base = base.filter(t =>
+                (t.title ?? '').toLowerCase().includes(q) ||
+                (t.description ?? '').toLowerCase().includes(q)
+            );
+        }
         // Sort newest-updated first within each swimlane
         return base.slice().sort((a, b) =>
             new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() -
             new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
         );
-    }, [tasks, selectedAgentId]);
+    }, [tasks, selectedAgentId, filterText]);
 
     const addTask = async (payload: CreateTaskPayload) => {
         try {
@@ -198,8 +206,19 @@ export default function App() {
                                     type="text"
                                     placeholder="Filter..."
                                     aria-label="Filter tasks"
-                                    className="bg-transparent border-none text-[10px] py-1 pl-7 outline-none w-24 focus:w-40 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
+                                    value={filterText}
+                                    onChange={e => setFilterText(e.target.value)}
+                                    className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-24 focus:w-40 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
                                 />
+                                {filterText && (
+                                    <button
+                                        onClick={() => setFilterText('')}
+                                        className="absolute right-1 top-1 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none"
+                                        aria-label="Clear filter"
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                )}
                             </div>
                             <button
                                 onClick={() => setIsFeedCollapsed(!isFeedCollapsed)}

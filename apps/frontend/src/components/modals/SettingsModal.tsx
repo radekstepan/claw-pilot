@@ -310,7 +310,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                 </div>
 
                 <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-black/20 flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-600">
-                    <span>ClawController Revision: b82c91a</span>
+                    <span>ClawController Revision: {__GIT_COMMIT__}</span>
                     <div className="flex items-center gap-4">
                         <span className="flex items-center gap-1"><Server size={10} /> LOCAL_INSTANCE</span>
                         <span>Environment: PRODUCTION_STABLE</span>

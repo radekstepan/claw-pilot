@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap, ScrollText } from 'lucide-react';
+import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap, ScrollText, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Agent, Task, ActivityLog } from '@claw-pilot/shared-types';
+import type { Agent, Task, ActivityLog, Deliverable } from '@claw-pilot/shared-types';
+import { DndContext, DragEndEvent, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '../ui/Badge';
 import { StatusDot } from '../ui/StatusDot';
 import { COLUMN_TITLES } from '../../constants';
@@ -31,6 +34,54 @@ const PRIORITY_OPTIONS = [
     { value: 'MEDIUM', label: 'MEDIUM' },
     { value: 'HIGH', label: 'HIGH' },
 ];
+
+interface SortableDeliverableItemProps {
+    deliverable: Deliverable;
+    taskId: string;
+    onToggle: (deliverableId: string, taskId: string) => void;
+}
+
+function SortableDeliverableItem({ deliverable: d, taskId, onToggle }: SortableDeliverableItemProps) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: d.id });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-violet-500/30 transition-all"
+        >
+            {/* Drag handle */}
+            <button
+                type="button"
+                className="pl-2 py-2 text-slate-300 dark:text-slate-700 hover:text-slate-500 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing focus-visible:outline-none flex-shrink-0 touch-none"
+                aria-label="Drag to reorder"
+                {...attributes}
+                {...listeners}
+            >
+                <GripVertical size={12} />
+            </button>
+            {/* Toggle button */}
+            <button
+                type="button"
+                onClick={() => onToggle(d.id, taskId)}
+                className="flex-1 flex items-center gap-3 py-2 pr-2 text-left focus-visible:outline-none"
+            >
+                <div className="w-4 h-4 flex-shrink-0 text-emerald-600 dark:text-emerald-500">
+                    {d.status === 'COMPLETED'
+                        ? <CheckCircle2 size={14} />
+                        : <Circle size={14} className="text-slate-300 dark:text-slate-600" />}
+                </div>
+                <span className={`text-xs ${d.status === 'COMPLETED' ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-600 dark:text-slate-300'}`}>
+                    {d.title}
+                </span>
+            </button>
+        </div>
+    );
+}
 
 interface TaskModalProps {
     task: Task | null;
@@ -76,7 +127,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
 
     const assigneeId = watch('assignee_id');
 
-    const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable, routeTask } = useMissionStore();
+    const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable, reorderDeliverables, routeTask } = useMissionStore();
 
     useEffect(() => {
         if (!task) return;
@@ -509,24 +560,34 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                     description="No deliverables defined for this task."
                                 />
                             ) : (
-                                <div className="space-y-2">
-                                    {task.deliverables.map((d) => (
-                                        <button
-                                            key={d.id}
-                                            onClick={() => toggleDeliverable(d.id, task.id)}
-                                            className="w-full flex items-center gap-3 p-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-violet-500/30 transition-all text-left"
-                                        >
-                                            <div className="w-4 h-4 flex-shrink-0 text-emerald-600 dark:text-emerald-500">
-                                                {d.status === 'COMPLETED'
-                                                    ? <CheckCircle2 size={14} />
-                                                    : <Circle size={14} className="text-slate-300 dark:text-slate-600" />}
-                                            </div>
-                                            <span className={`text-xs ${d.status === 'COMPLETED' ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-600 dark:text-slate-300'}`}>
-                                                {d.title}
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
+                                <DndContext
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={(event: DragEndEvent) => {
+                                        const { active, over } = event;
+                                        if (!over || active.id === over.id || !task.deliverables) return;
+                                        const oldIndex = task.deliverables.findIndex(d => d.id === active.id);
+                                        const newIndex = task.deliverables.findIndex(d => d.id === over.id);
+                                        if (oldIndex === -1 || newIndex === -1) return;
+                                        const reordered = arrayMove(task.deliverables, oldIndex, newIndex);
+                                        reorderDeliverables(task.id, reordered.map(d => d.id));
+                                    }}
+                                >
+                                    <SortableContext
+                                        items={task.deliverables.map(d => d.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        <div className="space-y-2">
+                                            {task.deliverables.map((d) => (
+                                                <SortableDeliverableItem
+                                                    key={d.id}
+                                                    deliverable={d}
+                                                    taskId={task.id}
+                                                    onToggle={toggleDeliverable}
+                                                />
+                                            ))}
+                                        </div>
+                                    </SortableContext>
+                                </DndContext>
                             )}
                         </section>
                     </div>

@@ -3,6 +3,18 @@ import { toast } from 'sonner';
 import type { Task, Agent, ActivityLog, ChatMessage, TaskStatus, CreateTaskPayload, RecurringTask, CreateRecurringPayload } from '@claw-pilot/shared-types';
 import { api } from '../api/client';
 
+export interface AppNotification {
+    id: string;
+    type: 'error' | 'review';
+    message: string;
+    agentId?: string;
+    taskId?: string;
+    timestamp: string;
+    read: boolean;
+}
+
+const MAX_NOTIFICATIONS = 50;
+
 interface MissionState {
     tasks: Task[];
     agents: Agent[];
@@ -30,6 +42,9 @@ interface MissionState {
     /** Timestamp of the last successful full fetch or sync, for delta syncs. */
     lastSyncAt: string | null;
 
+    /** In-app notification centre entries. */
+    notifications: AppNotification[];
+
     fetchInitialData: () => Promise<void>;
     syncData: (since: string) => Promise<void>;
     updateTaskLocally: (task: Task) => void;
@@ -39,6 +54,7 @@ interface MissionState {
     updateTask: (taskId: string, patch: Partial<Task>) => Promise<void>;
     deleteTask: (taskId: string) => Promise<void>;
     toggleDeliverable: (deliverableId: string, parentTaskId: string) => Promise<void>;
+    reorderDeliverables: (taskId: string, orderedIds: string[]) => Promise<void>;
     createTask: (payload: CreateTaskPayload) => Promise<void>;
     addChatMessage: (msg: ChatMessage) => void;
     clearChatHistory: () => Promise<void>;
@@ -49,6 +65,8 @@ interface MissionState {
     loadMoreChat: () => Promise<void>;
     routeTask: (taskId: string, agentId: string, prompt?: string) => Promise<void>;
     setBusyAgent: (agentId: string, busy: boolean) => void;
+    addNotification: (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => void;
+    markAllNotificationsRead: () => void;
     // Recurring
     fetchRecurring: () => Promise<void>;
     createRecurring: (payload: CreateRecurringPayload) => Promise<void>;
@@ -74,6 +92,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     updatingTaskIds: new Set<string>(),
     busyAgentIds: new Set<string>(),
     lastSyncAt: null,
+    notifications: [],
 
     fetchInitialData: async () => {
         set({ isLoading: true, error: null });
@@ -259,6 +278,23 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         }
     },
 
+    reorderDeliverables: async (taskId: string, orderedIds: string[]) => {
+        const { tasks, updateTaskLocally } = get();
+        const task = tasks.find(t => t.id === taskId);
+        if (!task || !task.deliverables) return;
+        // Optimistic reorder
+        const byId = new Map(task.deliverables.map(d => [d.id, d]));
+        const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean);
+        updateTaskLocally({ ...task, deliverables: reordered });
+        try {
+            const updatedTask = await api.reorderDeliverables(taskId, orderedIds);
+            updateTaskLocally(updatedTask);
+        } catch (error: unknown) {
+            updateTaskLocally(task);
+            toast.error(error instanceof Error ? error.message : 'Failed to reorder deliverables. Changes reverted.');
+        }
+    },
+
     createTask: async (payload: CreateTaskPayload) => {
         try {
             const newTask = await api.createTask(payload);
@@ -357,6 +393,24 @@ export const useMissionStore = create<MissionState>((set, get) => ({
             else next.delete(agentId);
             return { busyAgentIds: next };
         });
+    },
+
+    addNotification: (n) => {
+        const entry: AppNotification = {
+            ...n,
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            read: false,
+        };
+        set((s) => ({
+            notifications: [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
+        }));
+    },
+
+    markAllNotificationsRead: () => {
+        set((s) => ({
+            notifications: s.notifications.map(n => ({ ...n, read: true })),
+        }));
     },
 
     // Recurring

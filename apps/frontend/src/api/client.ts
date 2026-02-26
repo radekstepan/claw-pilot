@@ -74,6 +74,10 @@ export const api = {
         const response = await apiClient.patch(`/deliverables/${deliverableId}/complete`);
         return response.data;
     },
+    reorderDeliverables: async (taskId: string, ids: string[]): Promise<Task> => {
+        const response = await apiClient.patch(`/deliverables/${taskId}/reorder`, { ids });
+        return response.data;
+    },
 
     // Chat
     sendChatMessageToAgent: async (message: string, agentId?: string): Promise<ChatMessage> => {

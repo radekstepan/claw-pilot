@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
+import rehypeExternalLinks from 'rehype-external-links';
 import rehypeHighlight from 'rehype-highlight';
 
 interface MarkdownContentProps {
@@ -17,6 +18,11 @@ interface MarkdownContentProps {
  * Uses Tailwind `prose` (via @tailwindcss/typography) for comfortable
  * typographic defaults. `max-w-none` prevents the prose width cap from
  * colliding with the surrounding layout.
+ *
+ * rehype plugin order matters:
+ *   1. rehypeSanitize  — strip any dangerous HTML from agent output
+ *   2. rehypeExternalLinks — annotate remaining safe anchors with target/rel
+ *   3. rehypeHighlight — syntax-highlight fenced code blocks
  */
 export const MarkdownContent = ({ content, className = '' }: MarkdownContentProps) => {
     return (
@@ -30,7 +36,11 @@ export const MarkdownContent = ({ content, className = '' }: MarkdownContentProp
         >
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeSanitize, rehypeHighlight]}
+                rehypePlugins={[
+                    rehypeSanitize,
+                    [rehypeExternalLinks, { target: '_blank', rel: ['noopener', 'noreferrer'] }],
+                    rehypeHighlight,
+                ]}
             >
                 {content}
             </ReactMarkdown>

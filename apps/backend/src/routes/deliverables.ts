@@ -1,6 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { db, tasks as tasksTable } from '../db/index.js';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { Deliverable, Task } from '@claw-pilot/shared-types';
 
 function rowToTask(row: typeof tasksTable.$inferSelect): Task {
@@ -64,6 +65,45 @@ const deliverableRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         }
 
         return reply.send(foundDeliverable);
+    });
+
+    // ── Reorder deliverables ─────────────────────────────────────────────────
+    fastify.patch('/:taskId/reorder', {
+        schema: {
+            params: z.object({ taskId: z.string() }),
+            body: z.object({ ids: z.array(z.string()) }),
+        },
+    }, async (request, reply) => {
+        const { taskId } = request.params as { taskId: string };
+        const { ids } = request.body as { ids: string[] };
+
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).get();
+        if (!taskRow) return reply.status(404).send({ error: 'Task not found' });
+
+        const deliverables = taskRow.deliverables ?? [];
+
+        // Validate that all supplied IDs belong to this task
+        const taskDeliverableIds = new Set(deliverables.map(d => d.id));
+        if (!ids.every(id => taskDeliverableIds.has(id))) {
+            return reply.status(400).send({ error: 'One or more deliverable IDs do not belong to this task' });
+        }
+
+        // Build a lookup map then reorder
+        const byId = new Map<string, Deliverable>(deliverables.map(d => [d.id, d]));
+        const reordered = ids.map(id => byId.get(id)!);
+
+        const now = new Date().toISOString();
+        const updatedRow = db.update(tasksTable)
+            .set({ deliverables: reordered, updatedAt: now })
+            .where(eq(tasksTable.id, taskId))
+            .returning()
+            .get();
+
+        if (fastify.io && updatedRow) {
+            fastify.io.emit('task_updated', rowToTask(updatedRow));
+        }
+
+        return reply.send(rowToTask(updatedRow!));
     });
 };
 

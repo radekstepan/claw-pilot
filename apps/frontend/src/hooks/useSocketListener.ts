@@ -58,6 +58,14 @@ export function useSocketListener() {
         socket.on('task_updated', (task) => {
             console.log('Socket event: task_updated', task);
             updateTaskLocally(task);
+            // Surface REVIEW transitions as in-app notifications
+            if (task.status === 'REVIEW') {
+                useMissionStore.getState().addNotification({
+                    type: 'review',
+                    message: `"${task.title}" is waiting for your review.`,
+                    taskId: task.id,
+                });
+            }
         });
 
         socket.on('task_deleted', (payload) => {
@@ -114,6 +122,11 @@ export function useSocketListener() {
             toast.error(`Agent error (${agentId}): ${error}`, {
                 duration: 8000,
                 description: 'The task has been marked as Stuck. Open the task to re-route it to an agent.',
+            });
+            useMissionStore.getState().addNotification({
+                type: 'error',
+                message: `Agent ${agentId}: ${error}`,
+                agentId,
             });
         });
 

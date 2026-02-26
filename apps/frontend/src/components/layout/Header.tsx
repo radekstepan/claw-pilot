@@ -1,5 +1,6 @@
-import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu, WifiOff, Link2, Copy } from 'lucide-react';
+import { Terminal, Sun, Moon, Plus, ChevronDown, Menu, WifiOff, Link2, Copy } from 'lucide-react';
 import { Agent } from '@claw-pilot/shared-types';
+import { NotificationsPanel } from '../ui/NotificationsPanel';
 
 interface HeaderProps {
     stats: { active: number; queued: number; done: number };
@@ -83,7 +84,7 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gateway
                 </div>
                 <div>
                     <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawPilot</h1>
-                    <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // v1.0.0</div>
+                    <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // {__GIT_COMMIT__}</div>
                 </div>
             </div>
 
@@ -158,13 +159,7 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gateway
                 <ChevronDown size={12} className={`${pill.chevron} opacity-50 group-hover:opacity-100`} aria-hidden="true" />
             </div>
 
-            <button
-                className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
-                aria-label="Notifications"
-            >
-                <Bell size={18} />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-violet-500 rounded-full border-2 border-white dark:border-[#060509]" aria-hidden="true" />
-            </button>
+            <NotificationsPanel />
             <button
                 onClick={onNewTask}
                 className="px-3 md:px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold uppercase tracking-widest transition-all rounded-sm flex items-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
