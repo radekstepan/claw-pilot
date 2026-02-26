@@ -2,10 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Accent color system ─────────────────────────────────────────────────────
+   One of these classes is applied to <html> alongside .dark/.light.
+   Components reference var(--accent-*) for theme-aware accent coloring.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root, .accent-violet {
+  --accent-300: #c4b5fd;
+  --accent-400: #a78bfa;
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+  --accent-scroll-low:  rgba(139,  92, 246, 0.4);
+  --accent-scroll-hi:   rgba(139,  92, 246, 0.6);
+  --accent-scroll-sm:   rgba(139,  92, 246, 0.1);
+  --accent-scroll-hover:rgba(139,  92, 246, 0.3);
+}
+.accent-blue {
+  --accent-300: #93c5fd;
+  --accent-400: #60a5fa;
+  --accent-500: #3b82f6;
+  --accent-600: #2563eb;
+  --accent-scroll-low:  rgba( 59, 130, 246, 0.4);
+  --accent-scroll-hi:   rgba( 59, 130, 246, 0.6);
+  --accent-scroll-sm:   rgba( 59, 130, 246, 0.1);
+  --accent-scroll-hover:rgba( 59, 130, 246, 0.3);
+}
+.accent-emerald {
+  --accent-300: #6ee7b7;
+  --accent-400: #34d399;
+  --accent-500: #10b981;
+  --accent-600: #059669;
+  --accent-scroll-low:  rgba( 16, 185, 129, 0.4);
+  --accent-scroll-hi:   rgba( 16, 185, 129, 0.6);
+  --accent-scroll-sm:   rgba( 16, 185, 129, 0.1);
+  --accent-scroll-hover:rgba( 16, 185, 129, 0.3);
+}
+.accent-rose {
+  --accent-300: #fda4af;
+  --accent-400: #fb7185;
+  --accent-500: #f43f5e;
+  --accent-600: #e11d48;
+  --accent-scroll-low:  rgba(244,  63,  94, 0.4);
+  --accent-scroll-hi:   rgba(244,  63,  94, 0.6);
+  --accent-scroll-sm:   rgba(244,  63,  94, 0.1);
+  --accent-scroll-hover:rgba(244,  63,  94, 0.3);
+}
+.accent-amber {
+  --accent-300: #fcd34d;
+  --accent-400: #fbbf24;
+  --accent-500: #f59e0b;
+  --accent-600: #d97706;
+  --accent-scroll-low:  rgba(245, 158,  11, 0.4);
+  --accent-scroll-hi:   rgba(245, 158,  11, 0.6);
+  --accent-scroll-sm:   rgba(245, 158,  11, 0.1);
+  --accent-scroll-hover:rgba(245, 158,  11, 0.3);
+}
+
 @layer utilities {
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(139, 92, 246, 0.4) transparent;
+    scrollbar-color: var(--accent-scroll-low) transparent;
   }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -15,11 +70,11 @@
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.4);
+    background: var(--accent-scroll-low);
     border-radius: 4px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(139, 92, 246, 0.6);
+    background: var(--accent-scroll-hi);
   }
 
   .animate-slideUp {
@@ -27,6 +82,13 @@
   }
   .animate-fadeIn {
     animation: fadeIn 0.2s ease-out forwards;
+  }
+
+  /* Accent-aware active-state background + border for nav items and tab indicators.
+     Uses color-mix so opacity naturally respects the current accent variable. */
+  .accent-active-bg {
+    background-color: color-mix(in srgb, var(--accent-500) 10%, transparent);
+    border-color:     color-mix(in srgb, var(--accent-500) 20%, transparent);
   }
 }
 
@@ -53,7 +115,7 @@
 /* Global focus-visible ring for keyboard navigation */
 @layer base {
   :focus-visible {
-    outline: 2px solid rgb(139 92 246);
+    outline: 2px solid var(--accent-500);
     outline-offset: 2px;
   }
   /* Remove outline for mouse users but keep for keyboard */

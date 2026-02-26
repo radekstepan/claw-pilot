@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Trash2, Zap, Globe, RefreshCw, Plus, Save, Loader2 } from 'lucide-react';
+import { X, Bot, Cpu, Activity, Server, Settings as SettingsIcon, Trash2, Zap, Globe, RefreshCw, Plus, Save, Loader2, Sun, Moon, Palette } from 'lucide-react';
 import type { Agent, AppConfig } from '@claw-pilot/shared-types';
 import type { Model, GatewayStatus } from '../../api/client';
 import { Badge } from '../ui/Badge';
@@ -12,9 +12,12 @@ interface SettingsModalProps {
     agents: Agent[];
     onClose: () => void;
     theme: string;
+    onToggleTheme: () => void;
+    accentColor: string;
+    onChangeAccent: (color: string) => void;
 }
 
-export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
+export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentColor, onChangeAccent }: SettingsModalProps) => {
     const [activeTab, setActiveTab] = useState('agents');
 
     // Agent form modal — declared before the Escape useEffect so the variable is in scope
@@ -84,7 +87,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                         setAgentFormMode('create');
                         setAgentFormOpen(true);
                     }}
-                    className="flex items-center gap-2 text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 transition-colors"
+                    className="flex items-center gap-2 text-[9px] uppercase font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)] hover:text-[var(--accent-500)] transition-colors"
                 >
                     <Plus size={14} /> Add Agent
                 </button>
@@ -160,7 +163,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
         <div className="space-y-6 animate-fadeIn">
             <div className="flex items-center justify-between">
                 <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">LLM Provider Status</h3>
-                <button onClick={() => api.getModels().then(setModels).catch()} className="text-[9px] uppercase font-bold text-violet-600 dark:text-violet-400 flex items-center gap-1"><RefreshCw size={10} /> Rescan</button>
+                <button onClick={() => api.getModels().then(setModels).catch()} className="text-[9px] uppercase font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)] flex items-center gap-1"><RefreshCw size={10} /> Rescan</button>
             </div>
             <div className="space-y-2">
                 {models.map((model) => (
@@ -181,6 +184,66 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
         </div>
     );
 
+    const renderAppearanceTab = () => {
+        const accentSwatches = [
+            { id: 'violet',  label: 'Violet',  bg: 'bg-violet-500',  ring: 'ring-violet-500' },
+            { id: 'blue',    label: 'Blue',    bg: 'bg-blue-500',    ring: 'ring-blue-500' },
+            { id: 'emerald', label: 'Emerald', bg: 'bg-emerald-500', ring: 'ring-emerald-500' },
+            { id: 'rose',    label: 'Rose',    bg: 'bg-rose-500',    ring: 'ring-rose-500' },
+            { id: 'amber',   label: 'Amber',   bg: 'bg-amber-500',   ring: 'ring-amber-500' },
+        ];
+        return (
+            <div className="space-y-6 animate-fadeIn">
+                <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">Appearance</h3>
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded">
+                        <div>
+                            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Theme</p>
+                            <p className="text-[9px] text-slate-400 mt-0.5">Switch between light and dark interface</p>
+                        </div>
+                        <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 rounded p-0.5">
+                            <button
+                                onClick={() => { if (theme !== 'light') onToggleTheme(); }}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${theme === 'light' ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                                aria-pressed={theme === 'light'}
+                                aria-label="Light mode"
+                            >
+                                <Sun size={11} aria-hidden="true" /> Light
+                            </button>
+                            <button
+                                onClick={() => { if (theme !== 'dark') onToggleTheme(); }}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${theme === 'dark' ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                                aria-pressed={theme === 'dark'}
+                                aria-label="Dark mode"
+                            >
+                                <Moon size={11} aria-hidden="true" /> Dark
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded">
+                        <div>
+                            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Highlight Color</p>
+                            <p className="text-[9px] text-slate-400 mt-0.5">Used for buttons, active states and focus rings throughout the UI</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {accentSwatches.map(swatch => (
+                                <button
+                                    key={swatch.id}
+                                    onClick={() => onChangeAccent(swatch.id)}
+                                    aria-label={`${swatch.label} accent color`}
+                                    aria-pressed={accentColor === swatch.id}
+                                    title={swatch.label}
+                                    className={`w-6 h-6 rounded-full ${swatch.bg} transition-all focus-visible:outline-none ${accentColor === swatch.id ? `ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#0c0a14] ${swatch.ring} scale-110` : 'opacity-50 hover:opacity-100 hover:scale-105'}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderSystemTab = () => (
         <div className="space-y-6 animate-fadeIn">
             <div className="grid grid-cols-3 gap-4">
@@ -196,9 +259,9 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                 ))}
             </div>
 
-            <div className="p-4 border border-violet-500/20 bg-violet-500/[0.02] rounded space-y-4">
+            <div className="p-4 border accent-active-bg rounded space-y-4">
                 <div className="flex items-center gap-2 mb-2">
-                    <Globe size={14} className="text-violet-600 dark:text-violet-500" />
+                    <Globe size={14} className="text-[var(--accent-600)] dark:text-[var(--accent-500)]" />
                     <h3 className="text-[10px] uppercase font-bold text-slate-900 dark:text-white tracking-widest">Gateway Configuration</h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -259,7 +322,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                         }
                     }}
                     disabled={isSavingConfig}
-                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 disabled:opacity-50 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] text-white text-[10px] uppercase tracking-widest font-bold disabled:opacity-50 transition-all"
                 >
                     {isSavingConfig ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                     Save Changes
@@ -278,23 +341,25 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60" onClick={onClose} />
-            <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded-xl">
+            <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded">
                 <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01]">
                     <div className="flex items-center gap-6 h-full">
                         <div className="flex items-center gap-2 mr-4">
-                            <SettingsIcon size={14} className="text-violet-600 dark:text-violet-500" />
+                            <SettingsIcon size={14} className="text-[var(--accent-600)] dark:text-[var(--accent-500)]" />
                             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-900 dark:text-white">System Settings</span>
                         </div>
                         {[
                             { id: 'agents', label: 'Squad Management', icon: Bot },
                             { id: 'models', label: 'Model Fallback', icon: Cpu },
-                            { id: 'system', label: 'Gateway Health', icon: Activity }
+                            { id: 'system', label: 'Gateway Health', icon: Activity },
+                            { id: 'appearance', label: 'Appearance', icon: Palette },
                         ].map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-2 px-1 h-full border-b-2 transition-all text-[10px] uppercase tracking-wider font-bold ${activeTab === tab.id
-                                    ? 'border-violet-600 dark:border-violet-500 text-slate-900 dark:text-white'
+                                style={activeTab === tab.id ? { borderBottomColor: 'var(--accent-500)' } : undefined}
+                        className={`flex items-center gap-2 px-1 h-full border-b-2 transition-all text-[10px] uppercase tracking-wider font-bold ${activeTab === tab.id
+                                    ? 'border-[var(--accent-500)] text-slate-900 dark:text-white'
                                     : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
                                     }`}
                             >
@@ -309,6 +374,7 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
                     {activeTab === 'agents' && renderAgentsTab()}
                     {activeTab === 'models' && renderModelsTab()}
                     {activeTab === 'system' && renderSystemTab()}
+                    {activeTab === 'appearance' && renderAppearanceTab()}
                 </div>
 
                 <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-black/20 flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-600">

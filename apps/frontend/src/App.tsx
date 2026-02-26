@@ -22,6 +22,9 @@ export default function App() {
     // Persist theme to localStorage
     const [theme, setTheme] = useState<string>(() => localStorage.getItem('theme') ?? 'dark');
 
+    // Persist accent color to localStorage
+    const [accentColor, setAccentColor] = useState<string>(() => localStorage.getItem('accentColor') ?? 'violet');
+
     // ── Read/Unread tracking ─────────────────────────────────────────────────
     // A "read key" is `${taskId}:${status}`. A card is unread if its current key
     // isn't in the set (e.g. it was never opened, or it moved to a new swimlane).
@@ -35,12 +38,21 @@ export default function App() {
         });
     }, []);
 
+    const handleAccentChange = useCallback((color: string) => {
+        localStorage.setItem('accentColor', color);
+        setAccentColor(color);
+    }, []);
+
     // Keep the <html> element's .dark class in sync with theme state.
     // The blocking <script> in index.html applies it before React mounts;
     // this effect keeps it accurate after user toggles.
     useEffect(() => {
-        document.documentElement.classList.toggle('dark', theme === 'dark');
-    }, [theme]);
+        const root = document.documentElement;
+        root.classList.toggle('dark', theme === 'dark');
+        // Replace any existing accent-* class with the current one
+        ['violet', 'blue', 'emerald', 'rose', 'amber'].forEach(c => root.classList.remove(`accent-${c}`));
+        root.classList.add(`accent-${accentColor}`);
+    }, [theme, accentColor]);
 
     // Zustand Store
     const { tasks, agents, fetchInitialData, fetchRecurring, updateTaskStatus, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, isLoading } = useMissionStore();
@@ -68,14 +80,11 @@ export default function App() {
         }
     }, [isLoading, tasks, readSetInitialised]);
 
-    const activeAgents = useMemo(() => agents.filter(a => a.status === 'WORKING'), [agents]);
-
     const todayStr = new Date().toDateString();
     const stats = useMemo(() => ({
-        active: activeAgents.length,
         queued: tasks.filter(t => t.status === 'BACKLOG' || t.status === 'TODO' || t.status === 'ASSIGNED').length,
         done: tasks.filter(t => t.status === 'DONE' && new Date(t.updatedAt ?? t.createdAt ?? 0).toDateString() === todayStr).length,
-    }), [tasks, activeAgents, todayStr]);
+    }), [tasks, todayStr]);
 
     const filteredTasks = useMemo(() => {
         let base = tasks;
@@ -148,7 +157,6 @@ export default function App() {
                 gatewayOnline={gatewayOnline}
                 gatewayPairingRequired={gatewayPairingRequired}
                 gatewayDeviceId={gatewayDeviceId}
-                activeAgents={activeAgents}
                 onToggleTheme={toggleTheme}
                 onNewTask={() => setIsNewTaskOpen(true)}
                 onToggleSidebar={() => setIsSidebarOpen(o => !o)}
@@ -246,15 +254,15 @@ export default function App() {
             </main>
 
             {activeTask && <TaskModal task={activeTask} onClose={() => setActiveTask(null)} agents={agents} />}
-            {isSettingsOpen && <SettingsModal agents={agents} onClose={() => setIsSettingsOpen(false)} theme={theme} />}
+            {isSettingsOpen && <SettingsModal agents={agents} onClose={() => setIsSettingsOpen(false)} theme={theme} onToggleTheme={toggleTheme} accentColor={accentColor} onChangeAccent={handleAccentChange} />}
             {isNewTaskOpen && <NewTaskModal agents={agents} onClose={() => setIsNewTaskOpen(false)} onAdd={addTask} />}
 
             <style dangerouslySetInnerHTML={{
                 __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.1); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.3); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--accent-scroll-sm); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent-scroll-hover); }
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

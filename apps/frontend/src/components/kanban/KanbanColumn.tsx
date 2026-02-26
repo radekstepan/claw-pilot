@@ -1,10 +1,11 @@
 import { useRef } from 'react';
-import { Plus, Activity, Lock, AlertTriangle } from 'lucide-react';
+import { Activity, Lock, AlertTriangle } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { TaskCard } from './TaskCard';
 import { Task } from '@claw-pilot/shared-types';
 import { SkeletonCard } from '../ui/SkeletonCard';
+import { EmptyState } from '../ui/EmptyState';
 
 interface KanbanColumnProps {
     id: string;
@@ -45,7 +46,7 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
         <section
             ref={setNodeRef}
             aria-label={`${title} column, ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
-            className={`flex-1 min-w-[280px] flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-all duration-150
+            className={`${tasks.length === 0 ? 'flex-none w-36' : 'flex-1 min-w-[280px]'} flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-all duration-150
                 ${isOver ? 'bg-violet-500/5 dark:bg-violet-400/5' : ''}
                 ${isDoneColumn && !showNoDrop ? 'opacity-80' : ''}
                 ${showNoDrop ? 'opacity-100 ring-1 ring-inset ring-red-500/40 bg-red-500/[0.03]' : ''}
@@ -76,13 +77,6 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                         </span>
                     )}
                 </div>
-                {!isDoneColumn && !isStuckColumn && (
-                    <Plus
-                        size={14}
-                        className="text-slate-400 dark:text-slate-700 hover:text-slate-900 dark:hover:text-slate-400 cursor-pointer transition-colors"
-                        aria-hidden="true"
-                    />
-                )}
             </div>
             <div
                 ref={scrollContainerRef}
@@ -93,9 +87,8 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                 {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : tasks.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center opacity-40 dark:opacity-20 border border-dashed border-slate-200 dark:border-white/10 rounded p-8 pointer-events-none" aria-hidden="true">
-                        <Activity size={24} className="mb-2 text-slate-300 dark:text-white" />
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-white">Empty Node</span>
+                    <div aria-hidden="true" className="pointer-events-none">
+                        <EmptyState icon={Activity} title="Empty" />
                     </div>
                 ) : (
                     // Virtual list: total-height spacer with absolutely-positioned items

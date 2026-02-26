@@ -28,9 +28,9 @@ export const Sidebar = ({ onOpenSettings, isMobileOpen, onMobileClose, activeVie
                 <button
                     onClick={() => { onChangeView('kanban'); onMobileClose(); }}
                     aria-pressed={activeView === 'kanban'}
-                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none ${
                         activeView === 'kanban'
-                            ? 'bg-violet-500/10 dark:bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300'
+                            ? 'accent-active-bg border text-[var(--accent-600)] dark:text-[var(--accent-300)]'
                             : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-transparent text-slate-600 dark:text-slate-400'
                     }`}
                 >
@@ -40,9 +40,9 @@ export const Sidebar = ({ onOpenSettings, isMobileOpen, onMobileClose, activeVie
                 <button
                     onClick={() => { onChangeView('recurring'); onMobileClose(); }}
                     aria-pressed={activeView === 'recurring'}
-                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-sm transition-all text-[11px] font-bold focus-visible:outline-none ${
                         activeView === 'recurring'
-                            ? 'bg-violet-500/10 dark:bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300'
+                            ? 'accent-active-bg border text-[var(--accent-600)] dark:text-[var(--accent-300)]'
                             : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-transparent text-slate-600 dark:text-slate-400'
                     }`}
                 >

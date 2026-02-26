@@ -138,7 +138,7 @@ export const AgentFormModal = ({
             className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-black/10 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-black/10 dark:border-white/10 rounded shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
                     <div className="flex items-center gap-2">
