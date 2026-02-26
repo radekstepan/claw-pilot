@@ -2,6 +2,7 @@ import { Settings, CalendarClock, LayoutDashboard } from 'lucide-react';
 import { StatusDot } from '../ui/StatusDot';
 import { SkeletonAgentItem } from '../ui/SkeletonCard';
 import { Agent } from '../../types';
+import { useMissionStore } from '../../store/useMissionStore';
 
 interface SidebarProps {
     agents: Agent[];
@@ -15,7 +16,10 @@ interface SidebarProps {
     onChangeView: (view: 'kanban' | 'recurring') => void;
 }
 
-export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onOpenSettings, isMobileOpen, onMobileClose, activeView, onChangeView }: SidebarProps) => (
+export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onOpenSettings, isMobileOpen, onMobileClose, activeView, onChangeView }: SidebarProps) => {
+    const busyAgentIds = useMissionStore((s) => s.busyAgentIds);
+
+    return (
     <aside
         className={`
             fixed md:relative inset-y-0 left-0 z-40
@@ -78,11 +82,15 @@ export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onO
                                 }`}
                         >
                             <div className="flex-shrink-0">
-                                <StatusDot status={agent.status} />
+                                <StatusDot status={agent.status} busy={busyAgentIds.has(agent.id)} />
                             </div>
                             <div className="text-left overflow-hidden">
                                 <div className="text-[11px] font-bold text-slate-900 dark:text-slate-200 truncate">{agent.name}</div>
-                                <div className="text-[9px] text-slate-500 uppercase tracking-tighter truncate">{agent.role}</div>
+                                {busyAgentIds.has(agent.id) ? (
+                                    <div className="text-[9px] text-violet-500 dark:text-violet-400 italic tracking-tighter truncate animate-pulse">Thinking…</div>
+                                ) : (
+                                    <div className="text-[9px] text-slate-500 uppercase tracking-tighter truncate">{agent.role}</div>
+                                )}
                             </div>
                         </button>
                     ))
@@ -101,4 +109,5 @@ export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onO
             </button>
         </div>
     </aside>
-);
+    );
+};

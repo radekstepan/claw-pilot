@@ -169,7 +169,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             newStatus = 'REVIEW';
             enqueueAiJob('activity-route', AI_PRIORITY_NORMAL, async () => {
                 await routeChatToAgent('main', `Task ${id} ready for review`);
-            }, fastify);
+            }, fastify, '__gateway__');
         }
 
         const now = new Date().toISOString();
@@ -362,7 +362,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                     fastify.io.emit('agent_error', { agentId: body.agentId, error: errMsg });
                 }
             }
-        }, fastify);
+        }, fastify, body.agentId);
     });
 
     const CreateDeliverableSchema = z.object({
@@ -517,7 +517,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                         fastify.io.emit('agent_error', { agentId: assignedAgentId, error: retryErrMsg });
                     }
                 }
-            }, fastify);
+            }, fastify, assignedAgentId);
 
             return reply.status(202).send(updatedTask);
         }

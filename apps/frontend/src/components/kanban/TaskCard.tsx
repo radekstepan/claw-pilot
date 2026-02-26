@@ -1,4 +1,4 @@
-import { Clock, User, AlertTriangle } from 'lucide-react';
+import { Clock, User, AlertTriangle, Loader2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Card } from '../ui/Card';
@@ -19,6 +19,7 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
         disabled: isOverlay,
     });
     const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
+    const isAgentBusy = useMissionStore((s) => !!task.agentId && s.busyAgentIds.has(task.agentId));
 
     const style = {
         transform: CSS.Translate.toString(transform),
@@ -66,6 +67,12 @@ export const TaskCard = ({ task, onClick, isOverlay }: TaskCardProps) => {
                         </span>
                     ))}
                 </div>
+                {isAgentBusy && (
+                    <div className="flex items-center gap-1.5 mb-2 px-2 py-1 rounded-sm bg-violet-500/8 dark:bg-violet-500/10 border border-violet-500/20">
+                        <Loader2 size={9} className="text-violet-500 animate-spin flex-shrink-0" aria-hidden="true" />
+                        <span className="text-[9px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-widest">Agent working…</span>
+                    </div>
+                )}
                 <div className="flex items-center justify-between border-t border-black/[0.04] dark:border-white/[0.04] pt-2 mt-2">
                     <div className="flex items-center gap-1">
                         {isStuck ? (

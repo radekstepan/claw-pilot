@@ -56,25 +56,32 @@ export const AI_PRIORITY_NORMAL = 0;
  * when a concurrency slot is available. Errors are logged and emitted via
  * Socket.io so the frontend can react without polling.
  *
- * @param label   Short human-readable name for log messages (e.g. 'chat', 'task-route').
+ * @param label    Short human-readable name for log messages (e.g. 'chat', 'task-route').
  * @param priority Higher number = higher priority. Use AI_PRIORITY_HIGH or AI_PRIORITY_NORMAL.
- * @param fn      Async function that performs the actual gateway call.
- * @param fastify Fastify instance used for structured logging and Socket.io emission.
+ * @param fn       Async function that performs the actual gateway call.
+ * @param fastify  Fastify instance used for structured logging and Socket.io emission.
+ * @param agentId  Optional agent identifier emitted with agent_busy_changed events so the
+ *                 frontend can show a real-time spinner before the next sessionMonitor poll.
+ *                 Use '__gateway__' for the main Squad Terminal channel.
  */
 export function enqueueAiJob(
     label: string,
     priority: number,
     fn: () => Promise<void>,
     fastify: FastifyInstance,
+    agentId?: string,
 ): void {
     void aiQueue.add(
         async () => {
+            if (agentId) fastify.io?.emit('agent_busy_changed', { agentId, busy: true });
             try {
                 await fn();
             } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : String(err);
                 fastify.log.error({ err, label }, `[aiQueue] job '${label}' failed: ${message}`);
                 fastify.io?.emit('agent_error', { agentId: label, error: message });
+            } finally {
+                if (agentId) fastify.io?.emit('agent_busy_changed', { agentId, busy: false });
             }
         },
         { priority },

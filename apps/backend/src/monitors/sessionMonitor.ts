@@ -47,17 +47,21 @@ export function startSessionMonitor(fastify: FastifyInstance): NodeJS.Timeout {
         }
 
         const activeSessions = sessions.filter(s => s.status === 'WORKING' || s.status === 'IDLE');
+        const isFirstTick = Object.keys(previousAgentStatuses).length === 0;
 
         for (const agent of agents) {
             const session = activeSessions.find(s => s.agent === agent.id || s.agentId === agent.id);
             const currentStatus = session ? (session.status === 'WORKING' ? 'WORKING' : 'IDLE') : 'OFFLINE';
             const previousStatus = previousAgentStatuses[agent.id];
 
-            if (previousStatus !== undefined && previousStatus !== currentStatus) {
+            // Emit on first tick (cold start) OR whenever status changes
+            if (isFirstTick || previousStatus !== currentStatus) {
                 const updatedAgent: Agent = { ...agent, status: currentStatus };
                 if (fastify.io) {
                     fastify.io.emit('agent_status_changed', updatedAgent);
-                    fastify.log.info(`[sessionMonitor] Agent ${agent.id}: ${previousStatus} → ${currentStatus}`);
+                    if (!isFirstTick) {
+                        fastify.log.info(`[sessionMonitor] Agent ${agent.id}: ${previousStatus} → ${currentStatus}`);
+                    }
                 }
             }
 

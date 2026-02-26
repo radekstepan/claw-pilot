@@ -14,6 +14,7 @@ export const ChatWidget = () => {
     const chatCursor = useMissionStore(state => state.chatCursor);
     const loadMoreChat = useMissionStore(state => state.loadMoreChat);
     const clearChatHistory = useMissionStore(state => state.clearChatHistory);
+    const isGatewayBusy = useMissionStore((s) => s.busyAgentIds.has('__gateway__'));
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const handleClearChat = async () => {
@@ -61,6 +62,9 @@ export const ChatWidget = () => {
                         <div className="flex items-center gap-2">
                             <Bot size={16} className="text-violet-600 dark:text-violet-400" />
                             <span className="text-[10px] uppercase tracking-widest font-bold text-slate-900 dark:text-white">Squad Terminal</span>
+                            {(isTyping || isGatewayBusy) && (
+                                <Loader2 size={11} className="text-violet-500 animate-spin" aria-label="Gateway thinking" />
+                            )}
                         </div>
                         <div className="flex items-center gap-1">
                             <button

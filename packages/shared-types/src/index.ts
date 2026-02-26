@@ -112,6 +112,13 @@ export interface ServerToClientEvents {
     agent_config_error: (payload: { requestId: string; error: string }) => void;
     /** Emitted when the OpenClaw gateway comes online or goes offline. */
     gateway_status: (payload: { online: boolean; pairingRequired?: boolean; deviceId?: string }) => void;
+    /**
+     * Emitted by the backend the instant an in-flight AI job starts or finishes for a
+     * specific agent. This is orthogonal to the gateway-reported WORKING/IDLE status and
+     * gives sub-second feedback before the next sessionMonitor poll.
+     * Use agentId '__gateway__' for the main Squad Terminal channel.
+     */
+    agent_busy_changed: (payload: { agentId: string; busy: boolean }) => void;
 }
 
 export interface ClientToServerEvents {

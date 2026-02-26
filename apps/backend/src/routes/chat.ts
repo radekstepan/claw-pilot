@@ -124,7 +124,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             if (fastify.io) {
                 fastify.io.emit('chat_message', newAiMessage);
             }
-        }, fastify);
+        }, fastify, agentId === 'main' ? '__gateway__' : agentId);
     });
 
     const SaveChatSchema = z.object({

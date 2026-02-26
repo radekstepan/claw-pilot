@@ -24,6 +24,9 @@ interface MissionState {
     chatCursor: string | null;
     /** IDs of tasks whose status PATCH is currently in-flight (optimistic update pending confirmation). */
     updatingTaskIds: Set<string>;
+    /** Agent IDs for which claw-pilot currently has an in-flight AI gateway request.
+     * This gives sub-second "thinking" feedback independent of the 10s sessionMonitor poll. */
+    busyAgentIds: Set<string>;
     /** Timestamp of the last successful full fetch or sync, for delta syncs. */
     lastSyncAt: string | null;
 
@@ -45,6 +48,7 @@ interface MissionState {
     loadMoreActivities: () => Promise<void>;
     loadMoreChat: () => Promise<void>;
     routeTask: (taskId: string, agentId: string, prompt?: string) => Promise<void>;
+    setBusyAgent: (agentId: string, busy: boolean) => void;
     // Recurring
     fetchRecurring: () => Promise<void>;
     createRecurring: (payload: CreateRecurringPayload) => Promise<void>;
@@ -68,6 +72,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     activitiesCursor: null,
     chatCursor: null,
     updatingTaskIds: new Set<string>(),
+    busyAgentIds: new Set<string>(),
     lastSyncAt: null,
 
     fetchInitialData: async () => {
@@ -343,6 +348,15 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         } finally {
             clearUpdating();
         }
+    },
+
+    setBusyAgent: (agentId: string, busy: boolean) => {
+        set((s) => {
+            const next = new Set(s.busyAgentIds);
+            if (busy) next.add(agentId);
+            else next.delete(agentId);
+            return { busyAgentIds: next };
+        });
     },
 
     // Recurring

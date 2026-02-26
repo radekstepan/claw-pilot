@@ -79,6 +79,16 @@ export function useSocketListener() {
             }));
         });
 
+        socket.on('agent_busy_changed', ({ agentId, busy }) => {
+            console.log('Socket event: agent_busy_changed', { agentId, busy });
+            useMissionStore.setState((state) => {
+                const next = new Set(state.busyAgentIds);
+                if (busy) next.add(agentId);
+                else next.delete(agentId);
+                return { busyAgentIds: next };
+            });
+        });
+
         socket.on('chat_message', (message) => {
             console.log('Socket event: chat_message', message);
             addChatMessage(message);
