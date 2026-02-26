@@ -79,16 +79,13 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(pruningMonitorTimer);
     clearInterval(recurringSchedulerTimer);
 
-    // Pause the AI job queue so no new jobs are dequeued, then wait for
-    // any in-flight AI calls to finish before closing the HTTP server.
-    // Cap the wait at 2× the AI timeout to avoid hanging forever.
+    // Pause and clear the AI job queue so new jobs are aborted.
+    // We aggressively terminate to avoid hitting Docker's 15s SIGKILL timeout,
+    // relying on state-recovery loops on the next boot to handle interrupted tasks.
     aiQueue.pause();
-    const drainTimeout = new Promise<void>((resolve) =>
-        setTimeout(resolve, env.OPENCLAW_AI_TIMEOUT * 2)
-    );
-    await Promise.race([aiQueue.onIdle(), drainTimeout]);
+    aiQueue.clear();
     if (aiQueue.pending > 0) {
-        console.warn(`[claw-pilot] AI queue drain timed out — ${aiQueue.pending} jobs still in-flight.`);
+        console.warn(`[claw-pilot] AI queue aborted — ${aiQueue.pending} jobs still in-flight.`);
     }
 
     try {
