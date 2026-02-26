@@ -155,6 +155,7 @@ or
 | Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
 | `GET` | `/api/system/stats` | Returns aggregate dashboard numbers (active agents, tasks in queue, completed today). Sources agent count from `gateway: config.get` and task counts from SQLite. |
+| `GET` | `/api/system/queue-stats` | Returns live AI job queue state: `{ size, pending, concurrency, paused }`. `size` = queued-but-not-running, `pending` = currently executing, `concurrency` = value of `AI_QUEUE_CONCURRENCY`. |
 | `GET` | `/api/monitoring/gateway/status` | Calls `health` RPC on the gateway. Returns `{ status: 'HEALTHY', detail: {...} }` or `{ status: 'DOWN', error: '...' }`. |
 | `GET` | `/api/monitoring/stuck-tasks/check` | Returns all `IN_PROGRESS` tasks older than 24 h. |
 

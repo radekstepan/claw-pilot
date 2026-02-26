@@ -22,6 +22,7 @@ import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
 import { startPruningMonitor } from './monitors/pruningMonitor.js';
 import { startRecurringSchedulerMonitor } from './monitors/recurringSchedulerMonitor.js';
 import { runMigrations } from './db/index.js';
+import { aiQueue } from './services/aiQueue.js';
 
 // Apply any pending DB schema migrations before the app starts.
 runMigrations();
@@ -77,6 +78,18 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(stuckTaskMonitorTimer);
     clearInterval(pruningMonitorTimer);
     clearInterval(recurringSchedulerTimer);
+
+    // Pause the AI job queue so no new jobs are dequeued, then wait for
+    // any in-flight AI calls to finish before closing the HTTP server.
+    // Cap the wait at 2× the AI timeout to avoid hanging forever.
+    aiQueue.pause();
+    const drainTimeout = new Promise<void>((resolve) =>
+        setTimeout(resolve, env.OPENCLAW_AI_TIMEOUT * 2)
+    );
+    await Promise.race([aiQueue.onIdle(), drainTimeout]);
+    if (aiQueue.pending > 0) {
+        console.warn(`[claw-pilot] AI queue drain timed out — ${aiQueue.pending} jobs still in-flight.`);
+    }
 
     try {
         await fastify.close();

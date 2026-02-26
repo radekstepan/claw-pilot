@@ -92,6 +92,7 @@ printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54
 | `OPENCLAW_AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
 | `OPENCLAW_DEVICE_IDENTITY_PATH`| | `data/device-identity.json` | Path to the Ed25519 key pair + deviceToken file |
 | `PUBLIC_URL` | | `http://localhost:{PORT}` | Publicly reachable base URL of this server. Embedded in every dispatched agent prompt as the callback URL. **Must be set when Claw-Pilot and OpenClaw run on different machines** (e.g. `http://100.78.90.125:54321`). |
+| `AI_QUEUE_CONCURRENCY` | | `3` | Max concurrent AI gateway calls (`routeChatToAgent`, `spawnTaskSession`). Excess requests are queued. Lower values protect resource-constrained hosts (local LLMs); raise for capable servers. Range: 1–50. |
 
 **Frontend variables** (`apps/frontend/.env`):
 

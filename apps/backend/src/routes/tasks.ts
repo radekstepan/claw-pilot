@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { routeChatToAgent, spawnTaskSession } from '../openclaw/cli.js';
 import { env } from '../config/env.js';
 import { z } from 'zod';
+import { enqueueAiJob, AI_PRIORITY_NORMAL } from '../services/aiQueue.js';
 
 declare module 'fastify' {
     interface FastifyInstance {
@@ -165,12 +166,9 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
         if (body.message && (body.message.toLowerCase().includes('done') || body.message.toLowerCase().includes('completed'))) {
             newStatus = 'REVIEW';
-            void routeChatToAgent('main', `Task ${id} ready for review`).catch((err: unknown) => {
-                fastify.io?.emit('agent_error', {
-                    agentId: 'main',
-                    error: err instanceof Error ? err.message : String(err),
-                });
-            });
+            enqueueAiJob('activity-route', AI_PRIORITY_NORMAL, async () => {
+                await routeChatToAgent('main', `Task ${id} ready for review`);
+            }, fastify);
         }
 
         const now = new Date().toISOString();
@@ -302,7 +300,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         ].join('\n');
         const prompt = taskContext;
 
-        void (async () => {
+        enqueueAiJob('task-route', AI_PRIORITY_NORMAL, async () => {
             try {
                 await spawnTaskSession(body.agentId, id, prompt);
 
@@ -363,7 +361,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                     fastify.io.emit('agent_error', { agentId: body.agentId, error: errMsg });
                 }
             }
-        })();
+        }, fastify);
     });
 
     const CreateDeliverableSchema = z.object({
@@ -485,7 +483,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                 `On error use: { "agent_id": "${assignedAgentId}", "message": "error: <description>" }`,
             ].join('\n');
 
-            void (async () => {
+            enqueueAiJob('review-reject', AI_PRIORITY_NORMAL, async () => {
                 try {
                     await spawnTaskSession(assignedAgentId, id, retryPrompt);
                 } catch (err: unknown) {
@@ -518,7 +516,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
                         fastify.io.emit('agent_error', { agentId: assignedAgentId, error: retryErrMsg });
                     }
                 }
-            })();
+            }, fastify);
 
             return reply.status(202).send(updatedTask);
         }

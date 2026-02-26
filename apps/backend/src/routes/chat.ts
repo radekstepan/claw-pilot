@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { CursorPageQuerySchema, ChatMessage } from '@claw-pilot/shared-types';
 import { desc, or, lt, and, eq } from 'drizzle-orm';
+import { enqueueAiJob, AI_PRIORITY_HIGH } from '../services/aiQueue.js';
 
 type ChatRow = typeof chatTable.$inferSelect;
 
@@ -91,49 +92,39 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
         reply.status(202).send({ id: newUserMessage.id, status: 'pending' });
 
-        void (async () => {
-            try {
-                const aiResponseRaw = await routeChatToAgent(agentId, userMessage);
-                const aiText: string =
-                    typeof aiResponseRaw === 'string'
-                        ? aiResponseRaw
-                        : aiResponseRaw !== null &&
-                            typeof aiResponseRaw === 'object' &&
-                            'message' in aiResponseRaw &&
-                            typeof (aiResponseRaw as Record<string, unknown>).message === 'string'
-                          ? ((aiResponseRaw as Record<string, unknown>).message as string)
-                          : JSON.stringify(aiResponseRaw);
+        enqueueAiJob('chat', AI_PRIORITY_HIGH, async () => {
+            const aiResponseRaw = await routeChatToAgent(agentId, userMessage);
+            const aiText: string =
+                typeof aiResponseRaw === 'string'
+                    ? aiResponseRaw
+                    : aiResponseRaw !== null &&
+                        typeof aiResponseRaw === 'object' &&
+                        'message' in aiResponseRaw &&
+                        typeof (aiResponseRaw as Record<string, unknown>).message === 'string'
+                      ? ((aiResponseRaw as Record<string, unknown>).message as string)
+                      : JSON.stringify(aiResponseRaw);
 
-                const aiTs = new Date().toISOString();
-                const newAiMessage: ChatMessage = {
-                    id: randomUUID(),
-                    role: 'assistant',
-                    content: aiText,
-                    agentId,
-                    timestamp: aiTs,
-                };
+            const aiTs = new Date().toISOString();
+            const newAiMessage: ChatMessage = {
+                id: randomUUID(),
+                role: 'assistant',
+                content: aiText,
+                agentId,
+                timestamp: aiTs,
+            };
 
-                db.insert(chatTable).values({
-                    id: newAiMessage.id,
-                    agentId: newAiMessage.agentId ?? null,
-                    role: newAiMessage.role,
-                    content: newAiMessage.content,
-                    timestamp: aiTs,
-                }).run();
+            db.insert(chatTable).values({
+                id: newAiMessage.id,
+                agentId: newAiMessage.agentId ?? null,
+                role: newAiMessage.role,
+                content: newAiMessage.content,
+                timestamp: aiTs,
+            }).run();
 
-                if (fastify.io) {
-                    fastify.io.emit('chat_message', newAiMessage);
-                }
-            } catch (error) {
-                fastify.log.error(error, 'routeChatToAgent failed');
-                if (fastify.io) {
-                    fastify.io.emit('agent_error', {
-                        agentId,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                }
+            if (fastify.io) {
+                fastify.io.emit('chat_message', newAiMessage);
             }
-        })();
+        }, fastify);
     });
 
     const SaveChatSchema = z.object({

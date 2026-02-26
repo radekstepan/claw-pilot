@@ -3,6 +3,7 @@ import { db, tasks as tasksTable } from '../db/index.js';
 import { eq, or, and, count, lt, like } from 'drizzle-orm';
 import { getAgents, getLiveSessions, gatewayCall, GatewayOfflineError, GatewayPairingRequiredError } from '../openclaw/cli.js';
 import { env } from '../config/env.js';
+import { aiQueue } from '../services/aiQueue.js';
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     fastify.get('/stats', async (request, reply) => {
@@ -85,6 +86,24 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     fastify.post('/monitoring/gateway/restart', async (_request, reply) => {
         // The OpenClaw gateway does not expose a restart RPC method.
         return reply.status(501).send({ error: 'Gateway restart is not supported via the WebSocket API.' });
+    });
+
+    /**
+     * GET /api/system/queue-stats
+     * Returns live AI job queue depth and concurrency settings.
+     * Useful for diagnosing back-pressure and tuning AI_QUEUE_CONCURRENCY.
+     */
+    fastify.get('/queue-stats', async (_request, reply) => {
+        return reply.send({
+            /** Jobs queued but not yet running. */
+            size: aiQueue.size,
+            /** Jobs currently executing (≤ concurrency). */
+            pending: aiQueue.pending,
+            /** Maximum simultaneous AI calls (AI_QUEUE_CONCURRENCY). */
+            concurrency: env.AI_QUEUE_CONCURRENCY,
+            /** Whether the queue is paused (true during graceful shutdown). */
+            paused: aiQueue.isPaused,
+        });
     });
 
     fastify.get('/monitoring/stuck-tasks/check', async (request, reply) => {

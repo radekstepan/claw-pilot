@@ -75,6 +75,21 @@ const EnvSchema = z.object({
      * Defaults to http://localhost:{PORT} — only correct when the agent runs on the same machine.
      */
     PUBLIC_URL: z.string().url().optional(),
+
+    /**
+     * Maximum number of AI gateway calls (routeChatToAgent, spawnTaskSession, generateAgentConfig)
+     * that may execute concurrently. Additional jobs are queued (FIFO with priority support)
+     * and executed as slots become available.
+     *
+     * Lower values protect resource-constrained hosts (local LLMs, low-RAM VPS).
+     * Higher values increase throughput when the gateway / model can sustain the load.
+     *
+     * Recommended values:
+     *   1 — fully serial, safest for local LLM execution
+     *   3 — balanced default, good for most setups        (default)
+     *   5 — higher throughput for capable hosts
+     */
+    AI_QUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(3),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
