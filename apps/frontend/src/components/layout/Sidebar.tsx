@@ -1,14 +1,7 @@
 import { Settings, CalendarClock, LayoutDashboard } from 'lucide-react';
-import { StatusDot } from '../ui/StatusDot';
-import { SkeletonAgentItem } from '../ui/SkeletonCard';
-import type { Agent } from '@claw-pilot/shared-types';
-import { useMissionStore } from '../../store/useMissionStore';
+import { LiveFeed } from '../widgets/LiveFeed';
 
 interface SidebarProps {
-    agents: Agent[];
-    isLoading: boolean;
-    selectedAgentId: string | null;
-    onSelectAgent: (id: string | null) => void;
     onOpenSettings: () => void;
     isMobileOpen: boolean;
     onMobileClose: () => void;
@@ -16,9 +9,7 @@ interface SidebarProps {
     onChangeView: (view: 'kanban' | 'recurring') => void;
 }
 
-export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onOpenSettings, isMobileOpen, onMobileClose, activeView, onChangeView }: SidebarProps) => {
-    const busyAgentIds = useMissionStore((s) => s.busyAgentIds);
-
+export const Sidebar = ({ onOpenSettings, isMobileOpen, onMobileClose, activeView, onChangeView }: SidebarProps) => {
     return (
     <aside
         className={`
@@ -28,7 +19,7 @@ export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onO
             transform transition-transform duration-300 ease-in-out
             ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
-        aria-label="Agent roster navigation"
+        aria-label="Main navigation"
     >
         {/* View switcher */}
         <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.04]">
@@ -61,44 +52,10 @@ export const Sidebar = ({ agents, isLoading, selectedAgentId, onSelectAgent, onO
             </nav>
         </div>
 
-        <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.04]">
-            <h2 className="text-[9px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-4">Agent Roster</h2>
-            <nav className="space-y-1" aria-label="Agents">
-                {isLoading ? (
-                    Array.from({ length: 4 }).map((_, i) => <SkeletonAgentItem key={i} />)
-                ) : (
-                    agents.map(agent => (
-                        <button
-                            key={agent.id}
-                            onClick={() => {
-                                onSelectAgent(agent.id === selectedAgentId ? null : agent.id);
-                                onMobileClose();
-                            }}
-                            aria-pressed={selectedAgentId === agent.id}
-                            aria-label={`Filter by ${agent.name} (${agent.status})`}
-                            className={`w-full flex items-center gap-3 p-2.5 rounded-sm transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${selectedAgentId === agent.id
-                                ? 'bg-violet-500/10 dark:bg-violet-500/10 border border-violet-500/20'
-                                : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-transparent'
-                                }`}
-                        >
-                            <div className="flex-shrink-0">
-                                <StatusDot status={agent.status} busy={busyAgentIds.has(agent.id)} />
-                            </div>
-                            <div className="text-left overflow-hidden">
-                                <div className="text-[11px] font-bold text-slate-900 dark:text-slate-200 truncate">{agent.name}</div>
-                                {busyAgentIds.has(agent.id) ? (
-                                    <div className="text-[9px] text-violet-500 dark:text-violet-400 italic tracking-tighter truncate animate-pulse">Thinking…</div>
-                                ) : (
-                                    <div className="text-[9px] text-slate-500 uppercase tracking-tighter truncate">{agent.role}</div>
-                                )}
-                            </div>
-                        </button>
-                    ))
-                )}
-            </nav>
-        </div>
+        {/* Live activity feed — fills remaining height */}
+        <LiveFeed />
 
-        <div className="mt-auto p-4 border-t border-black/[0.04] dark:border-white/[0.04]">
+        <div className="p-4 border-t border-black/[0.04] dark:border-white/[0.04]">
             <button
                 onClick={onOpenSettings}
                 className="w-full flex items-center justify-between text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"

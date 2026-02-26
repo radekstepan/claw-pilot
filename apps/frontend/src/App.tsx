@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Hash, ChevronRight, Search, Layout, Menu, X } from 'lucide-react';
+import { Search, Menu, X } from 'lucide-react';
 import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, pointerWithin, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { Toaster } from 'sonner';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { KanbanColumn } from './components/kanban/KanbanColumn';
-import { LiveFeed } from './components/widgets/LiveFeed';
 import { TaskModal } from './components/modals/TaskModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NewTaskModal } from './components/modals/NewTaskModal';
@@ -47,12 +46,10 @@ export default function App() {
     const { tasks, agents, fetchInitialData, fetchRecurring, updateTaskStatus, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, isLoading } = useMissionStore();
 
     // Local UI State
-    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [filterText, setFilterText] = useState('');
     const [activeView, setActiveView] = useState<'kanban' | 'recurring'>('kanban');
     const [activeTask, setActiveTask] = useState<Task | null>(null);
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
-    const [isFeedCollapsed, setIsFeedCollapsed] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -73,14 +70,15 @@ export default function App() {
 
     const activeAgents = useMemo(() => agents.filter(a => a.status === 'WORKING'), [agents]);
 
+    const todayStr = new Date().toDateString();
     const stats = useMemo(() => ({
         active: activeAgents.length,
         queued: tasks.filter(t => t.status === 'BACKLOG' || t.status === 'TODO' || t.status === 'ASSIGNED').length,
-        done: tasks.filter(t => t.status === 'DONE').length,
-    }), [tasks, activeAgents]);
+        done: tasks.filter(t => t.status === 'DONE' && new Date(t.updatedAt ?? t.createdAt ?? 0).toDateString() === todayStr).length,
+    }), [tasks, activeAgents, todayStr]);
 
     const filteredTasks = useMemo(() => {
-        let base = selectedAgentId ? tasks.filter((t) => t.assignee_id === selectedAgentId) : tasks;
+        let base = tasks;
         if (filterText.trim()) {
             const q = filterText.toLowerCase();
             base = base.filter(t =>
@@ -93,7 +91,7 @@ export default function App() {
             new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() -
             new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
         );
-    }, [tasks, selectedAgentId, filterText]);
+    }, [tasks, filterText]);
 
     const addTask = async (payload: CreateTaskPayload) => {
         try {
@@ -167,10 +165,6 @@ export default function App() {
                 )}
 
                 <Sidebar
-                    agents={agents}
-                    isLoading={isLoading}
-                    selectedAgentId={selectedAgentId}
-                    onSelectAgent={setSelectedAgentId}
                     onOpenSettings={() => setIsSettingsOpen(true)}
                     isMobileOpen={isSidebarOpen}
                     onMobileClose={() => setIsSidebarOpen(false)}
@@ -190,12 +184,6 @@ export default function App() {
                             >
                                 <Menu size={14} />
                             </button>
-                            <Hash size={12} className="text-slate-400 dark:text-slate-600" />
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500">Active Board</span>
-                            <ChevronRight size={12} className="text-slate-300 dark:text-slate-700" />
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-violet-600 dark:text-violet-400 hidden sm:inline">
-                                {selectedAgentId ? `Filter: ${agents.find(a => a.id === selectedAgentId)?.name}` : 'All Missions'}
-                            </span>
                         </div>
 
                         <div className="flex items-center gap-4">
@@ -203,11 +191,11 @@ export default function App() {
                                 <Search size={12} className="absolute left-2 top-1.5 text-slate-300 dark:text-slate-700" />
                                 <input
                                     type="text"
-                                    placeholder="Filter..."
+                                    placeholder="Filter missions..."
                                     aria-label="Filter tasks"
                                     value={filterText}
                                     onChange={e => setFilterText(e.target.value)}
-                                    className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-24 focus:w-40 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
+                                    className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-32 focus:w-48 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
                                 />
                                 {filterText && (
                                     <button
@@ -219,13 +207,6 @@ export default function App() {
                                     </button>
                                 )}
                             </div>
-                            <button
-                                onClick={() => setIsFeedCollapsed(!isFeedCollapsed)}
-                                className="p-1 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
-                                aria-label={isFeedCollapsed ? 'Expand live feed' : 'Collapse live feed'}
-                            >
-                                <Layout size={14} />
-                            </button>
                         </div>
                     </div>
 
@@ -262,8 +243,6 @@ export default function App() {
 
                     {activeView === 'recurring' && <RecurringView />}
                 </div>
-
-                <LiveFeed collapsed={isFeedCollapsed} agents={agents} />
             </main>
 
             {activeTask && <TaskModal task={activeTask} onClose={() => setActiveTask(null)} agents={agents} />}

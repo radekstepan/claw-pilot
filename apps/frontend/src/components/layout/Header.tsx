@@ -1,4 +1,4 @@
-import { Terminal, Sun, Moon, Plus, ChevronDown, Menu, WifiOff, Link2, Copy } from 'lucide-react';
+import { Terminal, Sun, Moon, Plus, Menu, WifiOff, Link2, Copy } from 'lucide-react';
 import { Agent } from '@claw-pilot/shared-types';
 import { NotificationsPanel } from '../ui/NotificationsPanel';
 
@@ -28,33 +28,29 @@ function getPillState(isSocketConnected: boolean, gatewayPairingRequired: boolea
     return 'nominal';
 }
 
-const PILL_STYLES: Record<PillState, { container: string; dot: string; text: string; chevron: string; label: string }> = {
+const PILL_STYLES: Record<PillState, { container: string; dot: string; text: string; label: string }> = {
     disconnected: {
-        container: 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10',
+        container: 'bg-red-500/5 border-red-500/20',
         dot: 'bg-red-500',
         text: 'text-red-600 dark:text-red-500',
-        chevron: 'text-red-500',
         label: 'Disconnected',
     },
     pairing: {
-        container: 'bg-yellow-500/5 border-yellow-500/20 hover:bg-yellow-500/10',
+        container: 'bg-yellow-500/5 border-yellow-500/20',
         dot: 'bg-yellow-400',
         text: 'text-yellow-600 dark:text-yellow-400',
-        chevron: 'text-yellow-400',
         label: 'Pair Device',
     },
     offline: {
-        container: 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10',
+        container: 'bg-amber-500/5 border-amber-500/20',
         dot: 'bg-amber-500',
         text: 'text-amber-600 dark:text-amber-400',
-        chevron: 'text-amber-500',
         label: 'Gateway Offline',
     },
     nominal: {
-        container: 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10',
+        container: 'bg-emerald-500/5 border-emerald-500/20',
         dot: 'bg-emerald-500',
         text: 'text-emerald-600 dark:text-emerald-500',
-        chevron: 'text-emerald-500',
         label: 'Nominal',
     },
 };
@@ -151,12 +147,11 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gateway
                     : pillState === 'offline' ? 'OpenClaw gateway offline'
                     : 'All systems nominal'
                 }
-                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border mr-2 md:mr-4 cursor-default transition-colors group ${pill.container}`}>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pill.dot}`} aria-hidden="true" />
+                className={`hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-sm border mr-2 md:mr-4 ${pill.container}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${pill.dot}`} aria-hidden="true" />
                 <span className={`text-[10px] uppercase font-bold tracking-wider ${pill.text}`}>
                     {pill.label}
                 </span>
-                <ChevronDown size={12} className={`${pill.chevron} opacity-50 group-hover:opacity-100`} aria-hidden="true" />
             </div>
 
             <NotificationsPanel />
