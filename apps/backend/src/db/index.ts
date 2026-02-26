@@ -35,6 +35,7 @@ const migrationsFolder = path.join(__dirname, '../../drizzle');
 // Exported as `let` so tests can swap in an in-memory instance via setTestDb().
 // ---------------------------------------------------------------------------
 let sqlite: BetterSqlite3.Database = new BetterSqlite3(dbPath);
+sqlite.pragma('journal_mode = WAL');
 
 export type DrizzleDb = BetterSQLite3Database<typeof schema>;
 
@@ -55,28 +56,6 @@ export function setTestDb(testSqlite: BetterSqlite3.Database): void {
  */
 export function runMigrations(): void {
     migrate(db, { migrationsFolder });
-}
-
-// ---------------------------------------------------------------------------
-// JSON column helpers
-//
-// `tags` and `deliverables` are stored as JSON text in SQLite for simplicity.
-// An ORM-level custom type would also work, but these thin helpers keep the
-// column definitions readable and avoid pulling in a custom codec dependency.
-// ---------------------------------------------------------------------------
-
-export function parseJsonField<T>(raw: string | null | undefined): T | undefined {
-    if (raw == null) return undefined;
-    try {
-        return JSON.parse(raw) as T;
-    } catch {
-        return undefined;
-    }
-}
-
-export function stringifyJsonField(value: unknown): string | null {
-    if (value === undefined || value === null) return null;
-    return JSON.stringify(value);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { db, tasks as tasksTable, activities as activitiesTable, parseJsonField, stringifyJsonField } from '../db/index.js';
+import { db, tasks as tasksTable, activities as activitiesTable } from '../db/index.js';
 import { eq, count, desc } from 'drizzle-orm';
 import { Server } from 'socket.io';
 import { ClientToServerEvents, ServerToClientEvents, CreateTaskSchema, UpdateTaskSchema, CreateTaskPayload, UpdateTaskPayload, OffsetPageQuerySchema, Task, Deliverable, ActivityLog } from '@claw-pilot/shared-types';
@@ -29,10 +29,10 @@ function rowToTask(row: TaskRow): Task {
         description: row.description ?? undefined,
         status: row.status as Task['status'],
         priority: row.priority as Task['priority'] ?? undefined,
-        tags: parseJsonField<string[]>(row.tags),
+        tags: row.tags ?? undefined,
         assignee_id: row.assignee_id ?? undefined,
         agentId: row.agentId ?? undefined,
-        deliverables: parseJsonField<Deliverable[]>(row.deliverables),
+        deliverables: row.deliverables ?? undefined,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
     };
@@ -80,7 +80,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             description: newTask.description ?? null,
             status: newTask.status,
             priority: newTask.priority ?? null,
-            tags: stringifyJsonField(newTask.tags),
+            tags: newTask.tags ?? null,
             assignee_id: newTask.assignee_id ?? null,
             agentId: null,
             deliverables: null,
@@ -113,7 +113,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             description: body.description ?? existing.description,
             status: body.status ?? existing.status,
             priority: body.priority ?? existing.priority,
-            tags: body.tags !== undefined ? stringifyJsonField(body.tags) : existing.tags,
+            tags: body.tags !== undefined ? (body.tags ?? null) : existing.tags,
             assignee_id: body.assignee_id ?? existing.assignee_id,
             agentId: body.agentId ?? existing.agentId,
             updatedAt: new Date().toISOString(),
@@ -378,7 +378,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             return reply.status(404).send({ error: 'Task not found' });
         }
 
-        const existingDeliverables = parseJsonField<Deliverable[]>(taskRow.deliverables) ?? [];
+        const existingDeliverables = taskRow.deliverables ?? [];
         const newDeliverable: Deliverable = {
             id: randomUUID(),
             taskId: id,
@@ -391,7 +391,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const now = new Date().toISOString();
 
         const updatedRow = db.update(tasksTable).set({
-            deliverables: stringifyJsonField(existingDeliverables),
+            deliverables: existingDeliverables,
             updatedAt: now,
         }).where(eq(tasksTable.id, id)).returning().get();
 
