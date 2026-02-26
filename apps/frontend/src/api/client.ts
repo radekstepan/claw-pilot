@@ -56,8 +56,8 @@ export const api = {
     deleteTask: async (taskId: string): Promise<void> => {
         await apiClient.delete(`/tasks/${taskId}`);
     },
-    reviewTask: async (taskId: string, action: 'approve' | 'reject', feedback?: string): Promise<Task> => {
-        const response = await apiClient.post(`/tasks/${taskId}/review`, { action, feedback });
+    reviewTask: async (taskId: string, action: 'approve' | 'reject', feedback?: string, prompt?: string): Promise<Task> => {
+        const response = await apiClient.post(`/tasks/${taskId}/review`, { action, feedback, prompt });
         return response.data;
     },
     routeTask: async (taskId: string, agentId: string, prompt?: string): Promise<{ id: string; status: string }> => {

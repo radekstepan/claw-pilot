@@ -104,8 +104,8 @@ async function driveHandshake(
     // Trigger the 'open' callback — starts the challenge timer
     ws.emit('open');
 
-    // Fast-forward past the 2 s challenge wait → connect frame is sent
-    await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+    // Simulate gateway sending a challenge
+    ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
 
     const connectFrame = ws.sent[0]!;
     expect(connectFrame.method).toBe('connect');
@@ -146,7 +146,7 @@ describe('gatewayCall', () => {
         expect(ws.url).not.toContain('?token=');
         // clean up
         ws.emit('open');
-        await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
         const mf = ws.sent[1]!;
@@ -206,7 +206,7 @@ describe('gatewayCall', () => {
         const promise = gatewayCall('health', {});
         const ws = mockWsLatest!;
         ws.emit('open');
-        await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: false, error: { message: 'Not authorized' } });
         await expect(promise).rejects.toThrow('Gateway connect failed: Not authorized');
@@ -216,7 +216,7 @@ describe('gatewayCall', () => {
         const promise = gatewayCall('sessions.list', {});
         const ws = mockWsLatest!;
         ws.emit('open');
-        await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
         const mf = ws.sent[1]!;
@@ -246,7 +246,7 @@ describe('gatewayCall', () => {
         const promise = gatewayCall('health', {});
         const ws = mockWsLatest!;
         ws.emit('open');
-        await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: true, payload: {} });
         const mf = ws.sent[1]!;
@@ -511,7 +511,7 @@ describe('routeChatToAgent', () => {
         const promise = routeChatToAgent('agent-x', 'msg');
         const ws = mockWsLatest!;
         ws.emit('open');
-        await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS + 100);
+        ws.receive({ type: 'event', event: 'connect.challenge', payload: { nonce: 'abc123' } });
         const cf = ws.sent[0]!;
         ws.receive({ type: 'res', id: cf.id, ok: false, error: { message: 'session not found' } });
         await expect(promise).rejects.toThrow();

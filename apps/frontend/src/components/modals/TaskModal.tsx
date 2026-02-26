@@ -49,6 +49,14 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const [taskActivities, setTaskActivities] = useState<ActivityLog[]>([]);
     const [activitiesLoading, setActivitiesLoading] = useState(false);
     const [descPreview, setDescPreview] = useState(false);
+    const [showRetryPrompt, setShowRetryPrompt] = useState(false);
+    const [retryPrompt, setRetryPrompt] = useState(() =>
+        task ? `${task.title}\n\n${task.description || ''}`.trim() : ''
+    );
+    const [showRejectPrompt, setShowRejectPrompt] = useState(false);
+    const [rejectPrompt, setRejectPrompt] = useState(() =>
+        task ? `A human reviewer rejected your previous attempt with this feedback:\n\nPlease redo the task taking this feedback into account.\n\nOriginal task:\n${task.title}\n${task.description || ''}` : ''
+    );
 
     const {
         register,
@@ -93,7 +101,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         }
         setIsRouting(true);
         try {
-            await routeTask(task!.id, routeAgentId);
+            await routeTask(task!.id, routeAgentId, showRetryPrompt ? retryPrompt : undefined);
             onClose();
         } catch {
             // error toast is handled in store
@@ -119,19 +127,28 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     };
 
     const handleReject = async () => {
-        if (!showFeedbackInput) {
+        if (!showFeedbackInput && !showRejectPrompt) {
             setShowFeedbackInput(true);
             return;
         }
-        if (!feedback.trim()) {
+        if (showFeedbackInput && !feedback.trim()) {
             toast.error('Please provide feedback before rejecting.');
+            return;
+        }
+        if (showRejectPrompt && !rejectPrompt.trim()) {
+            toast.error('Please provide a prompt before rejecting.');
             return;
         }
         setIsSubmitting(true);
         const snapshot = { ...task };
         updateTaskLocally({ ...task, status: 'IN_PROGRESS' });
         try {
-            await api.reviewTask(task.id, 'reject', feedback);
+            await api.reviewTask(
+                task.id,
+                'reject',
+                showRejectPrompt ? undefined : feedback,
+                showRejectPrompt ? rejectPrompt : undefined
+            );
             toast.success('Task rejected. Agent has been notified with your feedback.');
             onClose();
         } catch {
@@ -237,26 +254,48 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 {agents.length === 0 ? (
                                     <EmptyState icon={AlertTriangle} title="No agents available" description="No agents are connected. Check the gateway." />
                                 ) : (
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex-1">
-                                            <Select
-                                                value={routeAgentId || '__NONE__'}
-                                                onValueChange={(v) => setRouteAgentId(v === '__NONE__' ? '' : v)}
-                                                options={[
-                                                    { value: '__NONE__', label: '— Pick an agent —' },
-                                                    ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
-                                                ]}
-                                                placeholder="— Pick an agent —"
-                                            />
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="editRetryPrompt"
+                                                    checked={showRetryPrompt}
+                                                    onChange={(e) => setShowRetryPrompt(e.target.checked)}
+                                                    className="w-3 h-3 text-rose-600 focus:ring-rose-500 border-rose-300 rounded"
+                                                />
+                                                <label htmlFor="editRetryPrompt" className="text-[10px] uppercase tracking-wider font-bold text-rose-600/80 cursor-pointer">Edit Prompt</label>
+                                            </div>
                                         </div>
-                                        <button
-                                            onClick={handleRouteToAgent}
-                                            disabled={isRouting || !routeAgentId}
-                                            className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
-                                        >
-                                            {isRouting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                                            Retry
-                                        </button>
+                                        {showRetryPrompt && (
+                                            <textarea
+                                                rows={4}
+                                                value={retryPrompt}
+                                                onChange={(e) => setRetryPrompt(e.target.value)}
+                                                className="w-full bg-white dark:bg-white/[0.03] border border-rose-500/20 rounded-sm p-3 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:border-rose-500/50 outline-none resize-y"
+                                            />
+                                        )}
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex-1">
+                                                <Select
+                                                    value={routeAgentId || '__NONE__'}
+                                                    onValueChange={(v) => setRouteAgentId(v === '__NONE__' ? '' : v)}
+                                                    options={[
+                                                        { value: '__NONE__', label: '— Pick an agent —' },
+                                                        ...agents.filter(a => !!a.id).map(a => ({ value: a.id, label: a.name })),
+                                                    ]}
+                                                    placeholder="— Pick an agent —"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleRouteToAgent}
+                                                disabled={isRouting || !routeAgentId}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
+                                            >
+                                                {isRouting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                                Retry
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </section>
@@ -308,7 +347,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
                                     This task was submitted for review by the assigned agent. As the human lead, only you can approve or reject it.
                                 </p>
-                                {showFeedbackInput && (
+                                {showFeedbackInput && !showRejectPrompt && (
                                     <textarea
                                         autoFocus
                                         rows={3}
@@ -318,6 +357,40 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                         className="w-full mb-3 bg-white dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-sm p-2 text-[11px] text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:border-violet-500/50 outline-none resize-none"
                                     />
                                 )}
+                                {showRejectPrompt && (
+                                    <div className="mb-3">
+                                        <textarea
+                                            autoFocus
+                                            rows={6}
+                                            value={rejectPrompt}
+                                            onChange={(e) => setRejectPrompt(e.target.value)}
+                                            className="w-full bg-white dark:bg-white/[0.03] border border-amber-500/20 rounded-sm p-3 text-xs text-slate-900 dark:text-slate-200 focus:border-amber-500/50 outline-none resize-y font-mono font-medium"
+                                        />
+                                        <p className="text-[10px] text-amber-600 dark:text-amber-500/80 mt-1 uppercase tracking-wider">
+                                            Raw payload (agent will receive this exact text).
+                                        </p>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        {(showFeedbackInput || showRejectPrompt) && (
+                                            <>
+                                                <input
+                                                    type="checkbox"
+                                                    id="editRejectPrompt"
+                                                    checked={showRejectPrompt}
+                                                    onChange={(e) => {
+                                                        const wantRaw = e.target.checked;
+                                                        setShowRejectPrompt(wantRaw);
+                                                        setShowFeedbackInput(!wantRaw);
+                                                    }}
+                                                    className="w-3 h-3 text-amber-500 focus:ring-amber-500 border-amber-300 rounded"
+                                                />
+                                                <label htmlFor="editRejectPrompt" className="text-[10px] uppercase tracking-wider font-bold text-amber-600/80 cursor-pointer">Edit Raw Payload</label>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={handleApprove}
@@ -333,7 +406,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                         className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm"
                                     >
                                         {isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <ThumbsDown size={12} />}
-                                        {showFeedbackInput ? 'Send Feedback' : 'Reject'}
+                                        {(showFeedbackInput || showRejectPrompt) ? 'Send Feedback' : 'Reject'}
                                     </button>
                                 </div>
                             </section>
@@ -357,13 +430,12 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                             ) : (
                                 <div className="space-y-2">
                                     {taskActivities.map((a) => (
-                                        <div key={a.id} className={`p-3 rounded border text-xs leading-relaxed ${
-                                            a.message.startsWith('completed:') || a.message.startsWith('done:')
+                                        <div key={a.id} className={`p-3 rounded border text-xs leading-relaxed ${a.message.startsWith('completed:') || a.message.startsWith('done:')
                                                 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
                                                 : a.message.startsWith('error:')
-                                                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
-                                                : 'bg-slate-50 dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.04]'
-                                        }`}>
+                                                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
+                                                    : 'bg-slate-50 dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.04]'
+                                            }`}>
                                             <div className="flex items-center justify-between mb-1">
                                                 <span className="font-semibold text-slate-700 dark:text-slate-300">{a.agentId ?? 'system'}</span>
                                                 <span className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
@@ -384,22 +456,20 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                     <button
                                         type="button"
                                         onClick={() => setDescPreview(false)}
-                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                                            !descPreview
+                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
                                                 ? 'bg-violet-600 text-white'
                                                 : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                        }`}
+                                            }`}
                                     >
                                         Edit
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setDescPreview(true)}
-                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                                            descPreview
+                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
                                                 ? 'bg-violet-600 text-white'
                                                 : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                        }`}
+                                            }`}
                                     >
                                         Preview
                                     </button>
@@ -409,9 +479,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 rows={5}
                                 {...register('description')}
                                 placeholder="No description…"
-                                className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none ${
-                                    descPreview ? 'hidden' : ''
-                                }`}
+                                className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none ${descPreview ? 'hidden' : ''
+                                    }`}
                             />
                             {descPreview && (
                                 <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">

@@ -275,7 +275,7 @@ describe('Task routes — integration', () => {
                 payload: { action: 'reject', feedback: 'Please revisit the error handling.' },
             });
 
-            expect(res.statusCode).toBe(200);
+            expect(res.statusCode).toBe(202);
             expect(res.json<{ status: string }>().status).toBe('IN_PROGRESS');
             expect(await getTaskStatus(id)).toBe('IN_PROGRESS');
         });
