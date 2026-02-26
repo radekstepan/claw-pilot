@@ -24,8 +24,11 @@ interface MissionState {
     chatCursor: string | null;
     /** IDs of tasks whose status PATCH is currently in-flight (optimistic update pending confirmation). */
     updatingTaskIds: Set<string>;
+    /** Timestamp of the last successful full fetch or sync, for delta syncs. */
+    lastSyncAt: string | null;
 
     fetchInitialData: () => Promise<void>;
+    syncData: (since: string) => Promise<void>;
     updateTaskLocally: (task: Task) => void;
     addTaskLocally: (task: Task) => void;
     deleteTaskLocally: (taskId: string) => void;
@@ -65,6 +68,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     activitiesCursor: null,
     chatCursor: null,
     updatingTaskIds: new Set<string>(),
+    lastSyncAt: null,
 
     fetchInitialData: async () => {
         set({ isLoading: true, error: null });
@@ -83,11 +87,59 @@ export const useMissionStore = create<MissionState>((set, get) => ({
                 chatHistory: chatPage.data.slice().reverse(), // oldest first for display
                 chatCursor: chatPage.nextCursor,
                 isLoading: false,
+                lastSyncAt: new Date().toISOString(),
             });
         } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Failed to fetch data';
             set({ error: msg, isLoading: false });
             toast.error(msg);
+        }
+    },
+
+    syncData: async (since: string) => {
+        try {
+            const [syncPayload, agents] = await Promise.all([
+                api.sync(since),
+                api.getAgents(),
+            ]);
+
+            set((state) => {
+                // Merge tasks
+                const taskMap = new Map(state.tasks.map(t => [t.id, t]));
+                for (const t of syncPayload.tasks) taskMap.set(t.id, t);
+                const activeSet = new Set(syncPayload.activeTaskIds);
+                const nextTasks = Array.from(taskMap.values()).filter(t => activeSet.has(t.id));
+
+                // Merge recurring tasks
+                const recMap = new Map(state.recurringTasks.map(t => [t.id, t]));
+                for (const t of syncPayload.recurringTasks) recMap.set(t.id, t);
+                const nextRecurring = Array.from(recMap.values());
+
+                // Merge activities (prevent dupes, keep descending order)
+                const actMap = new Map(state.activities.map(a => [a.id, a]));
+                for (const a of syncPayload.activities) actMap.set(a.id, a);
+                const nextActivities = Array.from(actMap.values())
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+                // Merge chat (prevent dupes, keep ascending order)
+                const chatMap = new Map(state.chatHistory.map(c => [c.id, c]));
+                for (const c of syncPayload.chatHistory) chatMap.set(c.id, c);
+                const nextChat = Array.from(chatMap.values())
+                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                return {
+                    tasks: nextTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
+                    recurringTasks: nextRecurring,
+                    activities: nextActivities,
+                    chatHistory: nextChat,
+                    agents,
+                    lastSyncAt: new Date().toISOString(),
+                };
+            });
+        } catch (error: unknown) {
+            console.error('Delta sync failed, falling back to full fetch', error);
+            // Fallback to full fetch if sync fails
+            get().fetchInitialData();
         }
     },
 

@@ -36,11 +36,16 @@ export function useSocketListener() {
             setSocketConnected(false);
         });
 
-        // Re-sync all state when the socket reconnects after a dropped connection
-        // (e.g. laptop woke from sleep). This replays any events missed while offline.
+        // Re-sync state when the socket reconnects after a dropped connection
+        // (e.g. laptop woke from sleep). Uses delta sync if possible to avoid full reload.
         const handleReconnect = (attemptNumber: number) => {
             console.log(`Socket reconnected after ${attemptNumber} attempt(s) — re-syncing state`);
-            fetchInitialData();
+            const { lastSyncAt, syncData, fetchInitialData } = useMissionStore.getState();
+            if (lastSyncAt) {
+                syncData(lastSyncAt).catch(() => fetchInitialData());
+            } else {
+                fetchInitialData();
+            }
         };
         socket.io.on('reconnect', handleReconnect);
 

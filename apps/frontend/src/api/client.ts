@@ -160,4 +160,8 @@ export const api = {
         const response = await apiClient.post('/config', patch);
         return response.data;
     },
+    sync: async (since: string): Promise<import('@claw-pilot/shared-types').SyncResponse> => {
+        const response = await apiClient.get('/sync', { params: { since } });
+        return response.data;
+    },
 };

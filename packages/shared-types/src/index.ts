@@ -164,3 +164,21 @@ export interface OffsetPageResponse<T> {
     data: T[];
     total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Sync endpoints
+// ---------------------------------------------------------------------------
+
+export const SyncQuerySchema = z.object({
+    since: z.string()
+});
+export type SyncQuery = z.infer<typeof SyncQuerySchema>;
+
+export const SyncResponseSchema = z.object({
+    tasks: z.array(TaskSchema),
+    activities: z.array(ActivityLogSchema),
+    chatHistory: z.array(ChatMessageSchema),
+    recurringTasks: z.array(RecurringTaskSchema),
+    activeTaskIds: z.array(z.string())
+});
+export type SyncResponse = z.infer<typeof SyncResponseSchema>;

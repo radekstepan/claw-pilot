@@ -24,6 +24,7 @@ import deliverableRoutes from './routes/deliverables.js';
 import recurringRoutes from './routes/recurring.js';
 import systemRoutes from './routes/system.js';
 import activityRoutes from './routes/activities.js';
+import syncRoutes from './routes/sync.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
     const fastify = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
@@ -92,7 +93,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     fastify.register(recurringRoutes, { prefix: '/api/recurring' });
     fastify.register(systemRoutes, { prefix: '/api' });
     fastify.register(activityRoutes, { prefix: '/api/activities' });
-
+    fastify.register(syncRoutes, { prefix: '/api/sync' });
     // ---------------------------------------------------------------------------
     // Production static serving — serve the pre-built Vite frontend from
     // apps/frontend/dist when NODE_ENV=production.
