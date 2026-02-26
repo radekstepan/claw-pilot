@@ -58,10 +58,10 @@ export const Sidebar = ({ onOpenSettings, isMobileOpen, onMobileClose, activeVie
         <div className="p-4 border-t border-black/[0.04] dark:border-white/[0.04]">
             <button
                 onClick={onOpenSettings}
-                className="w-full flex items-center justify-between text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
+                className="w-full flex items-center justify-between text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
                 aria-label="Open settings"
             >
-                <span>Manage Squad</span>
+                <span>Settings</span>
                 <Settings size={14} aria-hidden="true" />
             </button>
         </div>

@@ -21,7 +21,7 @@ export const Card = ({ children, className = "", onClick, role, tabIndex, 'aria-
         role={role}
         tabIndex={tabIndex}
         aria-label={ariaLabel}
-        className={`border border-black/[0.08] dark:border-white/[0.04] bg-white/70 dark:bg-white/[0.02] hover:border-violet-500/30 dark:hover:border-white/[0.1] transition-all duration-200 group relative ${className}`}
+        className={`border border-black/[0.08] dark:border-white/[0.04] bg-white/70 dark:bg-white/[0.02] hover:border-[var(--accent-500)]/30 dark:hover:border-white/[0.1] transition-all duration-200 group relative ${className}`}
     >
         {children}
     </div>

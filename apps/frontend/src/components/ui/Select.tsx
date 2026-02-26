@@ -47,7 +47,7 @@ export const Select = ({
                     'border border-black/10 dark:border-white/10 rounded',
                     'px-2 py-1.5',
                     'text-[11px] text-slate-900 dark:text-slate-300',
-                    'outline-none focus:border-violet-500/50',
+                    'outline-none focus:border-[var(--accent-500)]',
                     'transition-colors',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                     'data-[placeholder]:text-slate-500 dark:data-[placeholder]:text-slate-500',
@@ -90,14 +90,14 @@ export const Select = ({
                                     'text-[11px] text-slate-700 dark:text-slate-300',
                                     'cursor-pointer select-none outline-none',
                                     'hover:bg-slate-100 dark:hover:bg-white/5',
-                                    'focus:bg-violet-100 focus:text-violet-700 dark:focus:bg-violet-600/20 dark:focus:text-white',
-                                    'data-[state=checked]:text-violet-600 dark:data-[state=checked]:text-violet-300',
+                                    'focus:bg-[var(--accent-scroll-sm)] focus:text-[var(--accent-600)] dark:focus:bg-[var(--accent-scroll-sm)] dark:focus:text-white',
+                                    'data-[state=checked]:text-[var(--accent-600)] dark:data-[state=checked]:text-[var(--accent-300)]',
                                     'data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed',
                                 ].join(' ')}
                             >
                                 <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
                                 <RadixSelect.ItemIndicator className="absolute right-2">
-                                    <Check size={11} className="text-violet-400" />
+                                    <Check size={11} className="text-[var(--accent-400)]" />
                                 </RadixSelect.ItemIndicator>
                             </RadixSelect.Item>
                         ))}

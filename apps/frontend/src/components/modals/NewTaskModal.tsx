@@ -98,7 +98,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
             <div className="relative w-full max-w-xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col animate-fadeIn overflow-hidden">
                 <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01]">
                     <div className="flex items-center gap-2">
-                        <Plus size={14} className="text-violet-600 dark:text-violet-500" />
+                        <Plus size={14} className="text-[var(--accent-600)] dark:text-[var(--accent-500)]" />
                         <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-900 dark:text-white">Initialize New Mission</span>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><X size={18} /></button>
@@ -113,7 +113,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                             type="text"
                             {...register('title')}
                             placeholder="e.g. Refactor Data Stream Gateway"
-                            className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 transition-colors aria-[invalid=true]:border-rose-500/50"
+                            className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors aria-[invalid=true]:border-rose-500/50"
                             aria-invalid={errors.title ? 'true' : 'false'}
                         />
                         {errors.title && (
@@ -127,7 +127,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                         <textarea
                             {...register('description')}
                             placeholder="Detail the parameters and expected outcomes..."
-                            className="w-full h-24 bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 transition-colors"
+                            className="w-full h-24 bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
                         />
                     </div>
 
@@ -175,7 +175,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                         <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Tags</label>
                         <div className="flex flex-wrap gap-2 mb-2">
                             {tags.map(t => (
-                                <span key={t} className="flex items-center gap-1 text-[9px] uppercase font-bold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-sm">
+                                <span key={t} className="flex items-center gap-1 text-[9px] uppercase font-bold bg-[var(--accent-scroll-sm)] text-[var(--accent-600)] dark:text-[var(--accent-400)] border border-[var(--accent-scroll-hover)] px-2 py-0.5 rounded-sm">
                                     {t}
                                     <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500">
                                         <X size={10} />
@@ -189,7 +189,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                             onChange={e => setTagInput(e.target.value)}
                             onKeyDown={handleAddTag}
                             placeholder="Type tag and press enter..."
-                            className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none"
+                            className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
                         />
                     </div>
                 </form>
@@ -199,7 +199,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
                     <button
                         onClick={handleSubmit(onSubmit)}
                         disabled={isSubmitting}
-                        className="px-6 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-violet-500 flex items-center gap-2 disabled:opacity-50 transition-all"
+                        className="px-6 py-2 bg-[var(--accent-600)] text-white text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--accent-500)] flex items-center gap-2 disabled:opacity-50 transition-all"
                     >
                         <Send size={12} /> Launch Mission
                     </button>

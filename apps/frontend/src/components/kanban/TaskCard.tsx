@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Clock, User, AlertTriangle, Loader2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -6,18 +7,18 @@ import { Badge } from '../ui/Badge';
 import { Task } from '@claw-pilot/shared-types';
 import { useMissionStore } from '../../store/useMissionStore';
 
-function formatTimeAgo(iso: string | undefined): string {
+function formatTimeAgo(iso: string | undefined, now: number): string {
     if (!iso) return 'NEW';
-    const diff = Date.now() - new Date(iso).getTime();
+    const diff = now - new Date(iso).getTime();
     const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return 'now';
+    if (mins < 60) return `${mins}m`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
+    if (hrs < 24) return `${hrs}h`;
     const days = Math.floor(hrs / 24);
-    if (days < 30) return `${days}d ago`;
+    if (days < 30) return `${days}d`;
     const months = Math.floor(days / 30);
-    return `${months}mo ago`;
+    return `${months}mo`;
 }
 
 interface TaskCardProps {
@@ -29,6 +30,12 @@ interface TaskCardProps {
 }
 
 export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 30_000);
+        return () => clearInterval(id);
+    }, []);
+
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: task.id,
         data: { task },
@@ -59,32 +66,25 @@ export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) 
         >
             <Card
                 onClick={onClick}
-                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${isDragging ? 'ring-2 ring-violet-500' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''} ${isUnread && !isStuck ? 'border-l-2 border-l-violet-500 dark:border-l-violet-400' : ''}`}
+                className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] ${isDragging ? 'ring-2 ring-[var(--accent-500)]' : ''} ${isOverlay ? 'shadow-2xl cursor-grabbing' : ''} ${isStuck ? 'ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10' : ''} ${isUnread && !isStuck ? 'border-l-2 border-l-[var(--accent-500)]' : ''}`}
                 role="button"
                 aria-label={`Task: ${task.title}. Priority: ${task.priority ?? 'LOW'}. Drag to move.`}
                 tabIndex={isOverlay ? -1 : 0}
             >
                 <div className="flex items-start justify-between mb-2">
-                    <span className="text-[9px] font-mono text-slate-400 dark:text-slate-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+                    <span className="text-[9px] font-mono text-slate-400 dark:text-slate-600 group-hover:text-[var(--accent-600)] dark:group-hover:text-[var(--accent-400)] transition-colors">
                         {task.id}
                     </span>
-                    <div className="flex items-center gap-1.5">
-                        {isUnread && (
-                            <span
-                                className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0 animate-pulse"
-                                aria-label="Unread — task was updated since you last opened it"
-                                title="Updated since last viewed"
-                            />
-                        )}
+                    {(task.priority === 'HIGH' || task.priority === 'LOW') && (
                         <Badge variant={task.priority === 'HIGH' ? 'urgent' : 'default'}>
-                            {task.priority ?? 'LOW'}
+                            {task.priority}
                         </Badge>
-                    </div>
+                    )}
                 </div>
                 {isStuck && (
                     <div className="flex items-center gap-1 mb-2">
                         <AlertTriangle size={10} className="text-rose-500 flex-shrink-0" aria-hidden="true" />
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Stuck / Error</span>
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Error</span>
                     </div>
                 )}
                 <h3 className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 mb-2 leading-snug">
@@ -98,9 +98,9 @@ export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) 
                     ))}
                 </div>
                 {isAgentBusy && (
-                    <div className="flex items-center gap-1.5 mb-2 px-2 py-1 rounded-sm bg-violet-500/8 dark:bg-violet-500/10 border border-violet-500/20">
-                        <Loader2 size={9} className="text-violet-500 animate-spin flex-shrink-0" aria-hidden="true" />
-                        <span className="text-[9px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-widest">Agent working…</span>
+                    <div className="flex items-center gap-1.5 mb-2 px-2 py-1 rounded-sm bg-[var(--accent-scroll-sm)] dark:bg-[var(--accent-scroll-sm)] border border-[var(--accent-scroll-hover)]">
+                        <Loader2 size={9} className="text-[var(--accent-500)] animate-spin flex-shrink-0" aria-hidden="true" />
+                        <span className="text-[9px] font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)] uppercase tracking-widest">Agent working…</span>
                     </div>
                 )}
                 <div className="flex items-center justify-between border-t border-black/[0.04] dark:border-white/[0.04] pt-2 mt-2">
@@ -111,11 +111,8 @@ export const TaskCard = ({ task, onClick, isOverlay, isUnread }: TaskCardProps) 
                             <Clock size={10} className="text-slate-400 dark:text-slate-600" aria-hidden="true" />
                         )}
                         <span className={`text-[9px] uppercase font-bold tracking-tighter ${isStuck ? 'text-rose-400' : 'text-slate-400 dark:text-slate-600'}`}>
-                            {isStuck ? 'Error' : formatTimeAgo(task.updatedAt ?? task.createdAt)}
+                            {formatTimeAgo(task.updatedAt ?? task.createdAt, now)}
                         </span>
-                    </div>
-                    <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full flex items-center justify-center" aria-hidden="true">
-                        <User size={10} className="text-slate-500 dark:text-slate-700" />
                     </div>
                 </div>
             </Card>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap, ScrollText, GripVertical } from 'lucide-react';
+import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap, ScrollText, GripVertical, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Agent, Task, ActivityLog, Deliverable } from '@claw-pilot/shared-types';
 import { DndContext, DragEndEvent, closestCenter } from '@dnd-kit/core';
@@ -35,6 +35,83 @@ const PRIORITY_OPTIONS = [
     { value: 'HIGH', label: 'HIGH' },
 ];
 
+/** Detect "rich" agent responses that deserve a collapsible view. */
+function isRichMessage(msg: string): boolean {
+    return msg.length > 500 || msg.includes('```') || (msg.match(/^#{1,3} /m) ?? []).length >= 2;
+}
+
+/** Plain-text preview: strip code fences and trim. */
+function plainPreview(msg: string, maxLen = 160): string {
+    return msg.replace(/```[\s\S]*?```/g, '[code block]').replace(/\n+/g, ' ').slice(0, maxLen);
+}
+
+interface ActivityEntryProps {
+    activity: ActivityLog;
+}
+
+function ActivityEntry({ activity: a }: ActivityEntryProps) {
+    const [expanded, setExpanded] = useState(false);
+    const rich = isRichMessage(a.message);
+
+    const colorClass = a.message.startsWith('completed:') || a.message.startsWith('done:')
+        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
+        : a.message.startsWith('error:')
+            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
+            : 'bg-slate-50 dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.04]';
+
+    return (
+        <div className={`p-3 rounded border text-xs leading-relaxed ${colorClass}`}>
+            <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">{a.agentId ?? 'system'}</span>
+                <span className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
+            </div>
+            {rich && !expanded ? (
+                <div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 italic mb-2 leading-relaxed line-clamp-2">
+                        {plainPreview(a.message)}…
+                    </p>
+                    <button
+                        onClick={() => setExpanded(true)}
+                        className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-[var(--accent-500)] hover:text-[var(--accent-600)] transition-colors"
+                    >
+                        <ChevronDown size={10} />
+                        View full response
+                    </button>
+                </div>
+            ) : rich ? (
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-[var(--accent-500)] opacity-70">Agent Response</span>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => navigator.clipboard.writeText(a.message).catch(() => {})}
+                                className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                            >
+                                <Copy size={9} />
+                                Copy
+                            </button>
+                            <button
+                                onClick={() => setExpanded(false)}
+                                className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                            >
+                                <ChevronUp size={10} />
+                                Collapse
+                            </button>
+                        </div>
+                    </div>
+                    <div className="border border-black/[0.06] dark:border-white/[0.06] rounded p-3 bg-white/60 dark:bg-black/20">
+                        <MarkdownContent content={a.message} />
+                    </div>
+                </div>
+            ) : (
+                <p className="text-slate-600 dark:text-slate-300">
+                    <MarkdownContent content={a.message} />
+                </p>
+            )}
+        </div>
+    );
+}
+
 interface SortableDeliverableItemProps {
     deliverable: Deliverable;
     taskId: string;
@@ -52,7 +129,7 @@ function SortableDeliverableItem({ deliverable: d, taskId, onToggle }: SortableD
         <div
             ref={setNodeRef}
             style={style}
-            className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-violet-500/30 transition-all"
+            className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-[var(--accent-scroll-hover)] transition-all"
         >
             {/* Drag handle */}
             <button
@@ -255,14 +332,14 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                 <div className="p-6 border-b border-black/[0.04] dark:border-white/[0.04] flex items-start justify-between">
                     <div className="flex-1 min-w-0 pr-4">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-[10px] font-mono text-violet-600 dark:text-violet-400">{task.id}</span>
+                            <span className="text-[10px] font-mono text-[var(--accent-600)] dark:text-[var(--accent-400)]">{task.id}</span>
                             <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-slate-700" />
                             <Badge variant={task.status === 'DONE' ? 'success' : task.status === 'STUCK' ? 'danger' : 'violet'}>{COLUMN_TITLES[task.status]}</Badge>
                         </div>
                         <input
                             type="text"
                             {...register('title')}
-                            className="text-xl font-bold text-slate-900 dark:text-white tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-violet-500/50 rounded px-1 -ml-1 aria-[invalid=true]:ring-1 aria-[invalid=true]:ring-rose-500/50"
+                            className="text-xl font-bold text-slate-900 dark:text-white tracking-tight bg-transparent border-none outline-none w-full focus:ring-1 focus:ring-[var(--accent-scroll-low)] rounded px-1 -ml-1 aria-[invalid=true]:ring-1 aria-[invalid=true]:ring-rose-500/50"
                             aria-invalid={errors.title ? 'true' : 'false'}
                         />
                         {errors.title && (
@@ -359,10 +436,10 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         )}
 
                         {task.status !== 'IN_PROGRESS' && task.status !== 'REVIEW' && task.status !== 'DONE' && task.status !== 'STUCK' && (
-                            <section className="mb-8 p-4 border border-violet-500/20 bg-violet-500/[0.04] rounded">
+                            <section className="mb-8 p-4 border border-[var(--accent-scroll-hover)] bg-[var(--accent-scroll-sm)] rounded">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Zap size={14} className="text-violet-500" />
-                                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-violet-600 dark:text-violet-400">Dispatch to Agent</h3>
+                                    <Zap size={14} className="text-[var(--accent-500)]" />
+                                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)]">Dispatch to Agent</h3>
                                 </div>
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
                                     Route this task to an AI agent. The agent will receive the title and description as its prompt and begin working immediately.
@@ -385,7 +462,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                         <button
                                             onClick={handleRouteToAgent}
                                             disabled={isRouting || !routeAgentId}
-                                            className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
                                         >
                                             {isRouting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                                             Route
@@ -411,7 +488,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                         placeholder="Describe what needs to be revised..."
                                         value={feedback}
                                         onChange={(e) => setFeedback(e.target.value)}
-                                        className="w-full mb-3 bg-white dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-sm p-2 text-[11px] text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:border-violet-500/50 outline-none resize-none"
+                                        className="w-full mb-3 bg-white dark:bg-white/[0.03] border border-black/10 dark:border-white/10 rounded-sm p-2 text-[11px] text-slate-900 dark:text-slate-200 placeholder:text-slate-400 focus:border-[var(--accent-500)] outline-none resize-none"
                                     />
                                 )}
                                 {showRejectPrompt && (
@@ -487,20 +564,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                             ) : (
                                 <div className="space-y-2">
                                     {taskActivities.map((a) => (
-                                        <div key={a.id} className={`p-3 rounded border text-xs leading-relaxed ${a.message.startsWith('completed:') || a.message.startsWith('done:')
-                                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
-                                                : a.message.startsWith('error:')
-                                                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
-                                                    : 'bg-slate-50 dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.04]'
-                                            }`}>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="font-semibold text-slate-700 dark:text-slate-300">{a.agentId ?? 'system'}</span>
-                                                <span className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
-                                            </div>
-                                            <p className="text-slate-600 dark:text-slate-300">
-                                                <MarkdownContent content={a.message} />
-                                            </p>
-                                        </div>
+                                        <ActivityEntry key={a.id} activity={a} />
                                     ))}
                                 </div>
                             )}
@@ -509,44 +573,58 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         <section className="mb-8">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500">Project Description</h3>
-                                <div className="flex items-center gap-px border border-black/[0.06] dark:border-white/[0.06] rounded overflow-hidden">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDescPreview(false)}
-                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
-                                                ? 'bg-violet-600 text-white'
-                                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                            }`}
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDescPreview(true)}
-                                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
-                                                ? 'bg-violet-600 text-white'
-                                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                            }`}
-                                    >
-                                        Preview
-                                    </button>
-                                </div>
+                                {task.status !== 'DONE' && (
+                                    <div className="flex items-center gap-px border border-black/[0.06] dark:border-white/[0.06] rounded overflow-hidden">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDescPreview(false)}
+                                            className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
+                                                    ? 'bg-[var(--accent-600)] text-white'
+                                                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                                }`}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDescPreview(true)}
+                                            className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
+                                                    ? 'bg-[var(--accent-600)] text-white'
+                                                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                                }`}
+                                        >
+                                            Preview
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <textarea
-                                rows={5}
-                                {...register('description')}
-                                placeholder="No description…"
-                                className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-violet-500/50 outline-none ${descPreview ? 'hidden' : ''
-                                    }`}
-                            />
-                            {descPreview && (
+                            {task.status === 'DONE' ? (
                                 <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
-                                    {watch('description') ? (
-                                        <MarkdownContent content={watch('description') ?? ''} />
+                                    {task.description ? (
+                                        <MarkdownContent content={task.description} />
                                     ) : (
                                         <p className="text-slate-400 dark:text-slate-600 text-sm italic">No description…</p>
                                     )}
                                 </div>
+                            ) : (
+                                <>
+                                    <textarea
+                                        rows={5}
+                                        {...register('description')}
+                                        placeholder="No description…"
+                                        className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${descPreview ? 'hidden' : ''
+                                            }`}
+                                    />
+                                    {descPreview && (
+                                        <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
+                                            {watch('description') ? (
+                                                <MarkdownContent content={watch('description') ?? ''} />
+                                            ) : (
+                                                <p className="text-slate-400 dark:text-slate-600 text-sm italic">No description…</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </section>
 
@@ -598,7 +676,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         </section>
                     </div>
 
-                    <div className="w-full md:w-56 space-y-6">
+                    <div className="w-full md:w-48 space-y-6 flex-shrink-0">
                         <div>
                             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Assignee</h3>
                             {agent && assigneeId && (
@@ -652,7 +730,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                         <button
                             onClick={handleSubmit(handleUpdateTask)}
                             disabled={isSubmitting}
-                            className="flex items-center gap-1.5 px-5 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 disabled:opacity-50 transition-all"
+                            className="flex items-center gap-1.5 px-5 py-2 bg-[var(--accent-600)] text-white text-[10px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] disabled:opacity-50 transition-all"
                         >
                             {isSubmitting && <Loader2 size={12} className="animate-spin" />}
                             Update Task

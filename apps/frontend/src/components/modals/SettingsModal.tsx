@@ -95,7 +95,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {agents.map(agent => (
-                    <div key={agent.id} className="p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-violet-500/30 transition-all">
+                    <div key={agent.id} className="p-3 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-[var(--accent-scroll-hover)] transition-all">
                         <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <div className={`w-2 h-2 rounded-full ${agent.status === 'WORKING' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
@@ -187,10 +187,16 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
     const renderAppearanceTab = () => {
         const accentSwatches = [
             { id: 'violet',  label: 'Violet',  bg: 'bg-violet-500',  ring: 'ring-violet-500' },
+            { id: 'indigo',  label: 'Indigo',  bg: 'bg-indigo-500',  ring: 'ring-indigo-500' },
             { id: 'blue',    label: 'Blue',    bg: 'bg-blue-500',    ring: 'ring-blue-500' },
+            { id: 'sky',     label: 'Sky',     bg: 'bg-sky-500',     ring: 'ring-sky-500' },
+            { id: 'cyan',    label: 'Cyan',    bg: 'bg-cyan-500',    ring: 'ring-cyan-500' },
+            { id: 'teal',    label: 'Teal',    bg: 'bg-teal-500',    ring: 'ring-teal-500' },
             { id: 'emerald', label: 'Emerald', bg: 'bg-emerald-500', ring: 'ring-emerald-500' },
             { id: 'rose',    label: 'Rose',    bg: 'bg-rose-500',    ring: 'ring-rose-500' },
+            { id: 'pink',    label: 'Pink',    bg: 'bg-pink-500',    ring: 'ring-pink-500' },
             { id: 'amber',   label: 'Amber',   bg: 'bg-amber-500',   ring: 'ring-amber-500' },
+            { id: 'orange',  label: 'Orange',  bg: 'bg-orange-500',  ring: 'ring-orange-500' },
         ];
         return (
             <div className="space-y-6 animate-fadeIn">
@@ -226,7 +232,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
                             <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Highlight Color</p>
                             <p className="text-[9px] text-slate-400 mt-0.5">Used for buttons, active states and focus rings throughout the UI</p>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap gap-2.5">
                             {accentSwatches.map(swatch => (
                                 <button
                                     key={swatch.id}
@@ -271,7 +277,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
                             type="text"
                             value={config.gatewayUrl}
                             onChange={(e) => setConfig(c => ({ ...c, gatewayUrl: e.target.value }))}
-                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]"
                         />
                     </div>
                     <div className="space-y-1">
@@ -280,7 +286,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
                             type="number"
                             value={config.apiPort}
                             onChange={(e) => setConfig(c => ({ ...c, apiPort: parseInt(e.target.value, 10) || c.apiPort }))}
-                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]"
                         />
                     </div>
                     <div className="space-y-1 col-span-full">
@@ -294,7 +300,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
                                 setDefaultWorkspace(val);
                             }}
                             placeholder="~/openclaw-agents"
-                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-2 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]"
                         />
                         <p className="text-[8px] text-slate-500 italic">Used as the parent directory for new agents.</p>
                     </div>
@@ -302,7 +308,7 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
                         <input
                             type="checkbox"
                             id="auto-restart"
-                            className="accent-violet-600"
+                            className="[accent-color:var(--accent-600)]"
                             checked={config.autoRestart}
                             onChange={(e) => setConfig(c => ({ ...c, autoRestart: e.target.checked }))}
                         />
@@ -342,43 +348,54 @@ export const SettingsModal = ({ agents, onClose, theme, onToggleTheme, accentCol
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60" onClick={onClose} />
             <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded">
-                <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01]">
-                    <div className="flex items-center gap-6 h-full">
-                        <div className="flex items-center gap-2 mr-4">
-                            <SettingsIcon size={14} className="text-[var(--accent-600)] dark:text-[var(--accent-500)]" />
-                            <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-900 dark:text-white">System Settings</span>
-                        </div>
-                        {[
-                            { id: 'agents', label: 'Squad Management', icon: Bot },
-                            { id: 'models', label: 'Model Fallback', icon: Cpu },
-                            { id: 'system', label: 'Gateway Health', icon: Activity },
+
+                {/* Modal header */}
+                <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01] flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                        <SettingsIcon size={14} className="text-[var(--accent-600)] dark:text-[var(--accent-500)]" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-900 dark:text-white">Settings</span>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"><X size={18} /></button>
+                </div>
+
+                {/* Body: left sidebar + content */}
+                <div className="flex flex-1 overflow-hidden">
+
+                    {/* Left sidebar navigation */}
+                    <div className="w-44 border-r border-black/[0.06] dark:border-white/[0.06] bg-slate-50/50 dark:bg-white/[0.01] flex-shrink-0 flex flex-col py-2">
+                        {([
+                            { id: 'agents',     label: 'Agents',     icon: Bot },
+                            { id: 'models',     label: 'Models',     icon: Cpu },
+                            { id: 'system',     label: 'OpenClaw',   icon: Activity },
                             { id: 'appearance', label: 'Appearance', icon: Palette },
-                        ].map(tab => (
+                        ] as const).map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                style={activeTab === tab.id ? { borderBottomColor: 'var(--accent-500)' } : undefined}
-                        className={`flex items-center gap-2 px-1 h-full border-b-2 transition-all text-[10px] uppercase tracking-wider font-bold ${activeTab === tab.id
-                                    ? 'border-[var(--accent-500)] text-slate-900 dark:text-white'
-                                    : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
-                                    }`}
+                                className={`flex items-center gap-3 px-4 py-2.5 text-[10px] uppercase tracking-wider font-bold transition-all text-left border-l-2 w-full ${
+                                    activeTab === tab.id
+                                        ? 'border-[var(--accent-500)] text-slate-900 dark:text-white'
+                                        : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                }`}
+                                style={activeTab === tab.id ? { backgroundColor: 'color-mix(in srgb, var(--accent-500) 8%, transparent)' } : undefined}
                             >
-                                <tab.icon size={12} /> {tab.label}
+                                <tab.icon size={13} aria-hidden="true" />
+                                {tab.label}
                             </button>
                         ))}
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><X size={18} /></button>
+
+                    {/* Content area */}
+                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                        {activeTab === 'agents' && renderAgentsTab()}
+                        {activeTab === 'models' && renderModelsTab()}
+                        {activeTab === 'system' && renderSystemTab()}
+                        {activeTab === 'appearance' && renderAppearanceTab()}
+                    </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                    {activeTab === 'agents' && renderAgentsTab()}
-                    {activeTab === 'models' && renderModelsTab()}
-                    {activeTab === 'system' && renderSystemTab()}
-                    {activeTab === 'appearance' && renderAppearanceTab()}
-                </div>
-
-                <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-black/20 flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-600">
-                    <span>ClawController Revision: {__GIT_COMMIT__}</span>
+                <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.06] bg-slate-50 dark:bg-black/20 flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-600 flex-shrink-0">
+                    <span>Claw Pilot Revision: {__GIT_COMMIT__}</span>
                     <div className="flex items-center gap-4">
                         <span className="flex items-center gap-1"><Server size={10} /> LOCAL_INSTANCE</span>
                         <span>Environment: PRODUCTION_STABLE</span>

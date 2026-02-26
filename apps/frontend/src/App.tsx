@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Menu, X } from 'lucide-react';
 import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, pointerWithin, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
 import { Toaster } from 'sonner';
 import { Header } from './components/layout/Header';
@@ -50,7 +49,7 @@ export default function App() {
         const root = document.documentElement;
         root.classList.toggle('dark', theme === 'dark');
         // Replace any existing accent-* class with the current one
-        ['violet', 'blue', 'emerald', 'rose', 'amber'].forEach(c => root.classList.remove(`accent-${c}`));
+        ['violet', 'blue', 'indigo', 'sky', 'cyan', 'teal', 'emerald', 'rose', 'pink', 'amber', 'orange'].forEach(c => root.classList.remove(`accent-${c}`));
         root.classList.add(`accent-${accentColor}`);
     }, [theme, accentColor]);
 
@@ -160,6 +159,8 @@ export default function App() {
                 onToggleTheme={toggleTheme}
                 onNewTask={() => setIsNewTaskOpen(true)}
                 onToggleSidebar={() => setIsSidebarOpen(o => !o)}
+                filterText={filterText}
+                onFilterChange={setFilterText}
             />
 
             <main className="flex-1 flex overflow-hidden relative">
@@ -183,41 +184,6 @@ export default function App() {
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                     {activeView === 'kanban' && (
                         <>
-                    <div className="h-10 px-4 md:px-6 border-b border-black/[0.04] dark:border-white/[0.04] bg-[#fcfdfe] dark:bg-white/[0.01] flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <button
-                                className="md:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
-                                onClick={() => setIsSidebarOpen(o => !o)}
-                                aria-label="Toggle sidebar"
-                            >
-                                <Menu size={14} />
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <div className="relative hidden sm:block">
-                                <Search size={12} className="absolute left-2 top-1.5 text-slate-300 dark:text-slate-700" />
-                                <input
-                                    type="text"
-                                    placeholder="Filter missions..."
-                                    aria-label="Filter tasks"
-                                    value={filterText}
-                                    onChange={e => setFilterText(e.target.value)}
-                                    className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-32 focus:w-48 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
-                                />
-                                {filterText && (
-                                    <button
-                                        onClick={() => setFilterText('')}
-                                        className="absolute right-1 top-1 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none"
-                                        aria-label="Clear filter"
-                                    >
-                                        <X size={10} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
                     <div className="flex-1 flex overflow-x-auto overflow-y-hidden custom-scrollbar bg-transparent">
                         <DndContext
                             sensors={sensors}

@@ -1,4 +1,4 @@
-import { Sun, Moon, Plus, Menu, WifiOff, Link2, Copy } from 'lucide-react';
+import { Sun, Moon, Plus, Menu, WifiOff, Link2, Copy, Search, X } from 'lucide-react';
 import { NotificationsPanel } from '../ui/NotificationsPanel';
 
 interface HeaderProps {
@@ -14,6 +14,8 @@ interface HeaderProps {
     onToggleTheme: () => void;
     onNewTask: () => void;
     onToggleSidebar: () => void;
+    filterText: string;
+    onFilterChange: (v: string) => void;
 }
 
 type PillState = 'disconnected' | 'pairing' | 'offline' | 'nominal';
@@ -52,7 +54,7 @@ const PILL_STYLES: Record<PillState, { container: string; dot: string; text: str
     },
 };
 
-export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => {
+export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, onToggleTheme, onNewTask, onToggleSidebar, filterText, onFilterChange }: HeaderProps) => {
     const pillState = getPillState(isSocketConnected, gatewayPairingRequired, gatewayOnline);
     const pill = PILL_STYLES[pillState];
 
@@ -62,42 +64,70 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gateway
 
     return (
         <>
-            <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between px-4 md:px-6 sticky top-0 z-50">
-                <div className="flex items-center gap-3 md:gap-8">
-                    <button
-                        className="md:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
-                        onClick={onToggleSidebar}
-                        aria-label="Toggle navigation sidebar"
-                    >
-                        <Menu size={18} />
-                    </button>
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 flex items-center justify-center overflow-hidden" aria-hidden="true">
-                            <img src="/favicon.png" alt="ClawPilot logo" className="w-8 h-8 object-contain" />
-                        </div>
-                        <div>
-                            <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawPilot</h1>
-                            <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // {__GIT_COMMIT__}</div>
+            <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between sticky top-0 z-50 pr-4 md:pr-6">
+                <div className="flex items-center h-full">
+                    {/* BRANDING SECTION - matches sidebar width */}
+                    <div className="md:w-64 md:border-r border-black/[0.06] dark:border-white/[0.06] h-full flex items-center px-4 md:px-4 gap-3 flex-shrink-0">
+                        <button
+                            className="md:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
+                            onClick={onToggleSidebar}
+                            aria-label="Toggle navigation sidebar"
+                        >
+                            <Menu size={18} />
+                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 flex items-center justify-center overflow-hidden" aria-hidden="true">
+                                <img src="/favicon.png" alt="ClawPilot logo" className="w-8 h-8 object-contain" />
+                            </div>
+                            <div>
+                                <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawPilot</h1>
+                                <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // {__GIT_COMMIT__}</div>
+                            </div>
                         </div>
                     </div>
 
-                    <nav className="hidden md:flex items-center gap-6" aria-label="Key metrics">
-                        {[
-                            { label: 'Tasks Queue', val: stats.queued, color: 'text-violet-600 dark:text-violet-400' },
-                            { label: 'Done Today', val: stats.done, color: 'text-slate-500 dark:text-slate-400' }
-                        ].map(stat => (
-                            <div key={stat.label} className="flex flex-col">
-                                <span className="text-[9px] uppercase tracking-wider text-slate-500">{stat.label}</span>
-                                <span className={`text-xs font-mono font-bold ${stat.color}`} aria-label={`${stat.label}: ${stat.val}`}>{stat.val}</span>
-                            </div>
-                        ))}
-                    </nav>
+                    {/* METRICS & FILTERS */}
+                    <div className="hidden md:flex items-center gap-8 pl-3">
+                        <nav className="flex items-center gap-6" aria-label="Key metrics">
+                            {[
+                                { label: 'Tasks Queue', val: stats.queued, color: 'text-[var(--accent-600)] dark:text-[var(--accent-400)]' },
+                                { label: 'Done Today', val: stats.done, color: 'text-slate-500 dark:text-slate-400' }
+                            ].map(stat => (
+                                <div key={stat.label} className="flex flex-col">
+                                    <span className="text-[9px] uppercase tracking-wider text-slate-500">{stat.label}</span>
+                                    <span className={`text-xs font-mono font-bold ${stat.color}`} aria-label={`${stat.label}: ${stat.val}`}>{stat.val}</span>
+                                </div>
+                            ))}
+                        </nav>
+
+                        {/* Inline task filter */}
+                        <div className="flex relative items-center pr-2">
+                            <Search size={12} className="absolute left-2 text-slate-300 dark:text-slate-700 pointer-events-none" aria-hidden="true" />
+                            <input
+                                type="text"
+                                placeholder="Filter missions..."
+                                aria-label="Filter tasks"
+                                value={filterText}
+                                onChange={e => onFilterChange(e.target.value)}
+                                className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-32 focus:w-48 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
+                            />
+                            {filterText && (
+                                <button
+                                    onClick={() => onFilterChange('')}
+                                    className="absolute right-1 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none"
+                                    aria-label="Clear filter"
+                                >
+                                    <X size={10} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2 md:gap-3">
                     <button
                         onClick={onToggleTheme}
-                        className="p-2 text-slate-500 hover:text-violet-600 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
+                        className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
                         aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
                     >
                         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}

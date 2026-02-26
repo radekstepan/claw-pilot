@@ -18,19 +18,19 @@ function NotificationRow({ n }: { n: AppNotification }) {
     const isError = n.type === 'error';
     return (
         <div
-            className={`flex items-start gap-3 px-4 py-3 border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 ${!n.read ? 'bg-violet-500/[0.04]' : ''}`}
+            className={`flex items-start gap-3 px-4 py-3 border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 ${!n.read ? 'bg-[var(--accent-500)]/[0.06]' : ''}`}
         >
             <div className="mt-0.5 flex-shrink-0" aria-hidden="true">
                 {isError
                     ? <AlertCircle size={14} className="text-red-500" />
-                    : <CheckCircle2 size={14} className="text-violet-500" />}
+                    : <CheckCircle2 size={14} className="text-[var(--accent-500)]" />}
             </div>
             <div className="min-w-0 flex-1">
                 <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-snug break-words">{n.message}</p>
                 <p className="text-[9px] text-slate-400 dark:text-slate-600 mt-0.5 font-mono">{formatRelativeTime(n.timestamp)}</p>
             </div>
             {!n.read && (
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" aria-hidden="true" />
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent-500)] flex-shrink-0" aria-hidden="true" />
             )}
         </div>
     );
@@ -79,7 +79,7 @@ export function NotificationsPanel() {
         <div ref={panelRef} className="relative">
             <button
                 onClick={handleToggle}
-                className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 rounded"
+                className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
                 aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
                 aria-expanded={isOpen}
                 aria-haspopup="dialog"
@@ -87,7 +87,7 @@ export function NotificationsPanel() {
                 <Bell size={18} />
                 {unreadCount > 0 && (
                     <span
-                        className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] bg-violet-500 rounded-full border-2 border-white dark:border-[#060509] flex items-center justify-center"
+                        className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] bg-[var(--accent-500)] rounded-full border-2 border-white dark:border-[#060509] flex items-center justify-center"
                         aria-hidden="true"
                     >
                         <span className="text-[8px] text-white font-bold leading-none px-0.5">
@@ -109,7 +109,7 @@ export function NotificationsPanel() {
                         {unreadCount > 0 && (
                             <button
                                 onClick={handleMarkAllRead}
-                                className="text-[9px] text-violet-500 hover:text-violet-400 transition-colors focus-visible:outline-none underline underline-offset-2"
+                                className="text-[9px] text-[var(--accent-500)] hover:text-[var(--accent-400)] transition-colors focus-visible:outline-none underline underline-offset-2"
                             >
                                 Mark all read
                             </button>

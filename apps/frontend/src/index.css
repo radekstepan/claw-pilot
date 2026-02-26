@@ -56,11 +56,75 @@
   --accent-scroll-sm:   rgba(245, 158,  11, 0.1);
   --accent-scroll-hover:rgba(245, 158,  11, 0.3);
 }
+.accent-indigo {
+  --accent-300: #a5b4fc;
+  --accent-400: #818cf8;
+  --accent-500: #6366f1;
+  --accent-600: #4f46e5;
+  --accent-scroll-low:  rgba( 99, 102, 241, 0.4);
+  --accent-scroll-hi:   rgba( 99, 102, 241, 0.6);
+  --accent-scroll-sm:   rgba( 99, 102, 241, 0.1);
+  --accent-scroll-hover:rgba( 99, 102, 241, 0.3);
+}
+.accent-sky {
+  --accent-300: #7dd3fc;
+  --accent-400: #38bdf8;
+  --accent-500: #0ea5e9;
+  --accent-600: #0284c7;
+  --accent-scroll-low:  rgba( 14, 165, 233, 0.4);
+  --accent-scroll-hi:   rgba( 14, 165, 233, 0.6);
+  --accent-scroll-sm:   rgba( 14, 165, 233, 0.1);
+  --accent-scroll-hover:rgba( 14, 165, 233, 0.3);
+}
+.accent-cyan {
+  --accent-300: #67e8f9;
+  --accent-400: #22d3ee;
+  --accent-500: #06b6d4;
+  --accent-600: #0891b2;
+  --accent-scroll-low:  rgba(  6, 182, 212, 0.4);
+  --accent-scroll-hi:   rgba(  6, 182, 212, 0.6);
+  --accent-scroll-sm:   rgba(  6, 182, 212, 0.1);
+  --accent-scroll-hover:rgba(  6, 182, 212, 0.3);
+}
+.accent-teal {
+  --accent-300: #5eead4;
+  --accent-400: #2dd4bf;
+  --accent-500: #14b8a6;
+  --accent-600: #0d9488;
+  --accent-scroll-low:  rgba( 20, 184, 166, 0.4);
+  --accent-scroll-hi:   rgba( 20, 184, 166, 0.6);
+  --accent-scroll-sm:   rgba( 20, 184, 166, 0.1);
+  --accent-scroll-hover:rgba( 20, 184, 166, 0.3);
+}
+.accent-pink {
+  --accent-300: #f9a8d4;
+  --accent-400: #f472b6;
+  --accent-500: #ec4899;
+  --accent-600: #db2777;
+  --accent-scroll-low:  rgba(236,  72, 153, 0.4);
+  --accent-scroll-hi:   rgba(236,  72, 153, 0.6);
+  --accent-scroll-sm:   rgba(236,  72, 153, 0.1);
+  --accent-scroll-hover:rgba(236,  72, 153, 0.3);
+}
+.accent-orange {
+  --accent-300: #fdba74;
+  --accent-400: #fb923c;
+  --accent-500: #f97316;
+  --accent-600: #ea580c;
+  --accent-scroll-low:  rgba(249, 115,  22, 0.4);
+  --accent-scroll-hi:   rgba(249, 115,  22, 0.6);
+  --accent-scroll-sm:   rgba(249, 115,  22, 0.1);
+  --accent-scroll-hover:rgba(249, 115,  22, 0.3);
+}
 
 @layer utilities {
+  /* Scrollbars use neutral grey tones — independent of the selected accent colour */
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--accent-scroll-low) transparent;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent; /* slate-400/45 */
+  }
+  .dark .custom-scrollbar {
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;  /* slate-500/40 */
   }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -70,11 +134,17 @@
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--accent-scroll-low);
+    background: rgba(148, 163, 184, 0.45); /* light: slate-400/45 */
     border-radius: 4px;
   }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.4);  /* dark: slate-500/40 */
+  }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: var(--accent-scroll-hi);
+    background: rgba(100, 116, 139, 0.65); /* light hover: slate-500/65 */
+  }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.35); /* dark hover: slate-400/35 */
   }
 
   .animate-slideUp {

@@ -6,6 +6,6 @@ export const COLUMN_TITLES: Record<string, string> = {
     IN_PROGRESS: 'In Progress',
     REVIEW: 'Review',
     DONE: 'Done',
-    STUCK: 'Stuck / Error',
+    STUCK: 'Error',
 };
 

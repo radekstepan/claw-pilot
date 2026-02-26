@@ -1,11 +1,10 @@
 import { useRef } from 'react';
-import { Activity, Lock, AlertTriangle } from 'lucide-react';
+import { Lock, AlertTriangle } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { TaskCard } from './TaskCard';
 import { Task } from '@claw-pilot/shared-types';
 import { SkeletonCard } from '../ui/SkeletonCard';
-import { EmptyState } from '../ui/EmptyState';
 
 interface KanbanColumnProps {
     id: string;
@@ -46,14 +45,13 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
         <section
             ref={setNodeRef}
             aria-label={`${title} column, ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
-            className={`${tasks.length === 0 ? 'flex-none w-36' : 'flex-1 min-w-[280px]'} flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-all duration-150
-                ${isOver ? 'bg-violet-500/5 dark:bg-violet-400/5' : ''}
+            className={`flex-1 min-w-[180px] flex flex-col h-full border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0 transition-all duration-150
+                ${isOver ? 'bg-[var(--accent-500)]/5' : ''}
                 ${isDoneColumn && !showNoDrop ? 'opacity-80' : ''}
                 ${showNoDrop ? 'opacity-100 ring-1 ring-inset ring-red-500/40 bg-red-500/[0.03]' : ''}
-                ${isStuckColumn ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''}
             `}
         >
-            <div className={`p-3 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] ${isStuckColumn ? 'bg-rose-50/60 dark:bg-rose-950/20' : 'bg-[#f8fafc]/80 dark:bg-white/[0.01]'}`}>
+            <div className="p-3 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] bg-[#f8fafc]/80 dark:bg-white/[0.01]">
                 <div className="flex items-center gap-2">
                     {isStuckColumn && (
                         <AlertTriangle
@@ -87,8 +85,8 @@ export const KanbanColumn = ({ id, title, tasks, onTaskClick, isLoading, isDragg
                 {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : tasks.length === 0 ? (
-                    <div aria-hidden="true" className="pointer-events-none">
-                        <EmptyState icon={Activity} title="Empty" />
+                    <div aria-hidden="true" className="pointer-events-none flex items-center justify-center pt-6">
+                        <span className="text-[9px] text-slate-200 dark:text-slate-800 select-none">—</span>
                     </div>
                 ) : (
                     // Virtual list: total-height spacer with absolutely-positioned items

@@ -140,7 +140,7 @@ export const RecurringView = () => {
                 </div>
                 <button
                     onClick={() => setIsCreating(!isCreating)}
-                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-600)] text-white text-[10px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] transition-all"
                 >
                     <Plus size={14} />
                     New Mission
@@ -148,8 +148,8 @@ export const RecurringView = () => {
             </div>
 
             {isCreating && (
-                <div className="mb-6 p-6 border border-violet-500/30 bg-violet-500/[0.03] rounded animate-fadeIn">
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-violet-600 dark:text-violet-400 mb-4">New Scheduled Mission</h3>
+                <div className="mb-6 p-6 border border-[var(--accent-500)]/30 bg-[var(--accent-500)]/[0.03] rounded animate-fadeIn">
+                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)] mb-4">New Scheduled Mission</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div className="md:col-span-3 space-y-1">
                             <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Mission Title *</label>
@@ -158,7 +158,7 @@ export const RecurringView = () => {
                                 value={newTitle}
                                 onChange={(e) => setNewTitle(e.target.value)}
                                 placeholder="e.g. Daily security audit"
-                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50"
                                 autoFocus
                             />
                         </div>
@@ -169,7 +169,7 @@ export const RecurringView = () => {
                                 onChange={(e) => setNewDescription(e.target.value)}
                                 placeholder="Describe what should happen each time this mission triggers…"
                                 rows={3}
-                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 resize-y"
+                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
                             />
                         </div>
                         <div className="space-y-1">
@@ -189,7 +189,7 @@ export const RecurringView = () => {
                                 onChange={(e) => setNewScheduleValue(e.target.value)}
                                 placeholder={newScheduleType === 'CUSTOM' ? '*/15 * * * *  (required)' : 'Not needed for preset schedules'}
                                 disabled={newScheduleType !== 'CUSTOM'}
-                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono disabled:opacity-40"
+                                className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 font-mono disabled:opacity-40"
                             />
                         </div>
                         <div className="md:col-span-3 space-y-1">
@@ -205,7 +205,7 @@ export const RecurringView = () => {
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handleCreate}
-                            className="px-5 py-2 bg-violet-600 text-white text-[10px] uppercase tracking-widest font-bold hover:bg-violet-500 transition-all"
+                            className="px-5 py-2 bg-[var(--accent-600)] text-white text-[10px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] transition-all"
                         >
                             Create Mission
                         </button>
@@ -234,12 +234,12 @@ export const RecurringView = () => {
                         return (
                             <div
                                 key={task.id}
-                                className="p-4 bg-white dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-violet-500/30 transition-all"
+                                className="p-4 bg-white dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded group hover:border-[var(--accent-500)]/30 transition-all"
                             >
                                 {isEditing ? (
                                     /* ── Inline edit form ── */
                                     <div className="space-y-3">
-                                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-bold text-violet-500 mb-2">Edit Scheduled Mission</h3>
+                                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-bold text-[var(--accent-500)] mb-2">Edit Scheduled Mission</h3>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             <div className="md:col-span-3 space-y-1">
                                                 <label className="text-[8px] uppercase font-bold text-slate-400 dark:text-slate-500">Mission Title *</label>
@@ -247,7 +247,7 @@ export const RecurringView = () => {
                                                     type="text"
                                                     value={editTitle}
                                                     onChange={(e) => setEditTitle(e.target.value)}
-                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50"
+                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50"
                                                     autoFocus
                                                 />
                                             </div>
@@ -257,7 +257,7 @@ export const RecurringView = () => {
                                                     value={editDescription}
                                                     onChange={(e) => setEditDescription(e.target.value)}
                                                     rows={3}
-                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 resize-y"
+                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
                                                 />
                                             </div>
                                             <div className="space-y-1">
@@ -277,7 +277,7 @@ export const RecurringView = () => {
                                                     onChange={(e) => setEditScheduleValue(e.target.value)}
                                                     placeholder={editScheduleType === 'CUSTOM' ? '*/15 * * * *  (required)' : 'Not needed for preset schedules'}
                                                     disabled={editScheduleType !== 'CUSTOM'}
-                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-violet-500/50 font-mono disabled:opacity-40"
+                                                    className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-[11px] text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 font-mono disabled:opacity-40"
                                                 />
                                             </div>
                                             <div className="md:col-span-3 space-y-1">
@@ -294,7 +294,7 @@ export const RecurringView = () => {
                                             <button
                                                 onClick={handleSaveEdit}
                                                 disabled={isLoading}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 text-white text-[9px] uppercase tracking-widest font-bold hover:bg-violet-500 transition-all rounded-sm disabled:opacity-50"
+                                                className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--accent-600)] text-white text-[9px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] transition-all rounded-sm disabled:opacity-50"
                                             >
                                                 {isLoading ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
                                                 Save
@@ -324,8 +324,8 @@ export const RecurringView = () => {
                                             )}
                                             {task.assigned_agent_id && (
                                                 <div className="flex items-center gap-1 mb-1">
-                                                    <Bot size={9} className="text-violet-500 dark:text-violet-400 flex-shrink-0" />
-                                                    <span className="text-[9px] font-mono text-violet-600 dark:text-violet-400">
+                                                    <Bot size={9} className="text-[var(--accent-500)] dark:text-[var(--accent-400)] flex-shrink-0" />
+                                                    <span className="text-[9px] font-mono text-[var(--accent-600)] dark:text-[var(--accent-400)]">
                                                         {agents.find((a) => a.id === task.assigned_agent_id)?.name ?? task.assigned_agent_id}
                                                     </span>
                                                 </div>
@@ -353,7 +353,7 @@ export const RecurringView = () => {
                                             <button
                                                 onClick={() => openEdit(task)}
                                                 title="Edit scheduled mission"
-                                                className="p-1.5 text-slate-400 hover:text-violet-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                className="p-1.5 text-slate-400 hover:text-[var(--accent-500)] transition-colors opacity-0 group-hover:opacity-100"
                                             >
                                                 <Pencil size={13} />
                                             </button>
