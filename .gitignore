@@ -42,3 +42,5 @@ repomix-output.xml
 .turbo/
 
 data/
+
+*.py

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolve } from 'path';
 
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'] as const;
 
@@ -57,6 +58,13 @@ const EnvSchema = z.object({
 
     /** Timeout (ms) for heavy AI gateway calls (chat routing, session spawn, agent generation). */
     OPENCLAW_AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
+
+    /**
+     * Path to the device identity file (Ed25519 key pair + deviceToken).
+     * Defaults to `data/device-identity.json` relative to the process working directory.
+     * Override this in Docker / VPS deployments to point at a persistent volume.
+     */
+    OPENCLAW_DEVICE_IDENTITY_PATH: z.string().default(resolve('data/device-identity.json')),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

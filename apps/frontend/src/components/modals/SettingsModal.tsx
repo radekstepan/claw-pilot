@@ -39,8 +39,10 @@ export const SettingsModal = ({ agents, onClose }: SettingsModalProps) => {
         } else if (activeTab === 'system') {
             api.getConfig().then(setConfig).catch(console.error);
             api.getGatewayStatus().then((data: GatewayStatus) => {
-                if (data.status === 'HEALTHY') {
+                if (data.status === 'ONLINE') {
                     setGatewayLogs('[System] Gateway connected and healthy.\n');
+                } else if (data.status === 'PAIRING_REQUIRED') {
+                    setGatewayLogs(`[System] Device pairing required.\nDevice ID: ${data.deviceId ?? 'unknown'}\n\n${data.instructions ?? ''}\n`);
                 } else {
                     setGatewayLogs(`[System] Gateway status: ${data.status}${data.error ? '\nError: ' + data.error : ''}\n`);
                 }

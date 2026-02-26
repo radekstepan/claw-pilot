@@ -10,8 +10,12 @@ export interface Model {
 }
 
 export interface GatewayStatus {
-    status: string;
+    status: 'ONLINE' | 'OFFLINE' | 'PAIRING_REQUIRED';
     error?: string;
+    /** Present when status is PAIRING_REQUIRED */
+    deviceId?: string;
+    /** Human-readable approval instructions */
+    instructions?: string;
 }
 
 export interface GeneratedAgentConfig {

@@ -1,4 +1,4 @@
-import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu, WifiOff } from 'lucide-react';
+import { Terminal, Sun, Moon, Bell, Plus, ChevronDown, Menu, WifiOff, Link2, Copy } from 'lucide-react';
 
 interface HeaderProps {
     stats: { active: number; queued: number; done: number };
@@ -6,12 +6,64 @@ interface HeaderProps {
     isSocketConnected: boolean;
     /** null = status not yet known (first monitor tick pending) */
     gatewayOnline: boolean | null;
+    /** True when the device identity has been sent to the gateway but pairing is not yet approved. */
+    gatewayPairingRequired: boolean;
+    /** Stable device ID to show in pairing instructions. */
+    gatewayDeviceId: string | null;
     onToggleTheme: () => void;
     onNewTask: () => void;
     onToggleSidebar: () => void;
 }
 
-export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => (
+type PillState = 'disconnected' | 'pairing' | 'offline' | 'nominal';
+
+function getPillState(isSocketConnected: boolean, gatewayPairingRequired: boolean, gatewayOnline: boolean | null): PillState {
+    if (!isSocketConnected) return 'disconnected';
+    if (gatewayPairingRequired) return 'pairing';
+    if (gatewayOnline === false) return 'offline';
+    return 'nominal';
+}
+
+const PILL_STYLES: Record<PillState, { container: string; dot: string; text: string; chevron: string; label: string }> = {
+    disconnected: {
+        container: 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10',
+        dot: 'bg-red-500',
+        text: 'text-red-600 dark:text-red-500',
+        chevron: 'text-red-500',
+        label: 'Disconnected',
+    },
+    pairing: {
+        container: 'bg-yellow-500/5 border-yellow-500/20 hover:bg-yellow-500/10',
+        dot: 'bg-yellow-400',
+        text: 'text-yellow-600 dark:text-yellow-400',
+        chevron: 'text-yellow-400',
+        label: 'Pair Device',
+    },
+    offline: {
+        container: 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10',
+        dot: 'bg-amber-500',
+        text: 'text-amber-600 dark:text-amber-400',
+        chevron: 'text-amber-500',
+        label: 'Gateway Offline',
+    },
+    nominal: {
+        container: 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10',
+        dot: 'bg-emerald-500',
+        text: 'text-emerald-600 dark:text-emerald-500',
+        chevron: 'text-emerald-500',
+        label: 'Nominal',
+    },
+};
+
+export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, onToggleTheme, onNewTask, onToggleSidebar }: HeaderProps) => {
+    const pillState = getPillState(isSocketConnected, gatewayPairingRequired, gatewayOnline);
+    const pill = PILL_STYLES[pillState];
+
+    const copyDeviceId = () => {
+        if (gatewayDeviceId) void navigator.clipboard.writeText(gatewayDeviceId);
+    };
+
+    return (
     <>
     <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between px-4 md:px-6 sticky top-0 z-50">
         <div className="flex items-center gap-3 md:gap-8">
@@ -27,8 +79,8 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggl
                     <Terminal size={18} className="text-white" />
                 </div>
                 <div>
-                    <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawController</h1>
-                    <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // v2.2.0</div>
+                    <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawPilot</h1>
+                    <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // v1.0.0</div>
                 </div>
             </div>
 
@@ -58,36 +110,17 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggl
             <div
                 role="status"
                 aria-label={
-                    !isSocketConnected ? 'Backend disconnected'
-                    : gatewayOnline === false ? 'OpenClaw gateway offline'
+                    pillState === 'disconnected' ? 'Backend disconnected'
+                    : pillState === 'pairing' ? 'Device pairing required'
+                    : pillState === 'offline' ? 'OpenClaw gateway offline'
                     : 'All systems nominal'
                 }
-                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border mr-2 md:mr-4 cursor-default transition-colors group ${
-                    !isSocketConnected
-                        ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10'
-                        : gatewayOnline === false
-                        ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10'
-                        : 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
-                }`}>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                    !isSocketConnected ? 'bg-red-500'
-                    : gatewayOnline === false ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                }`} aria-hidden="true" />
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${
-                    !isSocketConnected ? 'text-red-600 dark:text-red-500'
-                    : gatewayOnline === false ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-emerald-600 dark:text-emerald-500'
-                }`}>
-                    {!isSocketConnected ? 'Disconnected'
-                    : gatewayOnline === false ? 'Gateway Offline'
-                    : 'Nominal'}
+                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border mr-2 md:mr-4 cursor-default transition-colors group ${pill.container}`}>
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pill.dot}`} aria-hidden="true" />
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${pill.text}`}>
+                    {pill.label}
                 </span>
-                <ChevronDown size={12} className={`${
-                    !isSocketConnected ? 'text-red-500'
-                    : gatewayOnline === false ? 'text-amber-500'
-                    : 'text-emerald-500'
-                } opacity-50 group-hover:opacity-100`} aria-hidden="true" />
+                <ChevronDown size={12} className={`${pill.chevron} opacity-50 group-hover:opacity-100`} aria-hidden="true" />
             </div>
 
             <button
@@ -106,7 +139,48 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggl
             </button>
         </div>
     </header>
-    {isSocketConnected && gatewayOnline === false && (
+
+    {/* ── Pairing required banner ── */}
+    {isSocketConnected && gatewayPairingRequired && (
+        <div
+            role="alert"
+            aria-live="polite"
+            className="sticky top-14 z-40 px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-800 dark:text-yellow-300 text-[11px]"
+        >
+            <div className="flex items-start gap-2 max-w-4xl">
+                <Link2 size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <div className="space-y-1 min-w-0">
+                    <p className="font-semibold">Device pairing required — OpenClaw gateway is waiting for your approval</p>
+                    <p className="text-yellow-700 dark:text-yellow-400">
+                        SSH into the gateway machine and run these two commands. Pending requests expire in ~5 minutes.
+                    </p>
+                    <pre className="mt-1.5 bg-black/10 dark:bg-white/5 rounded px-3 py-2 font-mono text-[10px] text-yellow-900 dark:text-yellow-200 whitespace-pre-wrap break-all">
+{`openclaw devices list\nopenclaw devices approve --latest`}
+                    </pre>
+                    {gatewayDeviceId && (
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-yellow-600 dark:text-yellow-500">Your device ID:</span>
+                            <code className="font-mono text-[10px] bg-black/10 dark:bg-white/5 px-1.5 py-0.5 rounded break-all">{gatewayDeviceId}</code>
+                            <button
+                                onClick={copyDeviceId}
+                                className="p-0.5 hover:text-yellow-900 dark:hover:text-yellow-100 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-yellow-400 rounded"
+                                aria-label="Copy device ID"
+                                title="Copy device ID"
+                            >
+                                <Copy size={11} />
+                            </button>
+                        </div>
+                    )}
+                    <p className="text-yellow-600 dark:text-yellow-500 text-[10px] mt-1">
+                        After approval, reconnect or wait for the next health check (~10s). You will only need to do this once.
+                    </p>
+                </div>
+            </div>
+        </div>
+    )}
+
+    {/* ── Gateway offline banner ── */}
+    {isSocketConnected && gatewayOnline === false && !gatewayPairingRequired && (
         <div
             role="alert"
             aria-live="polite"
@@ -117,4 +191,5 @@ export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, onToggl
         </div>
     )}
     </>
-);
+    );
+};

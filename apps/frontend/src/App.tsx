@@ -39,7 +39,7 @@ export default function App() {
     }, [theme]);
 
     // Zustand Store
-    const { tasks, agents, fetchInitialData, fetchRecurring, updateTaskStatus, isSocketConnected, gatewayOnline, isLoading } = useMissionStore();
+    const { tasks, agents, fetchInitialData, fetchRecurring, updateTaskStatus, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, isLoading } = useMissionStore();
 
     // Local UI State
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -112,6 +112,8 @@ export default function App() {
                 theme={theme}
                 isSocketConnected={isSocketConnected}
                 gatewayOnline={gatewayOnline}
+                gatewayPairingRequired={gatewayPairingRequired}
+                gatewayDeviceId={gatewayDeviceId}
                 onToggleTheme={toggleTheme}
                 onNewTask={() => setIsNewTaskOpen(true)}
                 onToggleSidebar={() => setIsSidebarOpen(o => !o)}

@@ -19,25 +19,28 @@ Read these rules carefully before writing or modifying any code.
 **Core helper:**
 ```typescript
 import { gatewayCall } from '../openclaw/cli.js';
-// Opens a fresh WS connection, authenticates (Mode B / control_ui), fires one RPC method, closes.
+// Opens a fresh WS connection, performs Mode-A device-identity handshake, fires one RPC method, closes.
 const payload = await gatewayCall('sessions.list', {});
 const payload = await gatewayCall('chat.send', { sessionKey, message, deliver: false, idempotencyKey });
 ```
 
-**Authentication — Mode B (control_ui):**
-- The gateway must have `disable_device_pairing: true`.
-- Claw-Pilot identifies as `openclaw-control-ui` / `ui`; no Ed25519 key pair management required.
-- A bearer token is sent as `?token=<OPENCLAW_GATEWAY_TOKEN>` when the env var is set.
+**Authentication — Mode A (device identity + one-time pairing):**
+- On first start, `cli.ts` generates a persistent Ed25519 key pair stored in `apps/backend/data/device-identity.json`.
+- The gateway issues a `connect.challenge` event with a nonce. Claw-Pilot signs the nonce with its Ed25519 private key and sends a `connect` request with the `device` block.
+- **First connection from a new device:** the gateway closes with code 1008 ("pairing required"). The UI shows a **"Pair Device"** banner with instructions. After the user runs `openclaw devices approve --latest` on the gateway machine, the next connection succeeds and a `deviceToken` is saved to the identity file.
+- **Subsequent connections:** `deviceToken` is sent in the `auth` block — no manual approval ever again.
+- `OPENCLAW_GATEWAY_TOKEN` is used as initial auth before a `deviceToken` exists.
 
 **Gateway environment variables (in `apps/backend/src/config/env.ts`):**
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `OPENCLAW_GATEWAY_URL` | `ws://localhost:18789` | WebSocket URL of the OpenClaw gateway |
-| `OPENCLAW_GATEWAY_TOKEN` | _(optional)_ | Bearer token appended as `?token=…` |
+| `OPENCLAW_GATEWAY_TOKEN` | _(optional)_ | Initial bearer token used before a `deviceToken` is obtained |
 | `OPENCLAW_GATEWAY_ID` | `gateway` | Used to build the main-agent session key |
 | `OPENCLAW_WS_TIMEOUT` | `15000` | Timeout (ms) for fast RPC calls |
 | `OPENCLAW_AI_TIMEOUT` | `120000` | Timeout (ms) for heavy AI calls |
+| `OPENCLAW_DEVICE_IDENTITY_PATH` | `data/device-identity.json` | Path to the Ed25519 key pair + deviceToken file |
 
 **Key RPC methods used:**
 

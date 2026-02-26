@@ -14,6 +14,10 @@ interface MissionState {
     isSocketConnected: boolean;
     /** null = not yet known (first tick pending), true = reachable, false = offline */
     gatewayOnline: boolean | null;
+    /** True when the gateway has received our device identity but pairing approval is still pending. */
+    gatewayPairingRequired: boolean;
+    /** Stable device ID presented to the gateway — shown in pairing instructions. */
+    gatewayDeviceId: string | null;
     /** Cursor for the next page of activities (null = no more pages). */
     activitiesCursor: string | null;
     /** Cursor for the next page of chat history (null = no more pages). */
@@ -32,6 +36,7 @@ interface MissionState {
     clearChatHistory: () => Promise<void>;
     setSocketConnected: (connected: boolean) => void;
     setGatewayOnline: (online: boolean) => void;
+    setGatewayPairing: (required: boolean, deviceId?: string) => void;
     loadMoreActivities: () => Promise<void>;
     loadMoreChat: () => Promise<void>;
     // Recurring
@@ -52,6 +57,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     error: null,
     isSocketConnected: false,
     gatewayOnline: null,
+    gatewayPairingRequired: false,
+    gatewayDeviceId: null,
     activitiesCursor: null,
     chatCursor: null,
 
@@ -215,6 +222,13 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
     setSocketConnected: (connected: boolean) => set({ isSocketConnected: connected }),
     setGatewayOnline: (online: boolean) => set({ gatewayOnline: online }),
+    setGatewayPairing: (required: boolean, deviceId?: string) => {
+        if (required) {
+            set({ gatewayPairingRequired: true, gatewayDeviceId: deviceId ?? null, gatewayOnline: false });
+        } else {
+            set({ gatewayPairingRequired: false, gatewayDeviceId: null });
+        }
+    },
 
     loadMoreActivities: async () => {
         const { activitiesCursor } = get();

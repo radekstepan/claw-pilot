@@ -1,19 +1,25 @@
 import { FastifyInstance } from 'fastify';
-import { getAgents, getLiveSessions, GatewayOfflineError } from '../openclaw/cli.js';
+import { getAgents, getLiveSessions, GatewayOfflineError, GatewayPairingRequiredError } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
 
 export function startSessionMonitor(fastify: FastifyInstance): NodeJS.Timeout {
     const previousAgentStatuses: Record<string, string> = {};
     /** Tri-state: null = unknown (first tick), true = online, false = offline */
     let gatewayOnline: boolean | null = null;
+    /** True when the device is awaiting pairing approval on the gateway machine. */
+    let pairingPending = false;
 
-    function emitGatewayStatus(online: boolean) {
-        if (gatewayOnline === online) return; // no change — skip
+    function emitGatewayStatus(online: boolean, pairingRequired = false, deviceId?: string) {
+        const changed = gatewayOnline !== online || pairingPending !== pairingRequired;
+        if (!changed) return;
         gatewayOnline = online;
+        pairingPending = pairingRequired;
         if (fastify.io) {
-            fastify.io.emit('gateway_status', { online });
+            fastify.io.emit('gateway_status', { online, pairingRequired, deviceId });
         }
-        if (online) {
+        if (pairingRequired) {
+            fastify.log.warn(`[sessionMonitor] Device pairing required — run: openclaw devices approve --latest (deviceId: ${deviceId})`);
+        } else if (online) {
             fastify.log.info('[sessionMonitor] OpenClaw gateway is back online');
         } else {
             fastify.log.warn('[sessionMonitor] OpenClaw gateway is unreachable — AI features offline');
@@ -28,7 +34,9 @@ export function startSessionMonitor(fastify: FastifyInstance): NodeJS.Timeout {
             [agents, sessions] = await Promise.all([getAgents(), getLiveSessions()]);
             emitGatewayStatus(true);
         } catch (error: unknown) {
-            if (error instanceof GatewayOfflineError) {
+            if (error instanceof GatewayPairingRequiredError) {
+                emitGatewayStatus(false, true, error.deviceId);
+            } else if (error instanceof GatewayOfflineError) {
                 emitGatewayStatus(false);
                 // Suppress noisy stack trace — one terse line is enough
                 fastify.log.warn(`[sessionMonitor] ${error.message}`);

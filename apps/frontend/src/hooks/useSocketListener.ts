@@ -12,6 +12,7 @@ export function useSocketListener() {
         addChatMessage,
         setSocketConnected,
         setGatewayOnline,
+        setGatewayPairing,
         fetchInitialData,
     } = useMissionStore();
 
@@ -82,14 +83,19 @@ export function useSocketListener() {
             useMissionStore.setState({ chatHistory: [], chatCursor: null });
         });
 
-        socket.on('gateway_status', ({ online }) => {
-            console.log('Socket event: gateway_status', online);
-            setGatewayOnline(online);
+        socket.on('gateway_status', ({ online, pairingRequired, deviceId }) => {
+            console.log('Socket event: gateway_status', { online, pairingRequired, deviceId });
+            if (pairingRequired) {
+                setGatewayPairing(true, deviceId);
+            } else {
+                setGatewayPairing(false);
+                setGatewayOnline(online);
+            }
         });
 
         return () => {
             socket.io.off('reconnect', handleReconnect);
             socket.disconnect();
         };
-    }, [updateTaskLocally, addTaskLocally, deleteTaskLocally, addChatMessage, setSocketConnected, setGatewayOnline, fetchInitialData]);
+    }, [updateTaskLocally, addTaskLocally, deleteTaskLocally, addChatMessage, setSocketConnected, setGatewayOnline, setGatewayPairing, fetchInitialData]);
 }

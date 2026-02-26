@@ -157,9 +157,18 @@ describe('gatewayCall', () => {
         const { connectFrame } = await driveHandshake();
         const params = connectFrame.params as Record<string, unknown>;
         const client = params.client as Record<string, unknown>;
-        expect(client.id).toBe('openclaw-control-ui');
+        expect(client.id).toBe('claw-pilot');
         expect(client.mode).toBe('ui');
+        // Mode B: no device block (dangerouslyDisableDeviceAuth)
         expect(params.device).toBeUndefined();
+        // Scopes must include operator.write for chat.send / sessions.patch
+        expect(params.scopes).toEqual(['operator.read', 'operator.write', 'operator.admin', 'operator.approvals']);
+        // Protocol-required fields for operator clients
+        expect(params.caps).toEqual([]);
+        expect(params.commands).toEqual([]);
+        expect(params.permissions).toEqual({});
+        expect(params.locale).toBe('en-US');
+        expect(params.userAgent).toBe('claw-pilot/1.0.0');
         await promise;
     });
 
