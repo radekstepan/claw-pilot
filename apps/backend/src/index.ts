@@ -22,6 +22,7 @@ import { startStuckTaskMonitor } from './monitors/stuckTaskMonitor.js';
 import { startPruningMonitor } from './monitors/pruningMonitor.js';
 import { startBackupMonitor } from './monitors/backupMonitor.js';
 import { startRecurringSchedulerMonitor } from './monitors/recurringSchedulerMonitor.js';
+import { runBootRecovery } from './monitors/bootRecovery.js';
 import { runMigrations, closeDb } from './db/index.js';
 import { aiQueue } from './services/aiQueue.js';
 
@@ -36,6 +37,10 @@ const fastify = await buildApp();
 // ---------------------------------------------------------------------------
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(fastify.server, {
     cors: { origin: env.ALLOWED_ORIGIN },
+    // Aggressive heartbeat so dropped connections (e.g. mobile device sleeping)
+    // are detected in ~15 s rather than the default ~45 s.
+    pingInterval: 10_000,
+    pingTimeout: 5_000,
 });
 
 fastify.decorate('io', io);
@@ -63,6 +68,10 @@ fastify.decorate('reconcileRecurring', recurringScheduler.reconcile);
 // ---------------------------------------------------------------------------
 await fastify.listen({ port: env.PORT, host: env.HOST });
 console.log(`Server listening on http://${env.HOST}:${env.PORT}`);
+
+// Boot-time recovery: mark any IN_PROGRESS tasks that have no live gateway
+// session as STUCK.  Runs detached so startup latency is unaffected.
+void runBootRecovery(fastify);
 
 // ---------------------------------------------------------------------------
 // Graceful shutdown — handle SIGINT (Ctrl-C) and SIGTERM (container stop).

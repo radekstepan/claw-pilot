@@ -24,6 +24,13 @@ export function useSocketListener() {
             extraHeaders: {
                 Authorization: `Bearer ${env.VITE_API_KEY}`,
             },
+            // Tighter reconnection backoff so devices that just woke from sleep
+            // re-establish the socket quickly and trigger a delta sync.
+            // The server-side heartbeat (10 s / 5 s) will have already detected the
+            // dropped connection, so the client should be able to reconnect promptly.
+            reconnectionDelay: 1_000,
+            reconnectionDelayMax: 5_000,
+            reconnectionAttempts: Infinity,
         });
 
         socket.on('connect', () => {
