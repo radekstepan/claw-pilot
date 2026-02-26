@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap } from 'lucide-react';
+import { X, CheckCircle2, Circle, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, Trash2, Package, Zap, ScrollText } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Agent, Task } from '@claw-pilot/shared-types';
+import type { Agent, Task, ActivityLog } from '@claw-pilot/shared-types';
 import { Badge } from '../ui/Badge';
 import { StatusDot } from '../ui/StatusDot';
 import { COLUMN_TITLES } from '../../constants';
@@ -45,6 +45,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isRouting, setIsRouting] = useState(false);
     const [routeAgentId, setRouteAgentId] = useState<string>(task?.agentId ?? task?.assignee_id ?? '');
+    const [taskActivities, setTaskActivities] = useState<ActivityLog[]>([]);
+    const [activitiesLoading, setActivitiesLoading] = useState(false);
 
     const {
         register,
@@ -65,6 +67,15 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     const assigneeId = watch('assignee_id');
 
     const { updateTaskLocally, updateTask, deleteTask, toggleDeliverable, routeTask } = useMissionStore();
+
+    useEffect(() => {
+        if (!task) return;
+        setActivitiesLoading(true);
+        api.getTaskActivities(task.id)
+            .then(setTaskActivities)
+            .catch(() => setTaskActivities([]))
+            .finally(() => setActivitiesLoading(false));
+    }, [task?.id]);
 
     if (!task) return null;
     const agent = agents.find(a => a.id === (assigneeId || task.assignee_id));
@@ -276,6 +287,42 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                                 </div>
                             </section>
                         )}
+
+                        <section className="mb-8">
+                            <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">
+                                Activity Log
+                                {taskActivities.length > 0 && (
+                                    <span className="ml-2 text-slate-300 dark:text-slate-600 normal-case tracking-normal font-normal">
+                                        ({taskActivities.length})
+                                    </span>
+                                )}
+                            </h3>
+                            {activitiesLoading ? (
+                                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                                    <Loader2 size={12} className="animate-spin" /> Loading…
+                                </div>
+                            ) : taskActivities.length === 0 ? (
+                                <EmptyState icon={ScrollText} title="No activity yet" description="Activity from agents will appear here." />
+                            ) : (
+                                <div className="space-y-2">
+                                    {taskActivities.map((a) => (
+                                        <div key={a.id} className={`p-3 rounded border text-xs leading-relaxed ${
+                                            a.message.startsWith('completed:') || a.message.startsWith('done:')
+                                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
+                                                : a.message.startsWith('error:')
+                                                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
+                                                : 'bg-slate-50 dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.04]'
+                                        }`}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">{a.agentId ?? 'system'}</span>
+                                                <span className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
+                                            </div>
+                                            <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{a.message}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
 
                         <section className="mb-8">
                             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">Project Description</h3>

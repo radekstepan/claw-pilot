@@ -202,6 +202,30 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         return reply.status(201).send(newActivity);
     });
 
+    // GET /api/tasks/:id/activities — all activity logs for a task, newest first
+    fastify.get('/:id/activities', async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const taskRow = db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        if (!taskRow) return reply.status(404).send({ error: 'Task not found' });
+
+        const rows = db
+            .select()
+            .from(activitiesTable)
+            .where(eq(activitiesTable.taskId, id))
+            .orderBy(desc(activitiesTable.timestamp))
+            .all();
+
+        const activities: ActivityLog[] = rows.map((r) => ({
+            id: r.id,
+            taskId: r.taskId ?? id,
+            agentId: r.agentId ?? undefined,
+            message: r.message,
+            timestamp: r.timestamp,
+        }));
+
+        return reply.send(activities);
+    });
+
     // POST /api/tasks/:id/route — dispatch a task to an AI agent via spawnTaskSession
     const RouteTaskSchema = z.object({
         agentId: z.string(),
@@ -265,12 +289,14 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             `---`,
             `TASK METADATA (do not include in your work output):`,
             `taskId: ${id}`,
-            `When you have finished, report your result by calling:`,
+            `When you have finished, POST your result to:`,
             `  POST ${callbackUrl}`,
             `  Authorization: Bearer ${env.API_KEY}`,
             `  Content-Type: application/json`,
-            `  Body: { "agent_id": "${body.agentId}", "message": "completed: <your summary>" }`,
-            `The word "completed" in the message is required to move this task to Review.`,
+            `  Body: { "agent_id": "${body.agentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
+            `IMPORTANT: The "message" field must contain your COMPLETE work output — the full text,`,
+            `answer, or result. Do NOT abbreviate or summarize. A human reviewer reads it directly`,
+            `from the activity log. Start the message with "completed: " followed by the full output.`,
             `On error use: { "agent_id": "${body.agentId}", "message": "error: <description>" }`,
         ].join('\n');
         const prompt = taskContext;
@@ -370,24 +396,19 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
         const newStatus = body.action === 'approve' ? 'DONE' : 'IN_PROGRESS';
         const now = new Date().toISOString();
+        const rejectActivityId = randomUUID();
 
         const updatedRow = db.transaction(() => {
             db.update(tasksTable).set({ status: newStatus, updatedAt: now }).where(eq(tasksTable.id, id)).run();
 
-            if (body.action === 'reject' && body.feedback) {
-                const assignedAgentId = taskRow.agentId ?? 'main';
-                void routeChatToAgent(assignedAgentId, `Review Feedback for task ${id}: ${body.feedback}`).catch((err: unknown) => {
-                    fastify.io?.emit('agent_error', {
-                        agentId: assignedAgentId,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
-                });
-
+            if (body.action === 'reject') {
                 db.insert(activitiesTable).values({
-                    id: randomUUID(),
+                    id: rejectActivityId,
                     taskId: id,
                     agentId: 'system',
-                    message: `Review rejected with feedback: ${body.feedback}`,
+                    message: body.feedback
+                        ? `Review rejected with feedback: ${body.feedback}`
+                        : `Review rejected — task returned to In Progress.`,
                     timestamp: now,
                 }).run();
             }
@@ -400,16 +421,59 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         if (fastify.io) {
             fastify.io.emit('task_reviewed', { id, action: body.action });
             fastify.io.emit('task_updated', updatedTask);
-            if (body.action === 'reject' && body.feedback) {
-                const activityLog: ActivityLog = {
-                    id: randomUUID(),
+            if (body.action === 'reject') {
+                fastify.io.emit('activity_added', {
+                    id: rejectActivityId,
                     taskId: id,
                     agentId: 'system',
-                    message: `Review rejected with feedback: ${body.feedback}`,
+                    message: body.feedback
+                        ? `Review rejected with feedback: ${body.feedback}`
+                        : `Review rejected — task returned to In Progress.`,
                     timestamp: now,
-                };
-                fastify.io.emit('activity_added', activityLog);
+                } satisfies ActivityLog);
             }
+        }
+
+        // For reject: re-dispatch to the agent's task session with feedback prepended.
+        // Runs detached — status is already IN_PROGRESS in the DB.
+        if (body.action === 'reject') {
+            const assignedAgentId = taskRow.agentId ?? 'main';
+            const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
+            const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
+            const retryPrompt = [
+                body.feedback
+                    ? `A human reviewer rejected your previous attempt with this feedback:\n${body.feedback}\n\nPlease redo the task taking this feedback into account.`
+                    : `A human reviewer rejected your previous attempt. Please redo the task.`,
+                ``,
+                `Original task:`,
+                [taskRow.title, taskRow.description].filter(Boolean).join('\n'),
+                `---`,
+                `TASK METADATA (do not include in your work output):`,
+                `taskId: ${id}`,
+                `When you have finished, POST your result to:`,
+                `  POST ${callbackUrl}`,
+                `  Authorization: Bearer ${env.API_KEY}`,
+                `  Content-Type: application/json`,
+                `  Body: { "agent_id": "${assignedAgentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
+                `IMPORTANT: The "message" field must contain your COMPLETE work output — the full text,`,
+                `answer, or result. Do NOT abbreviate or summarize. A human reviewer reads it directly`,
+                `from the activity log. Start the message with "completed: " followed by the full output.`,
+                `On error use: { "agent_id": "${assignedAgentId}", "message": "error: <description>" }`,
+            ].join('\n');
+
+            void (async () => {
+                try {
+                    await spawnTaskSession(assignedAgentId, id, retryPrompt);
+                } catch (err: unknown) {
+                    fastify.log.error(err, `spawnTaskSession (retry) failed for task ${id}`);
+                    fastify.io?.emit('agent_error', {
+                        agentId: assignedAgentId,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                }
+            })();
+
+            return reply.status(202).send(updatedTask);
         }
 
         return reply.send(updatedTask);

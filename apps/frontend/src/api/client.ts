@@ -64,6 +64,10 @@ export const api = {
         const response = await apiClient.post(`/tasks/${taskId}/route`, { agentId, prompt });
         return response.data;
     },
+    getTaskActivities: async (taskId: string): Promise<ActivityLog[]> => {
+        const response = await apiClient.get(`/tasks/${taskId}/activities`);
+        return response.data;
+    },
 
     // Deliverables
     toggleDeliverable: async (deliverableId: string): Promise<Task> => {
