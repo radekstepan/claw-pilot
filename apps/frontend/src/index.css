@@ -6,115 +6,146 @@
    One of these classes is applied to <html> alongside .dark/.light.
    Components reference var(--accent-*) for theme-aware accent coloring.
    ──────────────────────────────────────────────────────────────────────────── */
-:root, .accent-violet {
+:root,
+.accent-violet {
   --accent-300: #c4b5fd;
   --accent-400: #a78bfa;
   --accent-500: #8b5cf6;
   --accent-600: #7c3aed;
-  --accent-scroll-low:  rgba(139,  92, 246, 0.4);
-  --accent-scroll-hi:   rgba(139,  92, 246, 0.6);
-  --accent-scroll-sm:   rgba(139,  92, 246, 0.1);
-  --accent-scroll-hover:rgba(139,  92, 246, 0.3);
+  --accent-scroll-low: rgba(139, 92, 246, 0.4);
+  --accent-scroll-hi: rgba(139, 92, 246, 0.6);
+  --accent-scroll-sm: rgba(139, 92, 246, 0.1);
+  --accent-scroll-hover: rgba(139, 92, 246, 0.3);
 }
 .accent-blue {
   --accent-300: #93c5fd;
   --accent-400: #60a5fa;
   --accent-500: #3b82f6;
   --accent-600: #2563eb;
-  --accent-scroll-low:  rgba( 59, 130, 246, 0.4);
-  --accent-scroll-hi:   rgba( 59, 130, 246, 0.6);
-  --accent-scroll-sm:   rgba( 59, 130, 246, 0.1);
-  --accent-scroll-hover:rgba( 59, 130, 246, 0.3);
+  --accent-scroll-low: rgba(59, 130, 246, 0.4);
+  --accent-scroll-hi: rgba(59, 130, 246, 0.6);
+  --accent-scroll-sm: rgba(59, 130, 246, 0.1);
+  --accent-scroll-hover: rgba(59, 130, 246, 0.3);
 }
 .accent-emerald {
   --accent-300: #6ee7b7;
   --accent-400: #34d399;
   --accent-500: #10b981;
   --accent-600: #059669;
-  --accent-scroll-low:  rgba( 16, 185, 129, 0.4);
-  --accent-scroll-hi:   rgba( 16, 185, 129, 0.6);
-  --accent-scroll-sm:   rgba( 16, 185, 129, 0.1);
-  --accent-scroll-hover:rgba( 16, 185, 129, 0.3);
+  --accent-scroll-low: rgba(16, 185, 129, 0.4);
+  --accent-scroll-hi: rgba(16, 185, 129, 0.6);
+  --accent-scroll-sm: rgba(16, 185, 129, 0.1);
+  --accent-scroll-hover: rgba(16, 185, 129, 0.3);
 }
 .accent-rose {
   --accent-300: #fda4af;
   --accent-400: #fb7185;
   --accent-500: #f43f5e;
   --accent-600: #e11d48;
-  --accent-scroll-low:  rgba(244,  63,  94, 0.4);
-  --accent-scroll-hi:   rgba(244,  63,  94, 0.6);
-  --accent-scroll-sm:   rgba(244,  63,  94, 0.1);
-  --accent-scroll-hover:rgba(244,  63,  94, 0.3);
+  --accent-scroll-low: rgba(244, 63, 94, 0.4);
+  --accent-scroll-hi: rgba(244, 63, 94, 0.6);
+  --accent-scroll-sm: rgba(244, 63, 94, 0.1);
+  --accent-scroll-hover: rgba(244, 63, 94, 0.3);
 }
 .accent-amber {
   --accent-300: #fcd34d;
   --accent-400: #fbbf24;
   --accent-500: #f59e0b;
   --accent-600: #d97706;
-  --accent-scroll-low:  rgba(245, 158,  11, 0.4);
-  --accent-scroll-hi:   rgba(245, 158,  11, 0.6);
-  --accent-scroll-sm:   rgba(245, 158,  11, 0.1);
-  --accent-scroll-hover:rgba(245, 158,  11, 0.3);
+  --accent-scroll-low: rgba(245, 158, 11, 0.4);
+  --accent-scroll-hi: rgba(245, 158, 11, 0.6);
+  --accent-scroll-sm: rgba(245, 158, 11, 0.1);
+  --accent-scroll-hover: rgba(245, 158, 11, 0.3);
 }
 .accent-indigo {
   --accent-300: #a5b4fc;
   --accent-400: #818cf8;
   --accent-500: #6366f1;
   --accent-600: #4f46e5;
-  --accent-scroll-low:  rgba( 99, 102, 241, 0.4);
-  --accent-scroll-hi:   rgba( 99, 102, 241, 0.6);
-  --accent-scroll-sm:   rgba( 99, 102, 241, 0.1);
-  --accent-scroll-hover:rgba( 99, 102, 241, 0.3);
+  --accent-scroll-low: rgba(99, 102, 241, 0.4);
+  --accent-scroll-hi: rgba(99, 102, 241, 0.6);
+  --accent-scroll-sm: rgba(99, 102, 241, 0.1);
+  --accent-scroll-hover: rgba(99, 102, 241, 0.3);
 }
 .accent-sky {
   --accent-300: #7dd3fc;
   --accent-400: #38bdf8;
   --accent-500: #0ea5e9;
   --accent-600: #0284c7;
-  --accent-scroll-low:  rgba( 14, 165, 233, 0.4);
-  --accent-scroll-hi:   rgba( 14, 165, 233, 0.6);
-  --accent-scroll-sm:   rgba( 14, 165, 233, 0.1);
-  --accent-scroll-hover:rgba( 14, 165, 233, 0.3);
+  --accent-scroll-low: rgba(14, 165, 233, 0.4);
+  --accent-scroll-hi: rgba(14, 165, 233, 0.6);
+  --accent-scroll-sm: rgba(14, 165, 233, 0.1);
+  --accent-scroll-hover: rgba(14, 165, 233, 0.3);
 }
 .accent-cyan {
   --accent-300: #67e8f9;
   --accent-400: #22d3ee;
   --accent-500: #06b6d4;
   --accent-600: #0891b2;
-  --accent-scroll-low:  rgba(  6, 182, 212, 0.4);
-  --accent-scroll-hi:   rgba(  6, 182, 212, 0.6);
-  --accent-scroll-sm:   rgba(  6, 182, 212, 0.1);
-  --accent-scroll-hover:rgba(  6, 182, 212, 0.3);
+  --accent-scroll-low: rgba(6, 182, 212, 0.4);
+  --accent-scroll-hi: rgba(6, 182, 212, 0.6);
+  --accent-scroll-sm: rgba(6, 182, 212, 0.1);
+  --accent-scroll-hover: rgba(6, 182, 212, 0.3);
 }
 .accent-teal {
   --accent-300: #5eead4;
   --accent-400: #2dd4bf;
   --accent-500: #14b8a6;
   --accent-600: #0d9488;
-  --accent-scroll-low:  rgba( 20, 184, 166, 0.4);
-  --accent-scroll-hi:   rgba( 20, 184, 166, 0.6);
-  --accent-scroll-sm:   rgba( 20, 184, 166, 0.1);
-  --accent-scroll-hover:rgba( 20, 184, 166, 0.3);
+  --accent-scroll-low: rgba(20, 184, 166, 0.4);
+  --accent-scroll-hi: rgba(20, 184, 166, 0.6);
+  --accent-scroll-sm: rgba(20, 184, 166, 0.1);
+  --accent-scroll-hover: rgba(20, 184, 166, 0.3);
 }
 .accent-pink {
   --accent-300: #f9a8d4;
   --accent-400: #f472b6;
   --accent-500: #ec4899;
   --accent-600: #db2777;
-  --accent-scroll-low:  rgba(236,  72, 153, 0.4);
-  --accent-scroll-hi:   rgba(236,  72, 153, 0.6);
-  --accent-scroll-sm:   rgba(236,  72, 153, 0.1);
-  --accent-scroll-hover:rgba(236,  72, 153, 0.3);
+  --accent-scroll-low: rgba(236, 72, 153, 0.4);
+  --accent-scroll-hi: rgba(236, 72, 153, 0.6);
+  --accent-scroll-sm: rgba(236, 72, 153, 0.1);
+  --accent-scroll-hover: rgba(236, 72, 153, 0.3);
 }
 .accent-orange {
   --accent-300: #fdba74;
   --accent-400: #fb923c;
   --accent-500: #f97316;
   --accent-600: #ea580c;
-  --accent-scroll-low:  rgba(249, 115,  22, 0.4);
-  --accent-scroll-hi:   rgba(249, 115,  22, 0.6);
-  --accent-scroll-sm:   rgba(249, 115,  22, 0.1);
-  --accent-scroll-hover:rgba(249, 115,  22, 0.3);
+  --accent-scroll-low: rgba(249, 115, 22, 0.4);
+  --accent-scroll-hi: rgba(249, 115, 22, 0.6);
+  --accent-scroll-sm: rgba(249, 115, 22, 0.1);
+  --accent-scroll-hover: rgba(249, 115, 22, 0.3);
+}
+
+@layer components {
+  /* Minimal prose tweaks for MarkdownContent */
+  .prose-reset {
+    /* Code blocks */
+    .prose pre {
+      background-color: #0d1117;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.375rem;
+      font-size: 0.6875rem; /* 11px */
+    }
+
+    /* Inline code */
+    .prose code {
+      color: rgb(124, 58, 237); /* violet-600 */
+    }
+    .dark .prose code {
+      color: rgb(167, 139, 250); /* violet-400 */
+    }
+
+    /* Blockquotes */
+    .prose blockquote {
+      border-left-color: rgb(167, 139, 250); /* violet-400 */
+      color: rgb(100, 116, 139); /* slate-500 */
+    }
+    .dark .prose blockquote {
+      color: rgb(148, 163, 184); /* slate-400 */
+    }
+  }
 }
 
 @layer utilities {
@@ -124,7 +155,7 @@
     scrollbar-color: rgba(148, 163, 184, 0.45) transparent; /* slate-400/45 */
   }
   .dark .custom-scrollbar {
-    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;  /* slate-500/40 */
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent; /* slate-500/40 */
   }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -138,7 +169,7 @@
     border-radius: 4px;
   }
   .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(100, 116, 139, 0.4);  /* dark: slate-500/40 */
+    background: rgba(100, 116, 139, 0.4); /* dark: slate-500/40 */
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(100, 116, 139, 0.65); /* light hover: slate-500/65 */
@@ -158,7 +189,7 @@
      Uses color-mix so opacity naturally respects the current accent variable. */
   .accent-active-bg {
     background-color: color-mix(in srgb, var(--accent-500) 10%, transparent);
-    border-color:     color-mix(in srgb, var(--accent-500) 20%, transparent);
+    border-color: color-mix(in srgb, var(--accent-500) 20%, transparent);
   }
 }
 
