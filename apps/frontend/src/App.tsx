@@ -170,6 +170,11 @@ export default function App() {
     setActiveTask(task);
     // Mark this task's current swimlane position as "read"
     setReadSet((prev) => new Set([...prev, `${task.id}:${task.status}`]));
+    // Dismiss any notifications associated with this task
+    const notifications = useMissionStore.getState().notifications;
+    notifications
+      .filter((n) => n.taskId === task.id)
+      .forEach((n) => dismissNotification(n.id));
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
