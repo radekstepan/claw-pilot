@@ -35,9 +35,7 @@ Use **`config.get`**:
   "type": "req",
   "id": "list-agents",
   "method": "config.get",
-  "params": {
-    "path": "agents.list"           // or "agents" for full section
-  }
+  "params": {}
 }
 ```
 
@@ -49,24 +47,28 @@ Use **`config.get`**:
   "ok": true,
   "payload": {
     "hash": "sha256-abc123def4567890...",   // ← save this for edits
-    "value": [
-      {
-        "id": "main",
-        "default": true,
-        "name": "Main Agent",
-        "workspace": "~/.openclaw/workspace",
-        "agentDir": "~/.openclaw/agents/main/agent",
-        "identity": { "name": "Samantha", ... },
-        "sandbox": { "mode": "off" },
-        ...
-      },
-      {
-        "id": "work",
-        "name": "Work Assistant",
-        "workspace": "~/.openclaw/workspace-work",
-        ...
+    "value": {
+      "agents": {
+        "list":[
+          {
+            "id": "main",
+            "default": true,
+            "name": "Main Agent",
+            "workspace": "~/.openclaw/workspace",
+            "agentDir": "~/.openclaw/agents/main/agent",
+            "identity": { "name": "Samantha", ... },
+            "sandbox": { "mode": "off" },
+            ...
+          },
+          {
+            "id": "work",
+            "name": "Work Assistant",
+            "workspace": "~/.openclaw/workspace-work",
+            ...
+          }
+        ]
       }
-    ]
+    }
   }
 }
 ```
@@ -99,7 +101,7 @@ There is **no** `agents.add` RPC. You must edit the config manually.
 
 1. **Get current config + hash**
    ```json
-   { "method": "config.get", "params": { "path": "agents.list" } }
+   { "method": "config.get", "params": {} }
    ```
 
 2. **Patch to add new agent** (use `raw` as JSON5 string)
@@ -110,20 +112,7 @@ There is **no** `agents.add` RPC. You must edit the config manually.
      "method": "config.patch",
      "params": {
        "baseHash": "sha256-abc123def4567890...",
-       "raw": `{
-         "agents": {
-           "list": [
-             /* keep ALL existing agents here */
-             { "id": "main", "default": true, ... },
-             {
-               "id": "work",
-               "name": "Work Assistant",
-               "workspace": "~/.openclaw/workspace-work",
-               "default": false
-             }
-           ]
-         }
-       }`
+       "raw": "{\"agents\":{\"list\":[ /* keep ALL existing agents here */, {\"id\":\"work\",\"name\":\"Work Assistant\",\"workspace\":\"~/.openclaw/workspace-work\",\"default\":false}]}}"
      }
    }
    ```
@@ -148,52 +137,14 @@ Use the same **`config.patch`** (or `config.apply` for full replace).
   "method": "config.patch",
   "params": {
     "baseHash": "<hash-from-get>",
-    "raw": `{
-      "agents": {
-        "list": [
-          { "id": "main", ... },
-          {
-            "id": "work",
-            "name": "Operations Bot",
-            "identity": {
-              "name": "Max",
-              "emoji": "robot",
-              "theme": "professional"
-            }
-          }
-        ]
-      }
-    }`
+    "raw": "{\"agents\":{\"list\":[ { \"id\": \"main\", ... }, { \"id\": \"work\", \"name\": \"Operations Bot\", \"identity\": { \"name\": \"Max\", \"emoji\": \"robot\", \"theme\": \"professional\" } } ]}}"
   }
 }
 ```
 
 **Add per-agent sandbox / tool restrictions**
 ```json
-"raw": `{
-  "agents": {
-    "list": [
-      ...,
-      {
-        "id": "work",
-        "sandbox": { "mode": "all", "scope": "agent" },
-        "tools": {
-          "allow": ["read", "exec"],
-          "deny": ["browser", "canvas"]
-        }
-      }
-    ]
-  }
-}`
-```
-
-**Add or edit bindings** (same patch)
-```json
-"raw": `{
-  "bindings": [
-    { "agentId": "work", "match": { "channel": "whatsapp", "accountId": "biz" } }
-  ]
-}`
+"raw": "{\"agents\":{\"list\":[ ..., { \"id\": \"work\", \"sandbox\": { \"mode\": \"all\", \"scope\": \"agent\" }, \"tools\": { \"allow\": [\"read\", \"exec\"], \"deny\":[\"browser\", \"canvas\"] } } ]}}"
 ```
 
 Changes to `agents.list` and `bindings` are **hot-reloaded** instantly (no gateway restart needed in most cases).
@@ -212,7 +163,7 @@ Changes to `agents.list` and `bindings` are **hot-reloaded** instantly (no gatew
 ```json
 {
   "agents": {
-    "list": [
+    "list":[
       {
         "id": "string",
         "default": true,
@@ -222,12 +173,12 @@ Changes to `agents.list` and `bindings` are **hot-reloaded** instantly (no gatew
         "model": "string",
         "identity": { ... },
         "sandbox": { ... },
-        "tools": { "allow": [], "deny": [], ... },
+        "tools": { "allow": [], "deny":[], ... },
         "groupChat": { "mentionPatterns": [] }
       }
     ]
   },
-  "bindings": [
+  "bindings":[
     {
       "agentId": "string",
       "match": {

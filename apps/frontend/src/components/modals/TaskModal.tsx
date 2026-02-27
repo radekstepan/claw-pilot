@@ -156,9 +156,9 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
           </div>
         </div>
       ) : (
-        <p className="text-slate-600 dark:text-slate-300">
+        <div className="text-slate-600 dark:text-slate-300">
           <MarkdownContent content={a.message} />
-        </p>
+        </div>
       )}
     </div>
   );

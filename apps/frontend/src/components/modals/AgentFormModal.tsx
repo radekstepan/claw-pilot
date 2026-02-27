@@ -30,7 +30,7 @@ export const AgentFormModal = ({
 
     const [name, setName] = useState(mode === 'edit' ? (agent?.name ?? '') : '');
     const [model, setModel] = useState(mode === 'edit' ? (agent?.model ?? '') : '');
-    const [workspace, setWorkspace] = useState(defaultWorkspace);
+    const [workspace, setWorkspace] = useState(mode === 'edit' ? (agent?.workspace ?? '') : defaultWorkspace);
     const [isWorkspaceModified, setIsWorkspaceModified] = useState(false);
     const [capabilities, setCapabilities] = useState(mode === 'edit' && agent?.capabilities ? agent.capabilities.join(', ') : '');
     const [soul, setSoul] = useState('');
@@ -189,8 +189,8 @@ export const AgentFormModal = ({
                             />
                         </div>
 
-                        {/* Workspace — create only */}
-                        {mode === 'create' && (
+                        {/* Workspace */}
+                        {mode === 'create' ? (
                             <div className="space-y-1 col-span-full">
                                 <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
                                     Workspace Path
@@ -209,7 +209,16 @@ export const AgentFormModal = ({
                                     Recommended: a unique directory for this agent.
                                 </p>
                             </div>
-                        )}
+                        ) : workspace ? (
+                            <div className="space-y-1 col-span-full">
+                                <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
+                                    Workspace Path
+                                </label>
+                                <p className="w-full bg-slate-100 dark:bg-black/20 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs font-mono text-slate-500 dark:text-slate-400 select-all">
+                                    {workspace}
+                                </p>
+                            </div>
+                        ) : null}
                     </div>
 
                     {/* Capabilities */}
@@ -229,44 +238,37 @@ export const AgentFormModal = ({
                         </p>
                     </div>
 
-                    {/* Behavioral Section */}
-                    <div className="space-y-4 pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
-                        <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
-                                Role & Instructions (SOUL.md)
-                            </label>
-                            {isLoadingFiles ? (
-                                <div className="h-40 bg-slate-50 dark:bg-black/10 rounded flex items-center justify-center border border-dashed border-black/10 dark:border-white/10">
-                                    <Loader2 className="animate-spin text-slate-300" size={24} />
+                    {/* Behavioral Section — in edit mode only rendered when files have content */}
+                    {(mode === 'create' || soul || tools) && (
+                        <div className="space-y-4 pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
+                            {(mode === 'create' || soul) && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
+                                        Role &amp; Instructions (SOUL.md)
+                                    </label>
+                                    <textarea
+                                        value={soul}
+                                        onChange={(e) => setSoul(e.target.value)}
+                                        placeholder="# System Prompt&#10;You are an expert..."
+                                        className="w-full h-40 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
+                                    />
                                 </div>
-                            ) : (
-                                <textarea
-                                    value={soul}
-                                    onChange={(e) => setSoul(e.target.value)}
-                                    placeholder="# System Prompt\nYou are an expert..."
-                                    className="w-full h-40 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
-                                />
+                            )}
+                            {(mode === 'create' || tools) && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
+                                        Tool Definitions (TOOLS.md)
+                                    </label>
+                                    <textarea
+                                        value={tools}
+                                        onChange={(e) => setTools(e.target.value)}
+                                        placeholder="- name: my_tool&#10;  description: ..."
+                                        className="w-full h-28 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
+                                    />
+                                </div>
                             )}
                         </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider block">
-                                Tool Definitions (TOOLS.md)
-                            </label>
-                            {isLoadingFiles ? (
-                                <div className="h-28 bg-slate-50 dark:bg-black/10 rounded flex items-center justify-center border border-dashed border-black/10 dark:border-white/10">
-                                    <Loader2 className="animate-spin text-slate-300" size={20} />
-                                </div>
-                            ) : (
-                                <textarea
-                                    value={tools}
-                                    onChange={(e) => setTools(e.target.value)}
-                                    placeholder="- name: my_tool\n  description: ..."
-                                    className="w-full h-28 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
-                                />
-                            )}
-                        </div>
-                    </div>
+                    )}
 
                     {/* Inline error */}
                     {error && (

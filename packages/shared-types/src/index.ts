@@ -80,7 +80,8 @@ export const AgentSchema = z.object({
     model: z.string().optional(),
     fallback: z.string().optional(),
     capabilities: z.array(z.string()).optional(),
-    lastSeen: z.string().optional()
+    lastSeen: z.string().optional(),
+    workspace: z.string().optional()
 });
 export type Agent = z.infer<typeof AgentSchema>;
 

@@ -21,7 +21,7 @@ vi.mock('../openclaw/cli.js', async (importOriginal) => {
         ...actual,
         getAgents: vi.fn().mockResolvedValue([
             { id: 'architect', name: 'Architect', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities: ['planning', 'review'] },
-            { id: 'developer', name: 'Developer', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities: ['coding', 'testing'] },
+            { id: 'developer', name: 'Developer', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities:['coding', 'testing'] },
         ]),
         getLiveSessions: vi.fn().mockResolvedValue([
             { agentId: 'architect', agent: 'architect', status: 'IDLE',    key: 'session-001' },
@@ -30,9 +30,7 @@ vi.mock('../openclaw/cli.js', async (importOriginal) => {
         updateAgentMeta: vi.fn().mockResolvedValue(undefined),
         setAgentFiles:   vi.fn().mockResolvedValue(undefined),
         deleteAgent:     vi.fn().mockResolvedValue({ success: true }),
-        // gatewayCall is used directly by GET /api/agents/:id/files — provide a
-        // per-file default that tests can override with mockImplementation.
-        gatewayCall: vi.fn().mockResolvedValue({ content: '' }),
+        getAgentFile:    vi.fn().mockResolvedValue(''),
     };
 });
 
@@ -46,7 +44,7 @@ import {
     updateAgentMeta,
     setAgentFiles,
     deleteAgent,
-    gatewayCall,
+    getAgentFile,
     GatewayOfflineError,
 } from '../openclaw/cli.js';
 
@@ -78,7 +76,7 @@ describe('Agent routes — integration', () => {
         // Restore the default resolved values after clearAllMocks()
         vi.mocked(getAgents).mockResolvedValue([
             { id: 'architect', name: 'Architect', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities: ['planning', 'review'] },
-            { id: 'developer', name: 'Developer', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities: ['coding', 'testing'] },
+            { id: 'developer', name: 'Developer', status: 'OFFLINE', model: 'claude-sonnet-4', capabilities:['coding', 'testing'] },
         ]);
         vi.mocked(getLiveSessions).mockResolvedValue([
             { agentId: 'architect', agent: 'architect', status: 'IDLE',    key: 'session-001' },
@@ -87,7 +85,7 @@ describe('Agent routes — integration', () => {
         vi.mocked(updateAgentMeta).mockResolvedValue(undefined);
         vi.mocked(setAgentFiles).mockResolvedValue(undefined);
         vi.mocked(deleteAgent).mockResolvedValue({ success: true });
-        vi.mocked(gatewayCall).mockResolvedValue({ content: '' });
+        vi.mocked(getAgentFile).mockResolvedValue('');
     });
 
     afterEach(async () => {
@@ -142,7 +140,7 @@ describe('Agent routes — integration', () => {
                 method: 'PATCH',
                 url: '/api/agents/architect',
                 headers: AUTH,
-                payload: { model: 'claude-opus-4', capabilities: ['planning', 'review', 'architecture'] },
+                payload: { model: 'claude-opus-4', capabilities:['planning', 'review', 'architecture'] },
             });
 
             expect(res.statusCode).toBe(200);
@@ -204,10 +202,7 @@ describe('Agent routes — integration', () => {
                 'TOOLS.md': '# Architect Tools',
                 'AGENTS.md': '# Architect Agents',
             };
-            vi.mocked(gatewayCall).mockImplementation(async (_method, params) => {
-                const { name } = params as { name: string };
-                return { content: fileMap[name] ?? '' };
-            });
+            vi.mocked(getAgentFile).mockImplementation(async (id, name) => fileMap[name] ?? '');
 
             const res = await app.inject({
                 method: 'GET',
@@ -223,7 +218,7 @@ describe('Agent routes — integration', () => {
         });
 
         it('returns empty strings when the gateway reports no file content', async () => {
-            vi.mocked(gatewayCall).mockResolvedValue(null);
+            vi.mocked(getAgentFile).mockResolvedValue('');
 
             const res = await app.inject({
                 method: 'GET',

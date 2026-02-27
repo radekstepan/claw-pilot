@@ -34,37 +34,23 @@ wss.on('connection', (ws) => {
             if (method === 'connect') {
                 reply({ auth: { deviceToken: 'mock-token' } });
             } else if (method === 'config.get') {
-                const path = frame.params?.path;
-                const mockList = [
+                const mockList =[
                     { id: 'main', default: true, name: 'Personal Assistant', workspace: '~/.openclaw/workspace' },
-                    { id: 'architect', name: 'Architect (Mock)', role: 'Lead AI', model: 'claude-sonnet-4', capabilities: ['planning', 'review'] },
-                    { id: 'developer', name: 'Developer (Mock)', role: 'Worker AI', model: 'claude-sonnet-4', capabilities: ['coding', 'testing'] }
+                    { id: 'architect', name: 'Architect (Mock)', role: 'Lead AI', model: 'claude-sonnet-4', capabilities: ['planning', 'review'], workspace: '~/.openclaw/workspace-architect' },
+                    { id: 'developer', name: 'Developer (Mock)', role: 'Worker AI', model: 'claude-sonnet-4', capabilities: ['coding', 'testing'], workspace: '~/.openclaw/workspace-developer' }
                 ];
 
-                if (path === 'agents.list') {
-                    reply({
-                        hash: 'mock-hash-123',
-                        value: mockList
-                    });
-                } else if (path === 'agents') {
-                    reply({
-                        hash: 'mock-hash-123',
-                        value: { list: mockList }
-                    });
-                } else {
-                    // root
-                    reply({
-                        hash: 'mock-hash-123',
-                        value: {
-                            agents: {
-                                list: mockList
-                            }
+                reply({
+                    hash: 'mock-hash-123',
+                    value: {
+                        agents: {
+                            list: mockList
                         }
-                    });
-                }
+                    }
+                });
             } else if (method === 'sessions.list') {
                 reply({
-                    sessions: [
+                    sessions:[
                         { agentId: 'architect', agent: 'architect', status: 'IDLE', key: 'session-001' },
                         { agentId: 'developer', agent: 'developer', status: 'WORKING', key: 'session-002' },
                     ]
@@ -77,7 +63,7 @@ wss.on('connection', (ws) => {
                 }, 600);
             } else if (method === 'models.list') {
                 reply({
-                    models: [
+                    models:[
                         { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', alias: 'sonnet', provider: 'anthropic', available: true },
                         { id: 'claude-opus-4', name: 'Claude Opus 4', alias: 'opus', provider: 'anthropic', available: true },
                         { id: 'gpt-4o', name: 'GPT-4o', alias: 'gpt4o', provider: 'openai', available: true },
@@ -90,16 +76,12 @@ wss.on('connection', (ws) => {
                 try { patchKeys = Object.keys(JSON.parse(raw ?? '{}')).join(', '); } catch { /* ignore */ }
                 console.log(`[mock-gateway] config.patch: baseHash=${baseHash}, patchKeys=${patchKeys}`);
                 reply({ hash: 'mock-hash-updated', ok: true });
-            } else if (method === 'exec.shell') {
-                const { command } = frame.params ?? {};
-                console.log(`[mock-gateway] exec.shell: ${command}`);
-                reply({ stdout: '', stderr: '', exitCode: 0 });
             } else if (method === 'agents.files.get') {
                 const { agentId, name } = frame.params ?? {};
                 const fileContents = {
-                    'SOUL.md': `# ${agentId}\nYou are ${agentId}, a mock AI assistant. This content is served by the dev mock gateway.\n`,
-                    'TOOLS.md': `# Tools\n## available_tools\n- description: No tools configured yet.\n`,
-                    'AGENTS.md': `# Agent Network\nNo collaborators configured.\n`,
+                    'SOUL.md': `# Mock\nYou are a mock AI assistant.\n`,
+                    'TOOLS.md': `# Tools\n## available_tools\n- description: No tools.\n`,
+                    'AGENTS.md': `# Agent Network\nNo collaborators.\n`,
                 };
                 reply({ agentId, name, content: fileContents[name] ?? '' });
             } else if (method === 'agents.files.set') {

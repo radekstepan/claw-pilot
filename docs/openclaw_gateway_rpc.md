@@ -7,18 +7,19 @@ This document describes how openclaw-mission-control communicates with the OpenC
 - [Connection Overview](#connection-overview)
 - [Wire Protocol](#wire-protocol)
 - [Authentication](#authentication)
-  - [Mode A — Device Pairing (the only mode)](#mode-a--device-pairing-the-only-mode)
-  - [Connect Request Shape](#connect-request-shape)
+  - [Mode A — Device Pairing (default)](#mode-a--device-pairing-default)
+  - [Mode B — Control UI](#mode-b--control-ui)
+  -[Connect Request Shape](#connect-request-shape)
 - [Calling an RPC Method](#calling-an-rpc-method)
--[Events](#events)
+- [Events](#events)
 - [RPC Method Reference](#rpc-method-reference)
-  - [Health](#health)
+  -[Health](#health)
   - [Sessions](#sessions)
   - [Chat](#chat)
-  - [Agents](#agents)
+  -[Agents](#agents)
   - [Agent Files](#agent-files)
   - [Configuration](#configuration)
-  -[Full Method Catalogue](#full-method-catalogue)
+  - [Full Method Catalogue](#full-method-catalogue)
 - [Session Key Conventions](#session-key-conventions)
 - [Version Compatibility](#version-compatibility)
 - [Related Docs](#related-docs)
@@ -45,9 +46,9 @@ Each RPC call follows this lifecycle:
 ```
 client                                    gateway
   │──── WebSocket connect ──────────────────→│
-  │←─── event: connect.challenge ───────────│  always arrives; contains nonce to sign
-  │──── req: connect (device block) ────────→│  authentication handshake
-  │←─── res: connect ───────────────────────│  ok + optional auth.deviceToken
+  │←─── event: connect.challenge ───────────│  (may not arrive — wait max 2 s)
+  │──── req: connect ───────────────────────→│  authentication handshake
+  │←─── res: connect ───────────────────────│
   │──── req: <method> ──────────────────────→│  actual RPC call
   │←─── res: <method> ──────────────────────│
   │──── close ──────────────────────────────→│
@@ -112,79 +113,50 @@ The client matches responses to requests by `id`. Any frame with `ok: false` or 
 
 ## Authentication
 
-Claw-Pilot uses **Mode A (Device Pairing)** — the gateway's standard authentication flow for all operator clients, including the official CLI, macOS app, and this dashboard. There is no "Mode B" bypass; every connection requires a stable device identity.
+Two authentication modes are available, controlled by the `disable_device_pairing` flag on the gateway configuration record.
 
-### Mode A — Device Pairing (the only mode)
+### Mode A — Device Pairing (default)
 
-On first startup, Claw-Pilot generates a persistent **Ed25519 key pair** and writes it to:
-
-```
-apps/backend/data/device-identity.json
-```
-
-Path configurable via `OPENCLAW_DEVICE_IDENTITY_PATH` environment variable.
-
-The **device ID** is a stable UUID generated once and stored in the same file.  
-The **signature** covers the raw nonce bytes from the gateway's `connect.challenge` event, signed with Ed25519.
-
-#### First-time connection flow (pairing)
+The client generates and persists a local **Ed25519 key pair** on first use. The identity file is stored at:
 
 ```
-client                                    gateway
-  │──── WebSocket connect ──────────────────→│
-  │←─── event: connect.challenge ───────────│  contains nonce
-  │──── req: connect (device block) ────────→│
-  │←─── close (1008: pairing required) ─────│  gateway registers pending request
-  │                                          │
-  │   [user runs: openclaw devices approve]  │
-  │                                          │
-  │──── WebSocket connect ──────────────────→│
-  │←─── event: connect.challenge ───────────│
-  │──── req: connect (device block) ────────→│
-  │←─── res: connect { auth.deviceToken } ──│  ← save this token
-  │──── req: <method> ──────────────────────→│
-  │←─── res: <method> ──────────────────────│
-  │──── close ──────────────────────────────→│
+~/.openclaw/identity/device.json
 ```
 
-#### Subsequent connections (deviceToken in hand)
+Path can be overridden with the environment variable `OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH`.
+
+**Device ID** is derived as `SHA-256(raw Ed25519 public key)` in hex.
+
+**Signature** is computed over a canonical payload string and signed with Ed25519. The resulting bytes are base64url-encoded (no padding).
+
+Canonical payload format (when a challenge nonce is present — **v2**):
 
 ```
-client                                    gateway
-  │──── WebSocket connect ──────────────────→│
-  │←─── event: connect.challenge ───────────│
-  │──── req: connect (device + deviceToken) →│  auto-approved — no manual step
-  │←─── res: connect ───────────────────────│
-  │──── req: <method> ──────────────────────→│
-  │←─── res: <method> ──────────────────────│
-  │──── close ──────────────────────────────→│
+v2|{device_id}|{client_id}|{client_mode}|{role}|{scope1,scope2,...}|{signedAtMs}|{token}|{nonce}
 ```
 
-The `deviceToken` is persisted in `data/device-identity.json` automatically after first approval. All future connections are auto-approved — no repeated manual step.
+Canonical payload format (no challenge nonce — **v1**):
 
-#### Approving a pairing request (one-time setup)
-
-When the UI shows **"Pair Device"** in the header, SSH into the gateway machine and run:
-
-```bash
-openclaw devices list            # find the pending request for device claw-pilot
-openclaw devices approve --latest  # approve it (or by ID if multiple are pending)
+```
+v1|{device_id}|{client_id}|{client_mode}|{role}|{scope1,scope2,...}|{signedAtMs}|{token}
 ```
 
-The UI banner shows the exact device ID to look for. Pending requests expire after ~5 minutes, but Claw-Pilot will automatically re-attempt the connection on the next health check (every 10 s) and create a new pending request if needed.
+- `token` is the bearer token value, or an empty string if not configured.
+- `nonce` is the value from the `connect.challenge` event `payload.nonce`.
+- `signedAtMs` is the current Unix timestamp in milliseconds.
 
-#### Useful device management commands
+### Mode B — Control UI
 
-```bash
-openclaw devices list --json               # machine-readable list
-openclaw devices reject <requestId>        # reject a specific request
-openclaw devices revoke --device <id> --role operator   # remove permanent access
-openclaw devices rotate --device <id> --role operator   # issue a fresh deviceToken
-```
+When `disable_device_pairing` is `true`:
+
+- No device signature or key pair is needed.
+- The client identifies as `openclaw-control-ui` / `ui`.
+- An HTTP `Origin` header is injected into the WebSocket upgrade request, derived from the gateway URL scheme and host.
+- The bearer token is still passed as a URL query parameter if configured.
 
 ### Connect Request Shape
 
-After receiving the `connect.challenge` event, sign the nonce and send:
+After receiving (or timing out waiting for) the `connect.challenge` event, send a `connect` request:
 
 ```json
 {
@@ -203,37 +175,30 @@ After receiving the `connect.challenge` event, sign the nonce and send:
     ],
     "client": {
       "id": "gateway-client",
-      "mode": "backend",
       "version": "1.0.0",
-      "platform": "node"
+      "platform": "python",
+      "mode": "backend"
     },
     "device": {
-      "id": "<sha256-hex-of-raw-public-key>",
-      "publicKey": "<base64url-no-padding-raw-32-byte-Ed25519-public-key>",
-      "signature": "<base64url-no-padding-Ed25519-signature-over-canonical-payload>",
+      "id": "<device_id>",
+      "publicKey": "<base64url-raw-Ed25519-public-key>",
+      "signature": "<base64url-Ed25519-signature>",
       "signedAt": 1700000000000,
-      "nonce": "<nonce-from-connect.challenge-event>"
+      "nonce": "<challenge-nonce-if-received>"
     },
     "auth": {
-      "token": "<deviceToken-after-first-approval | OPENCLAW_GATEWAY_TOKEN-for-initial>"
+      "token": "<bearer-token>"
     }
   }
 }
 ```
 
 Notes:
-- `device` is always present. `auth.token` is the `deviceToken` (from the identity file) once pairing is complete, or `OPENCLAW_GATEWAY_TOKEN` (env var) for the initial connection attempt.
-- `auth` may be omitted if neither token is set.
-- `device.publicKey` is the raw 32-byte Ed25519 public key encoded as **base64url without padding** (not SPKI DER, not standard base64).
-- `device.id` is `SHA-256(raw_public_key).hex()` — a 64-character hex string derived from the public key.
-- The **signature canonical payload** is a pipe-delimited UTF-8 string signed with Ed25519:
-  ```
-  v2|{deviceId}|gateway-client|backend|operator|{scope1,scope2,...}|{signedAtMs}|{authToken}|{nonce}
-  ```
-  Where scopes are `operator.read,operator.admin,operator.approvals,operator.pairing` and `authToken` is the active auth token or empty string. The signature is returned as base64url without padding.
-- This matches `build_device_auth_payload` in the OpenClaw Python client (`device_identity.py`).
+- `device` is present only in **Mode A**. Omit the `nonce` field inside `device` if no challenge was received (v1 signature).
+- `auth` is present only when a bearer token is configured.
+- In **Mode B**, `client.id` is `"openclaw-control-ui"` and `client.mode` is `"ui"`. The `device` block is omitted entirely.
 
-On first successful connect after approval, the gateway response `payload.auth.deviceToken` is automatically saved to `data/device-identity.json`.
+The gateway responds with a `res` frame where `payload` contains server metadata including `server.version`.
 
 ---
 
@@ -408,7 +373,7 @@ Abort a running chat turn (params gateway-defined).
 
 #### `agents.create`
 
-Register a new agent on the gateway and auto-scaffold its workspace.
+Register a new agent on the gateway.
 
 ```json
 {
@@ -419,7 +384,7 @@ Register a new agent on the gateway and auto-scaffold its workspace.
 }
 ```
 
-Returns an error if the agent ID already exists (Mission Control treats duplicate/conflict errors as non-fatal).
+Returns an error if the agent ID already exists (Mission Control treats duplicate/conflict errors as non-fatal and falls through to `agents.update`).
 
 #### `agents.update`
 
@@ -448,11 +413,15 @@ Delete an agent and optionally its files from disk.
 }
 ```
 
+#### `agents.list`
+
+List all registered agents (no params in Mission Control usage).
+
 ---
 
 ### Agent Files
 
-Agent files are Markdown documents (rendered from Jinja2 templates) that configure an agent's identity, memory, tools, etc.
+Agent files are Markdown documents (rendered from Jinja2 templates) that configure an agent's identity, memory, tools, etc. See [backend/templates/](../backend/templates/).
 
 #### `agents.files.list`
 
@@ -662,6 +631,8 @@ Mission Control uses deterministic session key strings to identify agent session
 | Board lead agent | `mc:lead-{board_id}:main` |
 | Board non-lead agent | `mc:mc-{agent_id}:main` |
 
+The gateway main agent is also registered using the agent ID `mc-gateway-{gateway_id}` for RPC calls like `agents.create` and `agents.files.set`.
+
 ---
 
 ## Version Compatibility
@@ -676,4 +647,9 @@ The version string is read from the `connect` response payload — the same resp
 
 ## Related Docs
 
--[docs/agent_creation_protocol.md](agent_creation_protocol.md)
+- [docs/openclaw_baseline_config.md](openclaw_baseline_config.md) — `openclaw.json` gateway settings reference (port, auth mode, bind address)
+-[backend/app/services/openclaw/gateway_rpc.py](../backend/app/services/openclaw/gateway_rpc.py) — low-level WebSocket client; protocol constants and all RPC primitives
+-[backend/app/services/openclaw/device_identity.py](../backend/app/services/openclaw/device_identity.py) — Ed25519 key pair lifecycle and connect-signature builder
+-[backend/app/services/openclaw/provisioning.py](../backend/app/services/openclaw/provisioning.py) — agent lifecycle orchestration (create / update / file push / delete)
+-[backend/app/services/openclaw/session_service.py](../backend/app/services/openclaw/session_service.py) — session listing, history, and message delivery for the API layer
+- [backend/templates/](../backend/templates/) — Jinja2 templates rendered and pushed to agents via `agents.files.set`

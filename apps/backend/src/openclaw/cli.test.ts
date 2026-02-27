@@ -38,13 +38,13 @@ afterEach(() => {
 // `mockWsLatest` uses the vitest "mock-prefix" naming convention so it is
 // accessible inside the vi.mock factory even after hoisting.
 let mockWsLatest: MockWebSocket | null = null;
-let mockWsAll: MockWebSocket[] = [];
+let mockWsAll: MockWebSocket[] =[];
 
 class MockWebSocket extends EventEmitter {
     static OPEN = 1;
     public readonly url: string;
     public readonly opts: unknown;
-    public sent: Array<Record<string, unknown>> = [];
+    public sent: Array<Record<string, unknown>> =[];
     public closed = false;
     public readyState = 0;
     public handshakeDriven = false;
@@ -79,7 +79,7 @@ vi.mock('ws', async () => {
             static OPEN = 1;
             url: string;
             opts: unknown;
-            sent: Array<Record<string, unknown>> = [];
+            sent: Array<Record<string, unknown>> =[];
             closed = false;
             readyState = 0;
             handshakeDriven = false;
@@ -142,7 +142,7 @@ describe('gatewayCall', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => {
@@ -313,69 +313,13 @@ describe('agentIdToSessionKey', () => {
     });
 });
 
-// ─── parseOpenclawConfig ─────────────────────────────────────────────────────
-
-describe('parseOpenclawConfig', () => {
-    it('parses a config with agents as an array (format 1)', () => {
-        const input = {
-            agents: [
-                { id: 'a1', name: 'Alpha', capabilities: ['code'], model: 'gpt-4o' },
-                { id: 'a2', name: 'Beta' },
-            ],
-        };
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(2);
-        expect(agents[0].id).toBe('a1');
-        expect(agents[0].model).toBe('gpt-4o');
-        expect(agents[1].name).toBe('Beta');
-        expect(agents.every(a => a.status === 'OFFLINE')).toBe(true);
-    });
-
-    it('parses a config with agents as an object map (format 2)', () => {
-        const input = {
-            agents: {
-                'agent-x': { name: 'Xavier', capabilities: ['design'], role: 'designer' },
-                'agent-y': { name: 'Yara', capabilities: [] },
-            },
-        };
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(2);
-        const xavier = agents.find(a => a.id === 'agent-x');
-        expect(xavier).toBeDefined();
-        expect(xavier?.name).toBe('Xavier');
-        expect(xavier?.role).toBe('designer');
-    });
-
-    it('parses a top-level array (format 3)', () => {
-        const input = [{ id: 'solo', name: 'Solo Agent', capabilities: ['all'] }];
-        const agents = parseOpenclawConfig(input);
-        expect(agents).toHaveLength(1);
-        expect(agents[0].id).toBe('solo');
-    });
-
-    it('returns an empty array for an empty agents list', () => {
-        expect(parseOpenclawConfig({ agents: [] })).toHaveLength(0);
-    });
-
-    it('returns an empty array for null/undefined/unknown input', () => {
-        expect(parseOpenclawConfig(null)).toHaveLength(0);
-        expect(parseOpenclawConfig(undefined)).toHaveLength(0);
-        expect(parseOpenclawConfig(42)).toHaveLength(0);
-    });
-
-    it('falls back to id when name is missing', () => {
-        const agents = parseOpenclawConfig({ agents: [{ id: 'mysterious' }] });
-        expect(agents[0].name).toBe('mysterious');
-    });
-});
-
 // ─── getAgents ───────────────────────────────────────────────────────────────
 
 describe('getAgents', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
@@ -414,14 +358,14 @@ describe('getAgents', () => {
         expect(agents[0].model).toBe('claude-3');
     });
 
-    it('returns [] when the gateway errors', async () => {
+    it('returns[] when the gateway errors', async () => {
         const promise = getAgents();
         mockWsLatest!.emit('error', new Error('ECONNREFUSED'));
         const agents = await promise;
         expect(agents).toEqual([]);
     });
 
-    it('returns [] when config payload has no agents key', async () => {
+    it('returns[] when config payload has no agents key', async () => {
         const promise = getAgents();
         await driveHandshake({ config: { some_other_key: 1 } });
         const agents = await promise;
@@ -435,7 +379,7 @@ describe('getLiveSessions', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
@@ -450,12 +394,12 @@ describe('getLiveSessions', () => {
 
     it('returns sessions from a { sessions: [...] } shaped payload', async () => {
         const promise = getLiveSessions();
-        await driveHandshake({ sessions: [{ key: 'mc:mc-coder:main', status: 'WORKING' }] });
+        await driveHandshake({ sessions:[{ key: 'mc:mc-coder:main', status: 'WORKING' }] });
         const sessions = await promise;
         expect(sessions[0].key).toBe('mc:mc-coder:main');
     });
 
-    it('returns [] on gateway error', async () => {
+    it('returns[] on gateway error', async () => {
         const promise = getLiveSessions();
         mockWsLatest!.emit('error', new Error('timeout'));
         expect(await promise).toEqual([]);
@@ -468,7 +412,7 @@ describe('routeChatToAgent', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
@@ -518,7 +462,7 @@ describe('routeChatToAgent', () => {
 
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
 
         const p2 = routeChatToAgent('a', 'msg2');
         await driveHandshake({});
@@ -548,7 +492,7 @@ describe('generateAgentConfig', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
@@ -562,7 +506,7 @@ describe('generateAgentConfig', () => {
         expect(patchParams.key).toBe('mc-gateway:gateway:main');
 
         // Second call: chat.send
-        await driveHandshake({ name: 'Linter Bot', capabilities: ['lint', 'fix'] });
+        await driveHandshake({ name: 'Linter Bot', capabilities:['lint', 'fix'] });
         const chatParams = mockWsAll[0]!.sent[2]!.params as Record<string, unknown>;
         expect(chatParams.sessionKey).toBe('mc-gateway:gateway:main');
         expect(typeof chatParams.message).toBe('string');
@@ -580,13 +524,13 @@ describe('getModels', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
 
     it('returns payload directly when it is an array', async () => {
-        const models = [{ id: 'gpt-4o', provider: 'openai' }, { id: 'claude-3', provider: 'anthropic' }];
+        const models =[{ id: 'gpt-4o', provider: 'openai' }, { id: 'claude-3', provider: 'anthropic' }];
         const promise = getModels();
         await driveHandshake(models as unknown as Record<string, unknown>);
         expect(await promise).toEqual(models);
@@ -599,7 +543,7 @@ describe('getModels', () => {
         expect(result).toEqual([{ id: 'gpt-4o' }]);
     });
 
-    it('returns [] on gateway error', async () => {
+    it('returns[] on gateway error', async () => {
         const promise = getModels();
         mockWsLatest!.emit('error', new Error('down'));
         expect(await promise).toEqual([]);
@@ -612,7 +556,7 @@ describe('spawnTaskSession', () => {
     beforeEach(() => {
         __resetGatewayClientForTest();
         mockWsLatest = null;
-        mockWsAll = [];
+        mockWsAll =[];
         vi.useFakeTimers();
     });
     afterEach(() => { vi.useRealTimers(); });
@@ -644,8 +588,8 @@ describe('spawnTaskSession', () => {
 describe('parseOpenclawConfig', () => {
     it('parses a config with agents as an array (format 1)', () => {
         const input = {
-            agents: [
-                { id: 'a1', name: 'Alpha', capabilities: ['code'], model: 'gpt-4o' },
+            agents:[
+                { id: 'a1', name: 'Alpha', capabilities: ['code'], model: 'gpt-4o', workspace: '/tmp/ws1' },
                 { id: 'a2', name: 'Beta' },
             ],
         };
@@ -653,6 +597,7 @@ describe('parseOpenclawConfig', () => {
         expect(agents).toHaveLength(2);
         expect(agents[0].id).toBe('a1');
         expect(agents[0].model).toBe('gpt-4o');
+        expect(agents[0].workspace).toBe('/tmp/ws1');
         expect(agents[1].name).toBe('Beta');
         expect(agents.every(a => a.status === 'OFFLINE')).toBe(true);
     });
@@ -661,7 +606,7 @@ describe('parseOpenclawConfig', () => {
         const input = {
             agents: {
                 'agent-x': { name: 'Xavier', capabilities: ['design'], role: 'designer' },
-                'agent-y': { name: 'Yara', capabilities: [] },
+                'agent-y': { name: 'Yara', capabilities:[] },
             },
         };
         const agents = parseOpenclawConfig(input);
@@ -673,7 +618,7 @@ describe('parseOpenclawConfig', () => {
     });
 
     it('parses a top-level array (format 3)', () => {
-        const input = [
+        const input =[
             { id: 'solo', name: 'Solo Agent', capabilities: ['all'] },
         ];
         const agents = parseOpenclawConfig(input);
@@ -682,7 +627,7 @@ describe('parseOpenclawConfig', () => {
     });
 
     it('returns an empty array for an empty agents list', () => {
-        expect(parseOpenclawConfig({ agents: [] })).toHaveLength(0);
+        expect(parseOpenclawConfig({ agents:[] })).toHaveLength(0);
     });
 
     it('returns an empty array for null/undefined/unknown input', () => {
@@ -697,6 +642,3 @@ describe('parseOpenclawConfig', () => {
         expect(agents[0].name).toBe('mysterious');
     });
 });
-
-
-

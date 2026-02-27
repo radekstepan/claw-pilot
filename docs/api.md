@@ -7,10 +7,10 @@
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/agents` | Lists all configured agents, merging their config with real-time status (`WORKING`, `IDLE`) derived from live sessions. | `gateway: config.get + sessions.list` |
 | `GET` | `/api/agents/:id` | Gets a single agent's configuration and status. | `gateway: config.get` |
-| `POST` | `/api/agents` | Creates a new agent. | `gateway: agents.create` |
-| `PATCH` | `/api/agents/:id` | Updates basic agent info (name, model, etc.). | `gateway: agents.update` |
+| `POST` | `/api/agents` | Creates a new agent. | `gateway: agents.create + config.patch` |
+| `PATCH` | `/api/agents/:id` | Updates basic agent info (name, model, etc.). | `gateway: agents.update + config.patch` |
 | `DELETE` | `/api/agents/:id` | Removes the agent. | `gateway: agents.delete` |
-| `GET` | `/api/agents/:id/files` | Reads the raw text of `SOUL.md`, `TOOLS.md`, and `AGENTS.md` from the gateway. | `gateway: agents.files.get` |
+| `GET` | `/api/agents/:id/files` | Reads the raw text of `SOUL.md`, `TOOLS.md`, and `AGENTS.md` from the gateway's file system. | `gateway: agents.files.get` |
 | `PUT` | `/api/agents/:id/files` | Overwrites the contents of the agent's markdown configuration files on the gateway. | `gateway: agents.files.set` |
 | `POST` | `/api/agents/generate` | **Body:** `{ description: string }`<br>Sends a prompt to the gateway main agent session asking it to draft a configuration for a new agent. Returns `202 Accepted`. Result arrives via the `agent_config_generated` Socket.io event. | `gateway: sessions.patch + chat.send` |
 
@@ -21,7 +21,7 @@
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/models` | Calls `models.list` on the gateway to get available LLMs. Maps them to friendly aliases (e.g., `sonnet`, `opus`). | `gateway: models.list` |
 | `GET` | `/api/agents/:id/model-status` | Returns the agent's `primary_model`, `fallback_model`, and `failure_count`. | SQLite / Config |
-| `PATCH` | `/api/agents/:id/models` | **Body:** `{ primary_model?: string, fallback_model?: string }` | `gateway: agents.update` |
+| `PATCH` | `/api/agents/:id/models` | **Body:** `{ primary_model?: string, fallback_model?: string }` | `gateway: config.patch` |
 | `POST` | `/api/agents/:id/model-failure` | Increments failure count. Automatically swaps agent to `fallback_model` if it exists, and notifies the Lead AI. | Config + `gateway: chat.send` |
 | `POST` | `/api/agents/:id/restore-primary-model`| Resets failure count to 0 and switches back to the primary model. | Config |
 
@@ -84,7 +84,7 @@
 **Response shape:**
 ```json
 {
-  "data": [
+  "data":[
     {
       "id": "uuid",
       "task_id": "uuid",

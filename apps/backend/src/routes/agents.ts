@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
-import { getAgents, getLiveSessions, generateAgentConfig, createAgent, deleteAgent, updateAgentMeta, setAgentFiles, gatewayCall, GatewayOfflineError } from '../openclaw/cli.js';
+import { getAgents, getLiveSessions, generateAgentConfig, createAgent, deleteAgent, updateAgentMeta, setAgentFiles, getAgentFile, getAgentWorkspaceFiles, GatewayOfflineError } from '../openclaw/cli.js';
 import { Agent } from '@claw-pilot/shared-types';
 import { z } from 'zod';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -83,15 +83,10 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
         void (async () => {
             try {
-                // 1. Create the base agent entry
-                await createAgent(name, workspace, model);
+                // 1. Create the base agent entry and set model/capabilities
+                await createAgent(name, workspace, model, capabilities);
 
-                // 2. Set capabilities in config (createAgent doesn't handle them)
-                if (capabilities) {
-                    await updateAgentMeta(name, { capabilities });
-                }
-
-                // 3. Set SOUL/TOOLS/AGENTS files if provided
+                // 2. Set SOUL/TOOLS/AGENTS files if provided
                 if (soul !== undefined || tools !== undefined) {
                     await setAgentFiles(name, { soul, tools });
                 }
@@ -176,22 +171,9 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     fastify.get('/:id/files', async (request, reply) => {
         const { id } = request.params as { id: string };
 
-        async function fetchFile(name: string): Promise<string> {
-            try {
-                const payload = await gatewayCall('agents.files.get', { agentId: id, name }) as Record<string, unknown> | null;
-                return typeof payload?.content === 'string' ? payload.content : '';
-            } catch {
-                return ''; // file not found or gateway error — return empty
-            }
-        }
-
         try {
-            const [soul, tools, agentsMd] = await Promise.all([
-                fetchFile('SOUL.md'),
-                fetchFile('TOOLS.md'),
-                fetchFile('AGENTS.md'),
-            ]);
-            return reply.send({ soul, tools, agentsMd });
+            const files = await getAgentWorkspaceFiles(id);
+            return reply.send(files);
         } catch (error) {
             fastify.log.error(error);
             return reply.status(500).send({ error: 'Failed to read agent files.' });
@@ -208,17 +190,7 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const { id } = request.params as { id: string };
         const body = request.body as z.infer<typeof UpdateAgentFilesSchema>;
         try {
-            const updates: Promise<unknown>[] = [];
-            if (body.soul !== undefined) {
-                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'SOUL.md', content: body.soul }));
-            }
-            if (body.tools !== undefined) {
-                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'TOOLS.md', content: body.tools }));
-            }
-            if (body.agentsMd !== undefined) {
-                updates.push(gatewayCall('agents.files.set', { agentId: id, name: 'AGENTS.md', content: body.agentsMd }));
-            }
-            await Promise.all(updates);
+            await setAgentFiles(id, body);
             return reply.send({ success: true });
         } catch (error) {
             fastify.log.error(error);
