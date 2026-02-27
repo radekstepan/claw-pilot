@@ -1,27 +1,16 @@
 # OpenClaw Gateway RPC API
 
-This document describes how openclaw-mission-control communicates with the OpenClaw gateway. All communication uses **WebSocket RPC** — there is no REST HTTP client. Every call opens a fresh WebSocket connection, performs a challenge/response authentication handshake, sends one RPC method request, reads the response, and closes.
+This document describes how Claw-Pilot communicates with the OpenClaw gateway. All communication uses **WebSocket RPC** — there is no REST HTTP client for the gateway. Every call opens a fresh WebSocket connection, performs a challenge/response authentication handshake, sends one RPC method request, reads the response, and closes.
 
 ## Table of Contents
 
 - [Connection Overview](#connection-overview)
+- [Authentication (Device Pairing)](#authentication-device-pairing)
 - [Wire Protocol](#wire-protocol)
-- [Authentication](#authentication)
-  - [Mode A — Device Pairing (the only mode)](#mode-a--device-pairing-the-only-mode)
-  - [Connect Request Shape](#connect-request-shape)
-- [Calling an RPC Method](#calling-an-rpc-method)
--[Events](#events)
-- [RPC Method Reference](#rpc-method-reference)
-  - [Health](#health)
-  - [Sessions](#sessions)
-  - [Chat](#chat)
-  - [Agents](#agents)
-  - [Agent Files](#agent-files)
-  - [Configuration](#configuration)
-  -[Full Method Catalogue](#full-method-catalogue)
-- [Session Key Conventions](#session-key-conventions)
-- [Version Compatibility](#version-compatibility)
-- [Related Docs](#related-docs)
+- [Agent Management](#agent-management)
+-[Agent Files](#agent-files)
+- [Task Routing & Chat](#task-routing--chat)
+-[System & Config](#system--config)
 
 ---
 
@@ -31,18 +20,12 @@ The OpenClaw gateway exposes a WebSocket server, default port **18789**.
 
 | Scheme | Example URL |
 |--------|-------------|
-| Plaintext | `ws://host:18789` |
-| TLS | `wss://host:18789` |
-
-If a bearer token is configured, it is appended as a query parameter:
-
-```
-wss://host:18789?token=<token>
-```
+| Plaintext | `ws://localhost:18789` |
+| TLS | `wss://localhost:18789` |
 
 Each RPC call follows this lifecycle:
 
-```
+```text
 client                                    gateway
   │──── WebSocket connect ──────────────────→│
   │←─── event: connect.challenge ───────────│  always arrives; contains nonce to sign
@@ -57,86 +40,25 @@ Connections are **not** kept alive between calls. The gateway is stateless from 
 
 ---
 
-## Wire Protocol
+## Authentication (Device Pairing)
 
-All messages are JSON-encoded text frames.
-
-### Request frame
-
-```json
-{
-  "type": "req",
-  "id": "<uuid-v4>",
-  "method": "<method-name>",
-  "params": { }
-}
-```
-
-### Response frame (success)
-
-```json
-{
-  "type": "res",
-  "id": "<uuid-v4>",
-  "ok": true,
-  "payload": { }
-}
-```
-
-### Response frame (error)
-
-```json
-{
-  "type": "res",
-  "id": "<uuid-v4>",
-  "ok": false,
-  "error": {
-    "message": "Human-readable error description"
-  }
-}
-```
-
-### Event frame (server-push)
-
-```json
-{
-  "type": "event",
-  "event": "<event-name>",
-  "payload": { }
-}
-```
-
-The client matches responses to requests by `id`. Any frame with `ok: false` or a top-level `error` key is treated as a fatal error for that call.
-
----
-
-## Authentication
-
-Claw-Pilot uses **Mode A (Device Pairing)** — the gateway's standard authentication flow for all operator clients, including the official CLI, macOS app, and this dashboard. There is no "Mode B" bypass; every connection requires a stable device identity.
-
-### Mode A — Device Pairing (the only mode)
+Claw-Pilot uses **Mode A (Device Pairing)** — the gateway's standard authentication flow for all operator clients. 
 
 On first startup, Claw-Pilot generates a persistent **Ed25519 key pair** and writes it to:
+`apps/backend/data/device-identity.json`
 
-```
-apps/backend/data/device-identity.json
-```
+The **device ID** is a stable UUID generated once. The **signature** covers the raw nonce bytes from the gateway's `connect.challenge` event, signed with Ed25519.
 
-Path configurable via `OPENCLAW_DEVICE_IDENTITY_PATH` environment variable.
+### First-time connection flow (pairing)
 
-The **device ID** is a stable UUID generated once and stored in the same file.  
-The **signature** covers the raw nonce bytes from the gateway's `connect.challenge` event, signed with Ed25519.
-
-#### First-time connection flow (pairing)
-
-```
+```text
 client                                    gateway
   │──── WebSocket connect ──────────────────→│
   │←─── event: connect.challenge ───────────│  contains nonce
   │──── req: connect (device block) ────────→│
   │←─── close (1008: pairing required) ─────│  gateway registers pending request
   │                                          │
-  │   [user runs: openclaw devices approve]  │
+  │[user runs: openclaw devices approve]  │
   │                                          │
   │──── WebSocket connect ──────────────────→│
   │←─── event: connect.challenge ───────────│
@@ -145,41 +67,6 @@ client                                    gateway
   │──── req: <method> ──────────────────────→│
   │←─── res: <method> ──────────────────────│
   │──── close ──────────────────────────────→│
-```
-
-#### Subsequent connections (deviceToken in hand)
-
-```
-client                                    gateway
-  │──── WebSocket connect ──────────────────→│
-  │←─── event: connect.challenge ───────────│
-  │──── req: connect (device + deviceToken) →│  auto-approved — no manual step
-  │←─── res: connect ───────────────────────│
-  │──── req: <method> ──────────────────────→│
-  │←─── res: <method> ──────────────────────│
-  │──── close ──────────────────────────────→│
-```
-
-The `deviceToken` is persisted in `data/device-identity.json` automatically after first approval. All future connections are auto-approved — no repeated manual step.
-
-#### Approving a pairing request (one-time setup)
-
-When the UI shows **"Pair Device"** in the header, SSH into the gateway machine and run:
-
-```bash
-openclaw devices list            # find the pending request for device claw-pilot
-openclaw devices approve --latest  # approve it (or by ID if multiple are pending)
-```
-
-The UI banner shows the exact device ID to look for. Pending requests expire after ~5 minutes, but Claw-Pilot will automatically re-attempt the connection on the next health check (every 10 s) and create a new pending request if needed.
-
-#### Useful device management commands
-
-```bash
-openclaw devices list --json               # machine-readable list
-openclaw devices reject <requestId>        # reject a specific request
-openclaw devices revoke --device <id> --role operator   # remove permanent access
-openclaw devices rotate --device <id> --role operator   # issue a fresh deviceToken
 ```
 
 ### Connect Request Shape
@@ -195,18 +82,18 @@ After receiving the `connect.challenge` event, sign the nonce and send:
     "minProtocol": 3,
     "maxProtocol": 3,
     "role": "operator",
-    "scopes":[
-      "operator.read",
-      "operator.admin",
-      "operator.approvals",
-      "operator.pairing"
-    ],
+    "scopes":["operator.read", "operator.admin", "operator.approvals", "operator.pairing"],
     "client": {
       "id": "gateway-client",
       "mode": "backend",
       "version": "1.0.0",
       "platform": "node"
     },
+    "caps": [],
+    "commands":[],
+    "permissions": {},
+    "locale": "en-US",
+    "userAgent": "claw-pilot/1.0.0",
     "device": {
       "id": "<sha256-hex-of-raw-public-key>",
       "publicKey": "<base64url-no-padding-raw-32-byte-Ed25519-public-key>",
@@ -221,228 +108,101 @@ After receiving the `connect.challenge` event, sign the nonce and send:
 }
 ```
 
-Notes:
-- `device` is always present. `auth.token` is the `deviceToken` (from the identity file) once pairing is complete, or `OPENCLAW_GATEWAY_TOKEN` (env var) for the initial connection attempt.
-- `auth` may be omitted if neither token is set.
-- `device.publicKey` is the raw 32-byte Ed25519 public key encoded as **base64url without padding** (not SPKI DER, not standard base64).
-- `device.id` is `SHA-256(raw_public_key).hex()` — a 64-character hex string derived from the public key.
-- The **signature canonical payload** is a pipe-delimited UTF-8 string signed with Ed25519:
-  ```
-  v2|{deviceId}|gateway-client|backend|operator|{scope1,scope2,...}|{signedAtMs}|{authToken}|{nonce}
-  ```
-  Where scopes are `operator.read,operator.admin,operator.approvals,operator.pairing` and `authToken` is the active auth token or empty string. The signature is returned as base64url without padding.
-- This matches `build_device_auth_payload` in the OpenClaw Python client (`device_identity.py`).
-
-On first successful connect after approval, the gateway response `payload.auth.deviceToken` is automatically saved to `data/device-identity.json`.
-
 ---
 
-## Calling an RPC Method
+## Wire Protocol
 
-After the `connect` handshake, send the method request in the same socket:
+All messages are JSON-encoded text frames.
 
+### Request frame
 ```json
 {
   "type": "req",
   "id": "<uuid-v4>",
-  "method": "sessions.patch",
-  "params": {
-    "key": "mc:lead-abc123:main",
-    "label": "Board Lead"
-  }
+  "method": "<method-name>",
+  "params": { }
 }
 ```
 
-Await the matching `res` frame. On `ok: true`, the `payload` field contains the result. On `ok: false`, the `error.message` field describes the failure.
-
----
-
-## Events
-
-The gateway may push event frames at any time during the connection lifetime. The known event types are:
-
-| Event | Description |
-|-------|-------------|
-| `connect.challenge` | Sent immediately after the WebSocket connection is established; contains `payload.nonce` for device signature |
-| `agent` | Agent lifecycle or output event |
-| `chat` | Incoming chat message from an agent |
-| `presence` | Presence/online-status change |
-| `tick` | Periodic heartbeat tick |
-| `talk.mode` | Voice/talk mode state change |
-| `shutdown` | Gateway is shutting down |
-| `health` | Gateway health status change |
-| `heartbeat` | Agent heartbeat event |
-| `cron` | Cron job event |
-| `node.pair.requested` | A node pairing request arrived |
-| `node.pair.resolved` | A node pairing request was resolved |
-| `node.invoke.request` | Request to invoke a node |
-| `device.pair.requested` | A device pairing request arrived |
-| `device.pair.resolved` | A device pairing request was resolved |
-| `voicewake.changed` | Voice wake word config changed |
-| `exec.approval.requested` | An execution step is awaiting approval |
-| `exec.approval.resolved` | An execution approval was resolved |
-
----
-
-## RPC Method Reference
-
-The methods below are those actively used by Mission Control, with documented parameters.
-
-### Health
-
-#### `health`
-
-Check gateway reachability. Returns a health summary.
-
+### Response frame (success)
 ```json
-{ "params": {} }
+{
+  "type": "res",
+  "id": "<uuid-v4>",
+  "ok": true,
+  "payload": { }
+}
+```
+
+### Response frame (error)
+```json
+{
+  "type": "res",
+  "id": "<uuid-v4>",
+  "ok": false,
+  "error": { "message": "Human-readable error description" }
+}
+```
+
+### Event frame (server-push)
+```json
+{
+  "type": "event",
+  "event": "<event-name>",
+  "payload": { }
+}
 ```
 
 ---
 
-### Sessions
+## Agent Management
 
-#### `sessions.list`
+Claw-Pilot orchestrates agents via the gateway. See `apps/backend/src/openclaw/cli.ts` for implementation.
 
-List all active sessions on the gateway.
+### List Agents
+`config.get`
+Returns the full gateway config. Claw-Pilot parses `payload.config.agents.list` to extract agents. It combines this with `sessions.list` to determine if an agent is `WORKING`, `IDLE`, or `OFFLINE`.
 
-```json
-{ "params": {} }
-```
-
-**Response `payload`**: array of session objects.
-
-#### `sessions.patch`
-
-Create or update a session (upsert by key).
-
+### Create Agent
+1. `agents.create` (registers the agent and scaffolds its directory):
 ```json
 {
   "params": {
-    "key": "mc:lead-<board-id>:main",
-    "label": "Human-readable label"
+    "name": "data-viz-expert",
+    "workspace": "~/.openclaw/workspace/data-viz-expert"
+  }
+}
+```
+2. `config.get` (fetch `baseHash`)
+3. `config.patch` (to add `model` and `tools.allow` [capabilities]):
+```json
+{
+  "params": {
+    "baseHash": "<hash>",
+    "raw": "{\"agents\":{\"list\":[...updated list...]}}"
   }
 }
 ```
 
-`label` is optional.
-
-#### `sessions.reset`
-
-Reset a session's context without deleting it.
-
+### Update Agent
+1. `agents.update` (to change name/workspace):
 ```json
 {
   "params": {
-    "key": "mc:lead-<board-id>:main"
+    "agentId": "data-viz-expert",
+    "name": "Data Expert",
+    "workspace": "~/.openclaw/workspace/data-viz-expert"
   }
 }
 ```
+2. `config.patch` (to update model/capabilities, using `config.get` first for the `baseHash`).
 
-#### `sessions.delete`
-
-Delete a session permanently.
-
+### Delete Agent
+`agents.delete`
 ```json
 {
   "params": {
-    "key": "mc:lead-<board-id>:main"
-  }
-}
-```
-
-#### `sessions.preview`
-
-Preview a session (see full catalogue — params gateway-defined).
-
-#### `sessions.compact`
-
-Compact a session's context (see full catalogue — params gateway-defined).
-
----
-
-### Chat
-
-#### `chat.send`
-
-Deliver a message to an agent session.
-
-```json
-{
-  "params": {
-    "sessionKey": "mc:lead-<board-id>:main",
-    "message": "Your message text",
-    "deliver": false,
-    "idempotencyKey": "<uuid-v4>"
-  }
-}
-```
-
-- `deliver`: when `true`, the message is delivered as a user-visible turn; when `false`, it is injected silently.
-- `idempotencyKey`: ensures exactly-once delivery on retries.
-
-#### `chat.history`
-
-Fetch message history for a session.
-
-```json
-{
-  "params": {
-    "sessionKey": "mc:lead-<board-id>:main",
-    "limit": 50
-  }
-}
-```
-
-`limit` is optional.
-
-**Response `payload`**: object containing a `messages` array.
-
-#### `chat.abort`
-
-Abort a running chat turn (params gateway-defined).
-
----
-
-### Agents
-
-#### `agents.create`
-
-Register a new agent on the gateway and auto-scaffold its workspace.
-
-```json
-{
-  "params": {
-    "name": "<agent-id>",
-    "workspace": "/path/to/workspace"
-  }
-}
-```
-
-Returns an error if the agent ID already exists (Mission Control treats duplicate/conflict errors as non-fatal).
-
-#### `agents.update`
-
-Update an existing agent's name and workspace path.
-
-```json
-{
-  "params": {
-    "agentId": "<agent-id>",
-    "name": "<display-name>",
-    "workspace": "/path/to/workspace"
-  }
-}
-```
-
-#### `agents.delete`
-
-Delete an agent and optionally its files from disk.
-
-```json
-{
-  "params": {
-    "agentId": "<agent-id>",
+    "agentId": "data-viz-expert",
     "deleteFiles": true
   }
 }
@@ -450,230 +210,96 @@ Delete an agent and optionally its files from disk.
 
 ---
 
-### Agent Files
+## Agent Files
 
-Agent files are Markdown documents (rendered from Jinja2 templates) that configure an agent's identity, memory, tools, etc.
+Agent files (`SOUL.md`, `TOOLS.md`, `AGENTS.md`) define behavior and capabilities.
 
-#### `agents.files.list`
-
-List files attached to an agent.
-
+### List Files
+`agents.files.list`
 ```json
 {
-  "params": {
-    "agentId": "<agent-id>"
-  }
+  "params": { "agentId": "data-viz-expert" }
 }
 ```
 
-**Response `payload`**: `{ "files": [ { "name": "SOUL.md", ... }, ... ] }`
-
-#### `agents.files.get`
-
-Fetch the content of a specific agent file.
-
+### Get File
+`agents.files.get`
 ```json
 {
-  "params": {
-    "agentId": "<agent-id>",
-    "name": "SOUL.md"
-  }
+  "params": { "agentId": "data-viz-expert", "name": "SOUL.md" }
 }
 ```
 
-**Response `payload`**: `{ "content": "...", "name": "SOUL.md" }`
-
-#### `agents.files.set`
-
-Write or overwrite an agent file.
-
+### Set File
+`agents.files.set`
 ```json
 {
-  "params": {
-    "agentId": "<agent-id>",
+  "params": { 
+    "agentId": "data-viz-expert", 
     "name": "SOUL.md",
-    "content": "# Agent Soul\n..."
-  }
-}
-```
-
-#### `agents.files.delete`
-
-Delete an agent file.
-
-```json
-{
-  "params": {
-    "agentId": "<agent-id>",
-    "name": "SOUL.md"
+    "content": "You are a data visualization expert..."
   }
 }
 ```
 
 ---
 
-### Configuration
+## Task Routing & Chat
 
-#### `config.get`
+Mission Control routes tasks to agents and sends chat messages using sessions.
 
-Read the full gateway configuration.
+### Session Keys
 
+Claw-Pilot uses deterministic session key strings to identify agent sessions on the gateway:
+
+| Agent type | Session key format |
+|------------|--------------------|
+| Gateway main agent | `mc-gateway:{OPENCLAW_GATEWAY_ID}:main` |
+| Agent Chat Session | `mc:mc-{agent_id}:main` |
+| Task Session       | `task-{taskId}` |
+
+### Send Chat Message
+1. `sessions.patch`: Ensure the session exists.
+```json
+{
+  "params": { "key": "mc:mc-coder:main" }
+}
+```
+2. `chat.send`: Send the message.
+```json
+{
+  "params": {
+    "sessionKey": "mc:mc-coder:main",
+    "message": "Hello!",
+    "deliver": false,
+    "idempotencyKey": "<uuid>"
+  }
+}
+```
+
+### Spawn Task Session (Route Task)
+When routing a Kanban task to an agent, Claw-Pilot creates an isolated session for that specific task:
+1. `sessions.patch`: `key` is `task-{taskId}`, `label` is `task-{taskId}`.
+2. `chat.send`: The prompt includes the task description and callback instructions. `deliver: true` is used to trigger the agent's work loop immediately.
+
+---
+
+## System & Config
+
+### Gateway Health
+`health`
 ```json
 { "params": {} }
 ```
 
-**Response `payload`**:
-
+### Active Sessions
+`sessions.list`
 ```json
-{
-  "hash": "<config-hash>",
-  "config": { ... },
-  "parsed": { ... }
-}
+{ "params": {} }
 ```
 
-Mission Control reads `payload.config` (or `payload.parsed`) to find `agents.list` and `channels` settings.
-
-#### `config.patch`
-
-Apply a JSON merge-patch to the gateway configuration.
-
+### Available Models
+`models.list`
 ```json
-{
-  "params": {
-    "raw": "{\"agents\":{\"list\":[...]}}",
-    "baseHash": "<hash-from-config.get>"
-  }
-}
+{ "params": {} }
 ```
-
-- `raw`: a JSON string (not an object) containing the merge-patch.
-- `baseHash`: optional; the hash from the most recent `config.get` response. When provided, the gateway applies optimistic locking — the patch is rejected if the config has changed since that hash was read.
-
----
-
-## Full Method Catalogue
-
-The following 86 method names are recognized by the gateway. Methods not covered in the reference section above have gateway-defined parameter and response shapes.
-
-> Methods marked with ✓ are actively called by Mission Control.
-
-| Method | Used |
-|--------|------|
-| `health` | ✓ |
-| `logs.tail` | |
-| `channels.status` | |
-| `channels.logout` | |
-| `status` | |
-| `usage.status` | |
-| `usage.cost` | |
-| `tts.status` | |
-| `tts.providers` | |
-| `tts.enable` | |
-| `tts.disable` | |
-| `tts.convert` | |
-| `tts.setProvider` | |
-| `config.get` | ✓ |
-| `config.set` | |
-| `config.apply` | |
-| `config.patch` | ✓ |
-| `config.schema` | |
-| `exec.approvals.get` | |
-| `exec.approvals.set` | |
-| `exec.approvals.node.get` | |
-| `exec.approvals.node.set` | |
-| `exec.approval.request` | |
-| `exec.approval.resolve` | |
-| `wizard.start` | |
-| `wizard.next` | |
-| `wizard.cancel` | |
-| `wizard.status` | |
-| `talk.mode` | |
-| `models.list` | |
-| `agents.list` | |
-| `agents.create` | ✓ |
-| `agents.update` | ✓ |
-| `agents.delete` | ✓ |
-| `agents.files.list` | ✓ |
-| `agents.files.get` | ✓ |
-| `agents.files.set` | ✓ |
-| `agents.files.delete` | ✓ |
-| `skills.status` | |
-| `skills.bins` | |
-| `skills.install` | |
-| `skills.update` | |
-| `update.run` | |
-| `voicewake.get` | |
-| `voicewake.set` | |
-| `sessions.list` | ✓ |
-| `sessions.preview` | |
-| `sessions.patch` | ✓ |
-| `sessions.reset` | ✓ |
-| `sessions.delete` | ✓ |
-| `sessions.compact` | |
-| `last-heartbeat` | |
-| `set-heartbeats` | |
-| `wake` | |
-| `node.pair.request` | |
-| `node.pair.list` | |
-| `node.pair.approve` | |
-| `node.pair.reject` | |
-| `node.pair.verify` | |
-| `device.pair.list` | |
-| `device.pair.approve` | |
-| `device.pair.reject` | |
-| `device.token.rotate` | |
-| `device.token.revoke` | |
-| `node.rename` | |
-| `node.list` | |
-| `node.describe` | |
-| `node.invoke` | |
-| `node.invoke.result` | |
-| `node.event` | |
-| `cron.list` | |
-| `cron.status` | |
-| `cron.add` | |
-| `cron.update` | |
-| `cron.remove` | |
-| `cron.run` | |
-| `cron.runs` | |
-| `system-presence` | |
-| `system-event` | |
-| `send` | |
-| `agent` | |
-| `agent.identity.get` | |
-| `agent.wait` | |
-| `browser.request` | |
-| `chat.history` | ✓ |
-| `chat.abort` | |
-| `chat.send` | ✓ |
-
-The gateway may also expose additional methods at runtime via channel plugins — these are not part of the base catalogue.
-
----
-
-## Session Key Conventions
-
-Mission Control uses deterministic session key strings to identify agent sessions on the gateway:
-
-| Agent type | Session key format |
-|------------|--------------------|
-| Gateway main agent | `mc-gateway:{gateway_id}:main` |
-| Board lead agent | `mc:lead-{board_id}:main` |
-| Board non-lead agent | `mc:mc-{agent_id}:main` |
-
----
-
-## Version Compatibility
-
-Before provisioning agents, Mission Control reads the connect response's `server.version` field and compares it against a minimum CalVer version (default: `2026.1.30`, configurable via the `gateway_min_version` application setting).
-
-If the gateway version is below the minimum, provisioning is refused with a descriptive error.
-
-The version string is read from the `connect` response payload — the same response returned by the authentication handshake, before any additional RPC call.
-
----
-
-## Related Docs
-
--[docs/agent_creation_protocol.md](agent_creation_protocol.md)
