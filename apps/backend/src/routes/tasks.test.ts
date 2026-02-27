@@ -23,6 +23,8 @@ vi.mock('../openclaw/cli.js', async (importOriginal) => {
         routeChatToAgent: vi.fn().mockResolvedValue({ response: 'mock' }),
         getLiveSessions: vi.fn().mockResolvedValue([]),
         getAgents: vi.fn().mockResolvedValue([]),
+        // Prevent tests from hitting a real gateway when exercising the route endpoint.
+        spawnTaskSession: vi.fn().mockResolvedValue(undefined),
     };
 });
 
@@ -278,6 +280,73 @@ describe('Task routes — integration', () => {
             expect(res.statusCode).toBe(202);
             expect(res.json<{ status: string }>().status).toBe('IN_PROGRESS');
             expect(await getTaskStatus(id)).toBe('IN_PROGRESS');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/tasks/:id/route  (dispatch to agent)
+    // -----------------------------------------------------------------------
+    describe('POST /api/tasks/:id/route', () => {
+        it('returns 202 and synchronously sets the task to ASSIGNED', async () => {
+            const { id } = (
+                await app.inject({
+                    method: 'POST',
+                    url: '/api/tasks',
+                    headers: AUTH,
+                    payload: { title: 'Task to Route', status: 'TODO' },
+                })
+            ).json<{ id: string }>();
+
+            const res = await app.inject({
+                method: 'POST',
+                url: `/api/tasks/${id}/route`,
+                headers: AUTH,
+                payload: { agentId: 'worker-agent-001' },
+            });
+
+            expect(res.statusCode).toBe(202);
+
+            // Allow the microtask queue to flush so the mocked spawnTaskSession completes.
+            await new Promise((resolve) => setImmediate(resolve));
+
+            // With the mock resolving instantly the background job completes immediately,
+            // so the task transitions all the way through to IN_PROGRESS.
+            const tasks = (
+                await app.inject({ method: 'GET', url: '/api/tasks', headers: AUTH })
+            ).json<{ data: Array<{ id: string; status: string; agentId: string }> }>().data;
+            const routed = tasks.find((t) => t.id === id);
+            // IN_PROGRESS = route succeeded (spawnTaskSession mocked to resolve OK)
+            expect(routed?.status).toBe('IN_PROGRESS');
+            expect(routed?.agentId).toBe('worker-agent-001');
+        });
+
+        it('returns 404 for a non-existent task', async () => {
+            const res = await app.inject({
+                method: 'POST',
+                url: '/api/tasks/ghost-route-id/route',
+                headers: AUTH,
+                payload: { agentId: 'worker-agent-001' },
+            });
+            expect(res.statusCode).toBe(404);
+        });
+
+        it('returns 409 when routing a task already IN_PROGRESS', async () => {
+            const { id } = (
+                await app.inject({
+                    method: 'POST',
+                    url: '/api/tasks',
+                    headers: AUTH,
+                    payload: { title: 'Already Active', status: 'IN_PROGRESS' },
+                })
+            ).json<{ id: string }>();
+
+            const res = await app.inject({
+                method: 'POST',
+                url: `/api/tasks/${id}/route`,
+                headers: AUTH,
+                payload: { agentId: 'worker-agent-001' },
+            });
+            expect(res.statusCode).toBe(409);
         });
     });
 
