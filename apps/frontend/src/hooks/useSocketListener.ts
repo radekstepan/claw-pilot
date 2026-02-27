@@ -149,12 +149,6 @@ export function useSocketListener() {
         description:
           "The task has been marked as Stuck. Open the task to re-route it to an agent.",
       });
-
-      useMissionStore.getState().addNotification({
-        type: "error",
-        message: `Agent ${agentId}: ${error}`,
-        agentId,
-      });
       // No chime on errors - only bell notifications trigger sound
     });
 
