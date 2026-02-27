@@ -348,11 +348,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   createTask: async (payload: CreateTaskPayload) => {
     try {
       const newTask = await api.createTask(payload);
-      set((state) => ({ tasks: [newTask, ...state.tasks] }));
       // If an agent was assigned, kick off the routing flow immediately.
       // POST /api/tasks/:id/route runs spawnTaskSession in the background and
       // will transition the task ASSIGNED → IN_PROGRESS (or STUCK on failure)
       // via Socket.io task_updated events.
+      // Socket events (task_created, task_updated) will update the UI state.
       if (payload.assignee_id) {
         await api.routeTask(newTask.id, payload.assignee_id);
       }
