@@ -45,7 +45,7 @@ interface MissionState {
   /** Agent IDs for which claw-pilot currently has an in-flight AI gateway request.
    * This gives sub-second "thinking" feedback independent of the 10s sessionMonitor poll. */
   busyAgentIds: Set<string>;
-  /** Timestamp of the last successful full fetch or sync, for delta syncs. */
+  /** Timestamp of the last successful full fetch, for delta syncs. */
   lastSyncAt: string | null;
 
   /** In-app notification centre entries. */
@@ -55,6 +55,9 @@ interface MissionState {
   pendingAgentRequestId: string | null;
   /** AI-generated agent config that arrived via the agent_config_generated socket event. */
   generatedAgentConfig: GeneratedAgentConfig | null;
+
+  /** Whether to play notification sounds */
+  notificationSounds: boolean;
 
   fetchInitialData: () => Promise<void>;
   syncData: (since: string) => Promise<void>;
@@ -100,6 +103,8 @@ interface MissionState {
   clearPendingAgent: () => void;
   /** Re-fetch agents from the gateway (called after a successful deploy). */
   refreshAgents: () => Promise<void>;
+  // Notification Settings
+  setNotificationSounds: (enabled: boolean) => void;
 }
 
 export const useMissionStore = create<MissionState>((set, get) => ({
@@ -120,6 +125,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   notifications: [],
   pendingAgentRequestId: null,
   generatedAgentConfig: null,
+  notificationSounds: true, // Default to enabled
 
   fetchInitialData: async () => {
     set({ isLoading: true, error: null });
@@ -558,5 +564,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     } catch (err) {
       console.error("[store] refreshAgents failed:", err);
     }
+  },
+
+  setNotificationSounds: (enabled) => {
+    set({ notificationSounds: enabled });
+    // Save the setting to the backend API as well
+    api.saveConfig({ notificationSounds: enabled }).catch(console.error);
   },
 }));

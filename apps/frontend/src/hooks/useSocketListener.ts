@@ -9,6 +9,7 @@ import type {
 } from "@claw-pilot/shared-types";
 import { useMissionStore } from "../store/useMissionStore";
 import { env } from "../config/env.js";
+import { audioService } from "../utils/audio.js";
 
 export function useSocketListener() {
   const {
@@ -75,6 +76,12 @@ export function useSocketListener() {
         status: "TODO",
       };
       addTaskLocally(stub);
+
+      // Optionally play sound when new task is created
+      const currentAppState = useMissionStore.getState();
+      if (currentAppState.notificationSounds && payload.title) {
+        audioService.playChime().catch(console.error);
+      }
     });
 
     socket.on("task_updated", (task) => {
@@ -82,11 +89,17 @@ export function useSocketListener() {
       updateTaskLocally(task);
       // Surface REVIEW transitions as in-app notifications
       if (task.status === "REVIEW") {
+        const currentAppState = useMissionStore.getState();
         useMissionStore.getState().addNotification({
           type: "review",
           message: `"${task.title}" is waiting for your review.`,
           taskId: task.id,
         });
+
+        // Play notification chime if enabled
+        if (currentAppState.notificationSounds) {
+          audioService.playChime().catch(console.error);
+        }
       }
     });
 
@@ -142,11 +155,18 @@ export function useSocketListener() {
         description:
           "The task has been marked as Stuck. Open the task to re-route it to an agent.",
       });
+
+      const currentAppState = useMissionStore.getState();
       useMissionStore.getState().addNotification({
         type: "error",
         message: `Agent ${agentId}: ${error}`,
         agentId,
       });
+
+      // Play notification chime if enabled
+      if (currentAppState.notificationSounds) {
+        audioService.playErrorChime().catch(console.error);
+      }
     });
 
     socket.on("agent_config_generated", ({ requestId, config }) => {

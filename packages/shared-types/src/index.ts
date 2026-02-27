@@ -165,6 +165,7 @@ export const AppConfigSchema = z.object({
   apiPort: z.number(),
   autoRestart: z.boolean(),
   defaultWorkspace: z.string().optional(),
+  notificationSounds: z.boolean().default(true),
 });
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 

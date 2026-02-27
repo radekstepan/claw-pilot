@@ -93,6 +93,7 @@ export const SettingsModal = ({
     apiPort: 54321,
     autoRestart: false,
     defaultWorkspace: "",
+    notificationSounds: true,
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
@@ -469,6 +470,26 @@ export const SettingsModal = ({
             <p className="text-[8px] text-slate-500 italic">
               Used as the parent directory for new agents.
             </p>
+          </div>
+          <div className="flex items-center gap-2 col-span-full">
+            <input
+              type="checkbox"
+              id="notification-sounds"
+              className="[accent-color:var(--accent-600)]"
+              checked={config.notificationSounds}
+              onChange={(e) => {
+                const newValue = e.target.checked;
+                setConfig((c) => ({ ...c, notificationSounds: newValue }));
+                // Also update in the store immediately so changes are responsive
+                useMissionStore.getState().setNotificationSounds(newValue);
+              }}
+            />
+            <label
+              htmlFor="notification-sounds"
+              className="text-[10px] text-slate-600 dark:text-slate-400"
+            >
+              Play notification sounds
+            </label>
           </div>
           <div className="flex items-center gap-2 col-span-full">
             <input
