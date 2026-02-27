@@ -1,214 +1,306 @@
-import { Sun, Moon, Plus, Menu, WifiOff, Link2, Copy, Search, X } from 'lucide-react';
-import { NotificationsPanel } from '../ui/NotificationsPanel';
+import {
+  Sun,
+  Moon,
+  Plus,
+  Menu,
+  WifiOff,
+  Link2,
+  Copy,
+  Search,
+  X,
+} from "lucide-react";
+import { NotificationsPanel } from "../ui/NotificationsPanel";
+import { AppNotification } from "../../store/useMissionStore";
 
 interface HeaderProps {
-    stats: { queued: number; done: number };
-    theme: string;
-    isSocketConnected: boolean;
-    /** null = status not yet known (first monitor tick pending) */
-    gatewayOnline: boolean | null;
-    /** True when the device identity has been sent to the gateway but pairing is not yet approved. */
-    gatewayPairingRequired: boolean;
-    /** Stable device ID to show in pairing instructions. */
-    gatewayDeviceId: string | null;
-    onToggleTheme: () => void;
-    onNewTask: () => void;
-    onToggleSidebar: () => void;
-    filterText: string;
-    onFilterChange: (v: string) => void;
+  stats: { queued: number; done: number };
+  theme: string;
+  isSocketConnected: boolean;
+  /** null = status not yet known (first monitor tick pending) */
+  gatewayOnline: boolean | null;
+  /** True when the device identity has been sent to the gateway but pairing is not yet approved. */
+  gatewayPairingRequired: boolean;
+  /** Stable device ID to show in pairing instructions. */
+  gatewayDeviceId: string | null;
+  onToggleTheme: () => void;
+  onNewTask: () => void;
+  onToggleSidebar: () => void;
+  filterText: string;
+  onFilterChange: (v: string) => void;
+  onNotificationClick?: (notification: AppNotification) => void;
 }
 
-type PillState = 'disconnected' | 'pairing' | 'offline' | 'nominal';
+type PillState = "disconnected" | "pairing" | "offline" | "nominal";
 
-function getPillState(isSocketConnected: boolean, gatewayPairingRequired: boolean, gatewayOnline: boolean | null): PillState {
-    if (!isSocketConnected) return 'disconnected';
-    if (gatewayPairingRequired) return 'pairing';
-    if (gatewayOnline === false) return 'offline';
-    return 'nominal';
+function getPillState(
+  isSocketConnected: boolean,
+  gatewayPairingRequired: boolean,
+  gatewayOnline: boolean | null,
+): PillState {
+  if (!isSocketConnected) return "disconnected";
+  if (gatewayPairingRequired) return "pairing";
+  if (gatewayOnline === false) return "offline";
+  return "nominal";
 }
 
-const PILL_STYLES: Record<PillState, { container: string; dot: string; text: string; label: string }> = {
-    disconnected: {
-        container: 'bg-red-500/5 border-red-500/20',
-        dot: 'bg-red-500',
-        text: 'text-red-600 dark:text-red-500',
-        label: 'Disconnected',
-    },
-    pairing: {
-        container: 'bg-yellow-500/5 border-yellow-500/20',
-        dot: 'bg-yellow-400',
-        text: 'text-yellow-600 dark:text-yellow-400',
-        label: 'Pair Device',
-    },
-    offline: {
-        container: 'bg-amber-500/5 border-amber-500/20',
-        dot: 'bg-amber-500',
-        text: 'text-amber-600 dark:text-amber-400',
-        label: 'Gateway Offline',
-    },
-    nominal: {
-        container: 'bg-emerald-500/5 border-emerald-500/20',
-        dot: 'bg-emerald-500',
-        text: 'text-emerald-600 dark:text-emerald-500',
-        label: 'Nominal',
-    },
+const PILL_STYLES: Record<
+  PillState,
+  { container: string; dot: string; text: string; label: string }
+> = {
+  disconnected: {
+    container: "bg-red-500/5 border-red-500/20",
+    dot: "bg-red-500",
+    text: "text-red-600 dark:text-red-500",
+    label: "Disconnected",
+  },
+  pairing: {
+    container: "bg-yellow-500/5 border-yellow-500/20",
+    dot: "bg-yellow-400",
+    text: "text-yellow-600 dark:text-yellow-400",
+    label: "Pair Device",
+  },
+  offline: {
+    container: "bg-amber-500/5 border-amber-500/20",
+    dot: "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+    label: "Gateway Offline",
+  },
+  nominal: {
+    container: "bg-emerald-500/5 border-emerald-500/20",
+    dot: "bg-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-500",
+    label: "Nominal",
+  },
 };
 
-export const Header = ({ stats, theme, isSocketConnected, gatewayOnline, gatewayPairingRequired, gatewayDeviceId, onToggleTheme, onNewTask, onToggleSidebar, filterText, onFilterChange }: HeaderProps) => {
-    const pillState = getPillState(isSocketConnected, gatewayPairingRequired, gatewayOnline);
-    const pill = PILL_STYLES[pillState];
+export const Header = ({
+  stats,
+  theme,
+  isSocketConnected,
+  gatewayOnline,
+  gatewayPairingRequired,
+  gatewayDeviceId,
+  onToggleTheme,
+  onNewTask,
+  onToggleSidebar,
+  filterText,
+  onFilterChange,
+  onNotificationClick,
+}: HeaderProps) => {
+  const pillState = getPillState(
+    isSocketConnected,
+    gatewayPairingRequired,
+    gatewayOnline,
+  );
+  const pill = PILL_STYLES[pillState];
 
-    const copyDeviceId = () => {
-        if (gatewayDeviceId) void navigator.clipboard.writeText(gatewayDeviceId);
-    };
+  const copyDeviceId = () => {
+    if (gatewayDeviceId) void navigator.clipboard.writeText(gatewayDeviceId);
+  };
 
-    return (
-        <>
-            <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between sticky top-0 z-50 pr-4 md:pr-6">
-                <div className="flex items-center h-full">
-                    {/* BRANDING SECTION - matches sidebar width */}
-                    <div className="md:w-64 md:border-r border-black/[0.06] dark:border-white/[0.06] h-full flex items-center px-4 md:px-4 gap-3 flex-shrink-0">
-                        <button
-                            className="md:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
-                            onClick={onToggleSidebar}
-                            aria-label="Toggle navigation sidebar"
-                        >
-                            <Menu size={18} />
-                        </button>
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 flex items-center justify-center overflow-hidden" aria-hidden="true">
-                                <img src="/favicon.png" alt="ClawPilot logo" className="w-8 h-8 object-contain" />
-                            </div>
-                            <div>
-                                <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">ClawPilot</h1>
-                                <div className="text-[9px] text-slate-500 font-mono tracking-tighter">MISSION_CONTROL // {__GIT_COMMIT__}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* METRICS & FILTERS */}
-                    <div className="hidden md:flex items-center gap-8 pl-3">
-                        <nav className="flex items-center gap-6" aria-label="Key metrics">
-                            {[
-                                { label: 'Tasks Queue', val: stats.queued, color: 'text-[var(--accent-600)] dark:text-[var(--accent-400)]' },
-                                { label: 'Done Today', val: stats.done, color: 'text-slate-500 dark:text-slate-400' }
-                            ].map(stat => (
-                                <div key={stat.label} className="flex flex-col">
-                                    <span className="text-[9px] uppercase tracking-wider text-slate-500">{stat.label}</span>
-                                    <span className={`text-xs font-mono font-bold ${stat.color}`} aria-label={`${stat.label}: ${stat.val}`}>{stat.val}</span>
-                                </div>
-                            ))}
-                        </nav>
-
-                        {/* Inline task filter */}
-                        <div className="flex relative items-center pr-2">
-                            <Search size={12} className="absolute left-2 text-slate-300 dark:text-slate-700 pointer-events-none" aria-hidden="true" />
-                            <input
-                                type="text"
-                                placeholder="Filter missions..."
-                                aria-label="Filter tasks"
-                                value={filterText}
-                                onChange={e => onFilterChange(e.target.value)}
-                                className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-32 focus:w-48 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
-                            />
-                            {filterText && (
-                                <button
-                                    onClick={() => onFilterChange('')}
-                                    className="absolute right-1 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none"
-                                    aria-label="Clear filter"
-                                >
-                                    <X size={10} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
+  return (
+    <>
+      <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between sticky top-0 z-50 pr-4 md:pr-6">
+        <div className="flex items-center h-full">
+          {/* BRANDING SECTION - matches sidebar width */}
+          <div className="md:w-64 md:border-r border-black/[0.06] dark:border-white/[0.06] h-full flex items-center px-4 md:px-4 gap-3 flex-shrink-0">
+            <button
+              className="md:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
+              onClick={onToggleSidebar}
+              aria-label="Toggle navigation sidebar"
+            >
+              <Menu size={18} />
+            </button>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 flex items-center justify-center overflow-hidden"
+                aria-hidden="true"
+              >
+                <img
+                  src="/favicon.png"
+                  alt="ClawPilot logo"
+                  className="w-8 h-8 object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">
+                  ClawPilot
+                </h1>
+                <div className="text-[9px] text-slate-500 font-mono tracking-tighter">
+                  MISSION_CONTROL // {__GIT_COMMIT__}
                 </div>
+              </div>
+            </div>
+          </div>
 
-                <div className="flex items-center gap-2 md:gap-3">
-                    <button
-                        onClick={onToggleTheme}
-                        className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
-                        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-                    >
-                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                    </button>
-
-                    <div
-                        role="status"
-                        aria-label={
-                            pillState === 'disconnected' ? 'Backend disconnected'
-                                : pillState === 'pairing' ? 'Device pairing required'
-                                    : pillState === 'offline' ? 'OpenClaw gateway offline'
-                                        : 'All systems nominal'
-                        }
-                        className={`hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-sm border mr-2 md:mr-4 ${pill.container}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${pill.dot}`} aria-hidden="true" />
-                        <span className={`text-[10px] uppercase font-bold tracking-wider ${pill.text}`}>
-                            {pill.label}
-                        </span>
-                    </div>
-
-                    <NotificationsPanel />
-                    <button
-                        onClick={onNewTask}
-                        className="px-3 md:px-4 py-1.5 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] text-white text-[10px] font-bold uppercase tracking-widest transition-all rounded-sm flex items-center gap-2 shadow-sm focus-visible:outline-none"
-                        aria-label="Create new task"
-                    >
-                        <Plus size={14} aria-hidden="true" /> <span className="hidden sm:inline">New Task</span>
-                    </button>
+          {/* METRICS & FILTERS */}
+          <div className="hidden md:flex items-center gap-8 pl-3">
+            <nav className="flex items-center gap-6" aria-label="Key metrics">
+              {[
+                {
+                  label: "Tasks Queue",
+                  val: stats.queued,
+                  color:
+                    "text-[var(--accent-600)] dark:text-[var(--accent-400)]",
+                },
+                {
+                  label: "Done Today",
+                  val: stats.done,
+                  color: "text-slate-500 dark:text-slate-400",
+                },
+              ].map((stat) => (
+                <div key={stat.label} className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-500">
+                    {stat.label}
+                  </span>
+                  <span
+                    className={`text-xs font-mono font-bold ${stat.color}`}
+                    aria-label={`${stat.label}: ${stat.val}`}
+                  >
+                    {stat.val}
+                  </span>
                 </div>
-            </header>
+              ))}
+            </nav>
 
-            {/* ── Pairing required banner ── */}
-            {isSocketConnected && gatewayPairingRequired && (
-                <div
-                    role="alert"
-                    aria-live="polite"
-                    className="sticky top-14 z-40 px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-800 dark:text-yellow-300 text-[11px]"
+            {/* Inline task filter */}
+            <div className="flex relative items-center pr-2">
+              <Search
+                size={12}
+                className="absolute left-2 text-slate-300 dark:text-slate-700 pointer-events-none"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                placeholder="Filter missions..."
+                aria-label="Filter tasks"
+                value={filterText}
+                onChange={(e) => onFilterChange(e.target.value)}
+                className="bg-transparent border-none text-[10px] py-1 pl-7 pr-5 outline-none w-32 focus:w-48 transition-all placeholder:text-slate-300 dark:placeholder:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
+              />
+              {filterText && (
+                <button
+                  onClick={() => onFilterChange("")}
+                  className="absolute right-1 text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none"
+                  aria-label="Clear filter"
                 >
-                    <div className="flex items-start gap-2 max-w-4xl">
-                        <Link2 size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
-                        <div className="space-y-1 min-w-0">
-                            <p className="font-semibold">Device pairing required — OpenClaw gateway is waiting for your approval</p>
-                            <p className="text-yellow-700 dark:text-yellow-400">
-                                SSH into the gateway machine and run these two commands. Pending requests expire in ~5 minutes.
-                            </p>
-                            <pre className="mt-1.5 bg-black/10 dark:bg-white/5 rounded px-3 py-2 font-mono text-[10px] text-yellow-900 dark:text-yellow-200 whitespace-pre-wrap break-all">
-                                {`openclaw devices list\nopenclaw devices approve --latest`}
-                            </pre>
-                            {gatewayDeviceId && (
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-yellow-600 dark:text-yellow-500">Your device ID:</span>
-                                    <code className="font-mono text-[10px] bg-black/10 dark:bg-white/5 px-1.5 py-0.5 rounded break-all">{gatewayDeviceId}</code>
-                                    <button
-                                        onClick={copyDeviceId}
-                                        className="p-0.5 hover:text-yellow-900 dark:hover:text-yellow-100 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-yellow-400 rounded"
-                                        aria-label="Copy device ID"
-                                        title="Copy device ID"
-                                    >
-                                        <Copy size={11} />
-                                    </button>
-                                </div>
-                            )}
-                            <p className="text-yellow-600 dark:text-yellow-500 text-[10px] mt-1">
-                                After approval, reconnect or wait for the next health check (~10s). You will only need to do this once.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
 
-            {/* ── Gateway offline banner ── */}
-            {isSocketConnected && gatewayOnline === false && !gatewayPairingRequired && (
-                <div
-                    role="alert"
-                    aria-live="polite"
-                    className="sticky top-14 z-40 flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] font-medium"
-                >
-                    <WifiOff size={13} aria-hidden="true" className="shrink-0" />
-                    <span><strong>OpenClaw gateway unreachable</strong> — AI features (agent routing, chat, models) are offline. Non-AI features continue to work normally.</span>
+        <div className="flex items-center gap-2 md:gap-3">
+          <button
+            onClick={onToggleTheme}
+            className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] rounded"
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+
+          <div
+            role="status"
+            aria-label={
+              pillState === "disconnected"
+                ? "Backend disconnected"
+                : pillState === "pairing"
+                  ? "Device pairing required"
+                  : pillState === "offline"
+                    ? "OpenClaw gateway offline"
+                    : "All systems nominal"
+            }
+            className={`hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-sm border mr-2 md:mr-4 ${pill.container}`}
+          >
+            <div
+              className={`w-1.5 h-1.5 rounded-full ${pill.dot}`}
+              aria-hidden="true"
+            />
+            <span
+              className={`text-[10px] uppercase font-bold tracking-wider ${pill.text}`}
+            >
+              {pill.label}
+            </span>
+          </div>
+
+          <NotificationsPanel onNotificationClick={onNotificationClick} />
+          <button
+            onClick={onNewTask}
+            className="px-3 md:px-4 py-1.5 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] text-white text-[10px] font-bold uppercase tracking-widest transition-all rounded-sm flex items-center gap-2 shadow-sm focus-visible:outline-none"
+            aria-label="Create new task"
+          >
+            <Plus size={14} aria-hidden="true" />{" "}
+            <span className="hidden sm:inline">New Task</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ── Pairing required banner ── */}
+      {isSocketConnected && gatewayPairingRequired && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="sticky top-14 z-40 px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-800 dark:text-yellow-300 text-[11px]"
+        >
+          <div className="flex items-start gap-2 max-w-4xl">
+            <Link2 size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="space-y-1 min-w-0">
+              <p className="font-semibold">
+                Device pairing required — OpenClaw gateway is waiting for your
+                approval
+              </p>
+              <p className="text-yellow-700 dark:text-yellow-400">
+                SSH into the gateway machine and run these two commands. Pending
+                requests expire in ~5 minutes.
+              </p>
+              <pre className="mt-1.5 bg-black/10 dark:bg-white/5 rounded px-3 py-2 font-mono text-[10px] text-yellow-900 dark:text-yellow-200 whitespace-pre-wrap break-all">
+                {`openclaw devices list\nopenclaw devices approve --latest`}
+              </pre>
+              {gatewayDeviceId && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-yellow-600 dark:text-yellow-500">
+                    Your device ID:
+                  </span>
+                  <code className="font-mono text-[10px] bg-black/10 dark:bg-white/5 px-1.5 py-0.5 rounded break-all">
+                    {gatewayDeviceId}
+                  </code>
+                  <button
+                    onClick={copyDeviceId}
+                    className="p-0.5 hover:text-yellow-900 dark:hover:text-yellow-100 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-yellow-400 rounded"
+                    aria-label="Copy device ID"
+                    title="Copy device ID"
+                  >
+                    <Copy size={11} />
+                  </button>
                 </div>
-            )}
-        </>
-    );
+              )}
+              <p className="text-yellow-600 dark:text-yellow-500 text-[10px] mt-1">
+                After approval, reconnect or wait for the next health check
+                (~10s). You will only need to do this once.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Gateway offline banner ── */}
+      {isSocketConnected &&
+        gatewayOnline === false &&
+        !gatewayPairingRequired && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="sticky top-14 z-40 flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] font-medium"
+          >
+            <WifiOff size={13} aria-hidden="true" className="shrink-0" />
+            <span>
+              <strong>OpenClaw gateway unreachable</strong> — AI features (agent
+              routing, chat, models) are offline. Non-AI features continue to
+              work normally.
+            </span>
+          </div>
+        )}
+    </>
+  );
 };
