@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeExternalLinks from "rehype-external-links";
 import rehypeHighlight from "rehype-highlight";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 interface MarkdownContentProps {
   content: string;
@@ -32,19 +33,30 @@ export const MarkdownContent = ({
     <div
       className={`prose prose-sm dark:prose-invert max-w-none min-w-0 prose-reset ${className}`}
     >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[
-          rehypeSanitize,
-          [
-            rehypeExternalLinks,
-            { target: "_blank", rel: ["noopener", "noreferrer"] },
-          ],
-          rehypeHighlight,
-        ]}
+      <ErrorBoundary
+        fallback={
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-xs">
+            <span className="text-red-400">Unable to render markdown</span>
+            <pre className="mt-2 text-slate-300 overflow-x-auto whitespace-pre-wrap break-all">
+              {content}
+            </pre>
+          </div>
+        }
       >
-        {content}
-      </ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[
+            rehypeSanitize,
+            [
+              rehypeExternalLinks,
+              { target: "_blank", rel: ["noopener", "noreferrer"] },
+            ],
+            rehypeHighlight,
+          ]}
+        >
+          {content}
+        </ReactMarkdown>
+      </ErrorBoundary>
     </div>
   );
 };

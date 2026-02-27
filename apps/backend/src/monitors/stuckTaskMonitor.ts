@@ -1,56 +1,72 @@
-import { FastifyInstance } from 'fastify';
-import { db, tasks as tasksTable, chatMessages as chatTable } from '../db/index.js';
-import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
-import { ChatMessage } from '@claw-pilot/shared-types';
+import { FastifyInstance } from "fastify";
+import {
+  db,
+  tasks as tasksTable,
+  chatMessages as chatTable,
+} from "../db/index.js";
+import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
+import { ChatMessage } from "@claw-pilot/shared-types";
 
 const notifiedStuckTasks = new Set<string>();
 
-export function startStuckTaskMonitor(fastify: FastifyInstance): NodeJS.Timeout {
-    return setInterval(() => {
-        try {
-            const now = new Date();
-            const stuckThreshold = 24 * 60 * 60 * 1000; // 24 hours in ms
+export function resetStuckTaskMonitor(): void {
+  notifiedStuckTasks.clear();
+}
 
-            const inProgressTasks = db
-                .select()
-                .from(tasksTable)
-                .where(eq(tasksTable.status, 'IN_PROGRESS'))
-                .all();
+export function startStuckTaskMonitor(
+  fastify: FastifyInstance,
+): NodeJS.Timeout {
+  return setInterval(() => {
+    try {
+      const now = new Date();
+      const stuckThreshold = 24 * 60 * 60 * 1000; // 24 hours in ms
 
-            for (const task of inProgressTasks) {
-                if (!task.updatedAt || notifiedStuckTasks.has(task.id)) continue;
+      const inProgressTasks = db
+        .select()
+        .from(tasksTable)
+        .where(eq(tasksTable.status, "IN_PROGRESS"))
+        .all();
 
-                const timeDiff = now.getTime() - new Date(task.updatedAt).getTime();
-                if (timeDiff <= stuckThreshold) continue;
+      for (const task of inProgressTasks) {
+        if (!task.updatedAt || notifiedStuckTasks.has(task.id)) continue;
 
-                fastify.log.warn(`Task ${task.id} has been IN_PROGRESS for over 24 hours.`);
+        const timeDiff = now.getTime() - new Date(task.updatedAt).getTime();
+        if (timeDiff <= stuckThreshold) continue;
 
-                const systemMessage: ChatMessage = {
-                    id: randomUUID(),
-                    role: 'system',
-                    content: `System Alert: Task "${task.title ?? task.id}" has been stuck IN_PROGRESS for over 24 hours.`,
-                    timestamp: new Date().toISOString(),
-                };
+        fastify.log.warn(
+          `Task ${task.id} has been IN_PROGRESS for over 24 hours.`,
+        );
 
-                db.transaction(() => {
-                    db.insert(chatTable).values({
-                        id: systemMessage.id,
-                        agentId: null,
-                        role: systemMessage.role,
-                        content: systemMessage.content,
-                        timestamp: systemMessage.timestamp,
-                    }).run();
-                });
+        const systemMessage: ChatMessage = {
+          id: randomUUID(),
+          role: "system",
+          content: `System Alert: Task "${task.title ?? task.id}" has been stuck IN_PROGRESS for over 24 hours.`,
+          timestamp: new Date().toISOString(),
+        };
 
-                if (fastify.io) {
-                    fastify.io.emit('chat_message', systemMessage);
-                }
+        db.transaction(() => {
+          db.insert(chatTable)
+            .values({
+              id: systemMessage.id,
+              agentId: null,
+              role: systemMessage.role,
+              content: systemMessage.content,
+              timestamp: systemMessage.timestamp,
+            })
+            .run();
+        });
 
-                notifiedStuckTasks.add(task.id);
-            }
-        } catch (error: unknown) {
-            fastify.log.error(`Error in stuck task monitor loop: ${error instanceof Error ? error.message : String(error)}`);
+        if (fastify.io) {
+          fastify.io.emit("chat_message", systemMessage);
         }
-    }, 60_000);
+
+        notifiedStuckTasks.add(task.id);
+      }
+    } catch (error: unknown) {
+      fastify.log.error(
+        `Error in stuck task monitor loop: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }, 60_000);
 }

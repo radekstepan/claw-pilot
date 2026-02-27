@@ -1,11 +1,14 @@
-import { z } from 'zod';
-import { resolve } from 'path';
+import { z } from "zod";
+import { resolve } from "path";
 
-const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'] as const;
+const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1", "0.0.0.0"] as const;
 
-const EnvSchema = z.object({
+const EnvSchema = z
+  .object({
     /** Required — app refuses to start without a non-empty API key. */
-    API_KEY: z.string().min(1, 'API_KEY must be set to a non-empty secret value'),
+    API_KEY: z
+      .string()
+      .min(1, "API_KEY must be set to a non-empty secret value"),
 
     /** TCP port for the HTTP server. Defaults to 54321. */
     PORT: z.coerce.number().int().positive().default(54321),
@@ -15,31 +18,37 @@ const EnvSchema = z.object({
      * exposed on a public network interface.
      */
     HOST: z
-        .string()
-        .default('127.0.0.1')
-        .refine((h) => LOOPBACK_HOSTS.includes(h as (typeof LOOPBACK_HOSTS)[number]), {
-            message: `HOST must be a loopback interface (${LOOPBACK_HOSTS.slice(0,3).join(', ')}) or 0.0.0.0 for Docker containers`,
-        }),
+      .string()
+      .default("127.0.0.1")
+      .refine(
+        (h) => LOOPBACK_HOSTS.includes(h as (typeof LOOPBACK_HOSTS)[number]),
+        {
+          message: `HOST must be a loopback interface (${LOOPBACK_HOSTS.slice(0, 3).join(", ")}) or 0.0.0.0 for Docker containers`,
+        },
+      ),
 
     /**
      * Exact URL of the frontend that is allowed to make cross-origin requests.
      * Wildcard "*" is explicitly rejected.
      */
     ALLOWED_ORIGIN: z
-        .string()
-        .default('http://localhost:5173')
-        .refine((o) => o.trim() !== '*', {
-            message: 'ALLOWED_ORIGIN cannot be the wildcard "*" — use the exact frontend URL',
-        }),
+      .string()
+      .default("http://localhost:5173")
+      .refine((o) => o.trim() !== "*", {
+        message:
+          'ALLOWED_ORIGIN cannot be the wildcard "*" — use the exact frontend URL',
+      }),
 
     /** Controls error-message verbosity in the global error handler. */
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
 
     /**
      * WebSocket URL of the OpenClaw gateway.
      * Example: ws://localhost:18789  or  wss://myhost:18789
      */
-    OPENCLAW_GATEWAY_URL: z.string().url().default('ws://localhost:18789'),
+    OPENCLAW_GATEWAY_URL: z.string().url().default("ws://localhost:18789"),
 
     /**
      * Optional bearer token passed as `?token=…` on every gateway connection.
@@ -51,7 +60,7 @@ const EnvSchema = z.object({
      * Logical identifier for this gateway instance.
      * Used to construct the main-agent session key: mc-gateway:{id}:main
      */
-    OPENCLAW_GATEWAY_ID: z.string().min(1).default('gateway'),
+    OPENCLAW_GATEWAY_ID: z.string().min(1).default("gateway"),
 
     /** Timeout (ms) for fast/informational gateway RPC calls (sessions list, health, etc.). */
     OPENCLAW_WS_TIMEOUT: z.coerce.number().int().positive().default(15_000),
@@ -64,7 +73,9 @@ const EnvSchema = z.object({
      * Defaults to `data/device-identity.json` relative to the process working directory.
      * Override this in Docker / VPS deployments to point at a persistent volume.
      */
-    OPENCLAW_DEVICE_IDENTITY_PATH: z.string().default(resolve('data/device-identity.json')),
+    OPENCLAW_DEVICE_IDENTITY_PATH: z
+      .string()
+      .default(resolve("data/device-identity.json")),
 
     /**
      * Publicly reachable base URL of this Claw-Pilot backend.
@@ -96,8 +107,32 @@ const EnvSchema = z.object({
      * The UI pre-fills the "Workspace Path" field with this value.
      * Typically the directory where the OpenClaw gateway stores agent workspaces.
      */
-    OPENCLAW_DEFAULT_WORKSPACE: z.string().default('~/.openclaw/workspace'),
-});
+    OPENCLAW_DEFAULT_WORKSPACE: z.string().default("~/.openclaw/workspace"),
+  })
+  .superRefine((data, ctx) => {
+    if (data.HOST === "0.0.0.0") {
+      if (!data.PUBLIC_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "PUBLIC_URL is required when HOST=0.0.0.0. Remote agents need a publicly reachable URL for callbacks. " +
+            "Set PUBLIC_URL to your external URL (e.g., http://myhost:54321 or http://100.78.90.125:54321).",
+          path: ["PUBLIC_URL"],
+        });
+        return;
+      }
+
+      const url = new URL(data.PUBLIC_URL);
+      const hostname = url.hostname.toLowerCase();
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `PUBLIC_URL cannot use localhost/127.0.0.1 when HOST=0.0.0.0. Got: ${data.PUBLIC_URL}. Set PUBLIC_URL to your external IP or hostname.`,
+          path: ["PUBLIC_URL"],
+        });
+      }
+    }
+  });
 
 export type Env = z.infer<typeof EnvSchema>;
 
@@ -107,17 +142,17 @@ export type Env = z.infer<typeof EnvSchema>;
  * missing or any constraint is violated — the T3 Env pattern for fail-fast boot.
  */
 function parseEnv(): Env {
-    const result = EnvSchema.safeParse(process.env);
-    if (!result.success) {
-        const issues = result.error.issues
-            .map((i) => `  • ${i.path.join('.') || '<root>'}: ${i.message}`)
-            .join('\n');
-        throw new Error(
-            `\n[claw-pilot] ❌ Invalid environment configuration:\n\n${issues}\n\n` +
-                `Fix the above issues in the root .env file and restart.\n`,
-        );
-    }
-    return result.data;
+  const result = EnvSchema.safeParse(process.env);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  • ${i.path.join(".") || "<root>"}: ${i.message}`)
+      .join("\n");
+    throw new Error(
+      `\n[claw-pilot] ❌ Invalid environment configuration:\n\n${issues}\n\n` +
+        `Fix the above issues in the root .env file and restart.\n`,
+    );
+  }
+  return result.data;
 }
 
 export const env: Env = parseEnv();
