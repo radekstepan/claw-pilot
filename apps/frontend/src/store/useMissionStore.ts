@@ -527,8 +527,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   triggerRecurring: async (id: string) => {
     try {
-      const newTask = await api.triggerRecurring(id);
-      set((state) => ({ tasks: [newTask, ...state.tasks] }));
+      await api.triggerRecurring(id);
+      // Socket events (task_created, task_updated) will update the UI state.
       toast.success("Mission triggered — task added to board.");
     } catch (error: unknown) {
       toast.error(
