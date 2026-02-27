@@ -11,6 +11,7 @@ import {
   Globe,
   RefreshCw,
   Plus,
+  Bell,
   Save,
   Loader2,
   Sun,
@@ -19,6 +20,7 @@ import {
   Download,
   Upload,
   FileText,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Agent, AppConfig, RecurringTask } from "@claw-pilot/shared-types";
@@ -474,26 +476,6 @@ export const SettingsModal = ({
           <div className="flex items-center gap-2 col-span-full">
             <input
               type="checkbox"
-              id="notification-sounds"
-              className="[accent-color:var(--accent-600)]"
-              checked={config.notificationSounds}
-              onChange={(e) => {
-                const newValue = e.target.checked;
-                setConfig((c) => ({ ...c, notificationSounds: newValue }));
-                // Also update in the store immediately so changes are responsive
-                useMissionStore.getState().setNotificationSounds(newValue);
-              }}
-            />
-            <label
-              htmlFor="notification-sounds"
-              className="text-[10px] text-slate-600 dark:text-slate-400"
-            >
-              Play notification sounds
-            </label>
-          </div>
-          <div className="flex items-center gap-2 col-span-full">
-            <input
-              type="checkbox"
               id="auto-restart"
               className="[accent-color:var(--accent-600)]"
               checked={config.autoRestart}
@@ -747,6 +729,78 @@ export const SettingsModal = ({
     );
   };
 
+  const renderNotificationsTab = () => (
+    <div className="space-y-6 animate-fadeIn">
+      <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded">
+        <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500 mb-4">
+          Notification Sounds
+        </h3>
+        <p className="text-[9px] text-slate-600 dark:text-slate-400 mb-4">
+          Play a chime when a task is ready for review (enters "REVIEW" status).
+        </p>
+
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="notification-sounds"
+            className="[accent-color:var(--accent-600)]"
+            checked={config.notificationSounds}
+            onChange={(e) => {
+              const newValue = e.target.checked;
+              setConfig((c) => ({ ...c, notificationSounds: newValue }));
+              useMissionStore.getState().setNotificationSounds(newValue);
+            }}
+          />
+          <label
+            htmlFor="notification-sounds"
+            className="text-[10px] text-slate-600 dark:text-slate-400"
+          >
+            Enable notification chime
+          </label>
+        </div>
+      </div>
+
+      <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded">
+        <h3 className="text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500 mb-4">
+          Notification Types
+        </h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-white dark:bg-black/20 rounded border border-black/5 dark:border-white/5">
+            <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <span className="text-amber-600 dark:text-amber-400">
+                <Bell className="w-4 h-4" />
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                Review Ready
+              </p>
+              <p className="text-[9px] text-slate-500">
+                Chime plays when task enters REVIEW status
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-white dark:bg-black/20 rounded border border-black/5 dark:border-white/5">
+            <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+              <span className="text-red-600 dark:text-red-400">
+                <AlertCircle className="w-4 h-4" />
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                Error
+              </p>
+              <p className="text-[9px] text-slate-500">
+                No chime, only in-app notification
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
       <div
@@ -782,6 +836,7 @@ export const SettingsModal = ({
                 { id: "agents", label: "Agents", icon: Bot },
                 { id: "models", label: "Models", icon: Cpu },
                 { id: "system", label: "OpenClaw", icon: Activity },
+                { id: "notifications", label: "Notifications", icon: Bell },
                 { id: "backup", label: "Backup", icon: Server },
                 { id: "appearance", label: "Appearance", icon: Palette },
               ] as const
@@ -814,6 +869,7 @@ export const SettingsModal = ({
             {activeTab === "agents" && renderAgentsTab()}
             {activeTab === "models" && renderModelsTab()}
             {activeTab === "system" && renderSystemTab()}
+            {activeTab === "notifications" && renderNotificationsTab()}
             {activeTab === "backup" && renderBackupTab()}
             {activeTab === "appearance" && renderAppearanceTab()}
           </div>

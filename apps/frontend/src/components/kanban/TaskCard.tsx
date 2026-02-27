@@ -48,16 +48,7 @@ export const TaskCard = ({
       disabled: isOverlay,
     });
   const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
-  const isLocallyBusy = useMissionStore(
-    (s) => !!task.agentId && s.busyAgentIds.has(task.agentId),
-  );
-  // Also surface "busy" when the session monitor has flipped the agent to WORKING status
-  const agentIsWorking = useMissionStore((s) =>
-    task.agentId
-      ? s.agents.find((a) => a.id === task.agentId)?.status === "WORKING"
-      : false,
-  );
-  const isAgentBusy = isLocallyBusy || agentIsWorking;
+  const isAgentBusy = isUpdating;
 
   const style = {
     transform: CSS.Translate.toString(transform),

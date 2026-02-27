@@ -21,6 +21,7 @@ interface NotificationRowProps {
 
 function NotificationRow({ n, onClick }: NotificationRowProps) {
   const isError = n.type === "error";
+  const isBell = n.type === "bell";
   const isClickable = !!onClick;
   return (
     <div
@@ -38,6 +39,8 @@ function NotificationRow({ n, onClick }: NotificationRowProps) {
       <div className="mt-0.5 flex-shrink-0" aria-hidden="true">
         {isError ? (
           <AlertCircle size={14} className="text-red-500" />
+        ) : isBell ? (
+          <Bell size={14} className="text-amber-500" />
         ) : (
           <CheckCircle2 size={14} className="text-[var(--accent-500)]" />
         )}

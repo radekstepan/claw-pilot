@@ -14,7 +14,7 @@ import { api } from "../api/client";
 
 export interface AppNotification {
   id: string;
-  type: "error" | "review";
+  type: "error" | "review" | "bell";
   message: string;
   agentId?: string;
   taskId?: string;

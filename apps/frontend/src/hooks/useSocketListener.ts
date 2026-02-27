@@ -76,12 +76,7 @@ export function useSocketListener() {
         status: "TODO",
       };
       addTaskLocally(stub);
-
-      // Optionally play sound when new task is created
-      const currentAppState = useMissionStore.getState();
-      if (currentAppState.notificationSounds && payload.title) {
-        audioService.playChime().catch(console.error);
-      }
+      // No chime on task creation - only when task enters REVIEW status
     });
 
     socket.on("task_updated", (task) => {
@@ -89,15 +84,14 @@ export function useSocketListener() {
       updateTaskLocally(task);
       // Surface REVIEW transitions as in-app notifications
       if (task.status === "REVIEW") {
-        const currentAppState = useMissionStore.getState();
         useMissionStore.getState().addNotification({
-          type: "review",
+          type: "bell",
           message: `"${task.title}" is waiting for your review.`,
           taskId: task.id,
         });
 
         // Play notification chime if enabled
-        if (currentAppState.notificationSounds) {
+        if (useMissionStore.getState().notificationSounds) {
           audioService.playChime().catch(console.error);
         }
       }
@@ -156,17 +150,12 @@ export function useSocketListener() {
           "The task has been marked as Stuck. Open the task to re-route it to an agent.",
       });
 
-      const currentAppState = useMissionStore.getState();
       useMissionStore.getState().addNotification({
         type: "error",
         message: `Agent ${agentId}: ${error}`,
         agentId,
       });
-
-      // Play notification chime if enabled
-      if (currentAppState.notificationSounds) {
-        audioService.playErrorChime().catch(console.error);
-      }
+      // No chime on errors - only bell notifications trigger sound
     });
 
     socket.on("agent_config_generated", ({ requestId, config }) => {
