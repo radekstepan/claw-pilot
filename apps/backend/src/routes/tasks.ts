@@ -388,7 +388,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
       const taskContext = [
         body.prompt ??
-          [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
+        [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
         `---`,
         `TASK METADATA (do not include in your work output):`,
         `taskId: ${id}`,
@@ -543,10 +543,32 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const assignedAgentId = taskRow.agentId ?? "main";
         const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
         const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
+
+        // Fetch the prior activity log (chronological order) so the agent
+        // knows what it did in the previous attempt.
+        const priorActivities = db
+          .select()
+          .from(activitiesTable)
+          .where(eq(activitiesTable.taskId, id))
+          .orderBy(activitiesTable.timestamp)
+          .all();
+
+        const priorWorkSection =
+          priorActivities.length > 0
+            ? [
+              ``,
+              `Prior work log (your previous attempt):`,
+              ...priorActivities.map(
+                (a) => `[${a.timestamp}] ${a.agentId ?? "system"}: ${a.message}`,
+              ),
+            ].join("\n")
+            : "";
+
         const retryPrompt = [
           body.feedback
             ? `A human reviewer rejected your previous attempt with this feedback:\n${body.feedback}\n\nPlease redo the task taking this feedback into account.`
             : `A human reviewer rejected your previous attempt. Please redo the task.`,
+          priorWorkSection,
           ``,
           `Original task:`,
           [taskRow.title, taskRow.description].filter(Boolean).join("\n"),

@@ -12,6 +12,12 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { setTestDb, runMigrations } from "../db/index.js";
 
+// vi.hoisted runs before vi.mock factories, so the spy reference is safe to
+// capture in the closure below.
+const { enqueueAiJobSpy } = vi.hoisted(() => ({
+  enqueueAiJobSpy: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Prevent actual openclaw CLI calls from activity / review routes.
 // vi.mock() is hoisted to the top of the module by Vitest automatically.
@@ -26,6 +32,12 @@ vi.mock("../openclaw/cli.js", async (importOriginal) => {
     // Prevent tests from hitting a real gateway when exercising the route endpoint.
     spawnTaskSession: vi.fn().mockResolvedValue(undefined),
   };
+});
+
+// Spy on enqueueAiJob so tests can inspect the payload without running the worker.
+vi.mock("../services/aiQueue.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/aiQueue.js")>();
+  return { ...actual, enqueueAiJob: enqueueAiJobSpy };
 });
 
 // ---------------------------------------------------------------------------
@@ -293,6 +305,59 @@ describe("Task routes — integration", () => {
       expect(res.statusCode).toBe(202);
       expect(res.json<{ status: string }>().status).toBe("IN_PROGRESS");
       expect(await getTaskStatus(id)).toBe("IN_PROGRESS");
+    });
+
+    it("reject: retry prompt includes prior activity log", async () => {
+      enqueueAiJobSpy.mockClear();
+
+      // 1. Create a task.
+      const { id } = (
+        await app.inject({
+          method: "POST",
+          url: "/api/tasks",
+          headers: AUTH,
+          payload: { title: "Task With History", status: "IN_PROGRESS", agentId: "worker-001" },
+        })
+      ).json<{ id: string }>();
+
+      // 2. Record prior activity (simulates what the agent did).
+      await app.inject({
+        method: "POST",
+        url: `/api/tasks/${id}/activity`,
+        headers: AUTH,
+        payload: { agentId: "worker-001", message: "I tried approach A but it failed." },
+      });
+
+      // 3. Move task to REVIEW so it can be rejected.
+      await app.inject({
+        method: "PATCH",
+        url: `/api/tasks/${id}`,
+        headers: AUTH,
+        payload: { status: "REVIEW" },
+      });
+
+      // 4. Reject with feedback.
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/tasks/${id}/review`,
+        headers: AUTH,
+        payload: { action: "reject", feedback: "Try approach B instead." },
+      });
+
+      expect(res.statusCode).toBe(202);
+
+      // 5. The spy should have been called — find the review-reject call.
+      const rejectCall = enqueueAiJobSpy.mock.calls.find(
+        (args) => args[2] === "review-reject",
+      );
+      expect(rejectCall).toBeDefined();
+
+      const prompt = (rejectCall![3] as { taskId: string; agentId: string; prompt: string }).prompt;
+
+      expect(prompt).toContain("Try approach B instead.");
+      expect(prompt).toContain("Prior work log (your previous attempt):");
+      expect(prompt).toContain("I tried approach A but it failed.");
+      expect(prompt).toContain("Task With History");
     });
   });
 
