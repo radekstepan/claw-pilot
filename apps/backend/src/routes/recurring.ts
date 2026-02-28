@@ -12,7 +12,9 @@ import { validateRecurringScheduleInput } from "../services/recurringSchedule.js
 import { triggerRecurringTemplate } from "../services/recurringTrigger.js";
 
 const CreateRecurringSchema = CreateRecurringPayloadSchema;
-const UpdateRecurringSchema = RecurringTaskSchema.partial();
+const UpdateRecurringSchema = RecurringTaskSchema.partial().extend({
+  status: z.enum(["ACTIVE", "PAUSED"]).optional(),
+});
 
 type RecurringRow = typeof recurringTable.$inferSelect;
 
