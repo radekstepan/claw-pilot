@@ -85,6 +85,7 @@ export const activities = sqliteTable(
     agentId: text("agentId"),
     message: text("message").notNull(),
     timestamp: text("timestamp").notNull(),
+    taskStatus: text("taskStatus"),
   },
   (t) => [index("idx_activities_timestamp").on(t.timestamp)],
 );

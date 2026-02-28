@@ -134,6 +134,7 @@ describe("Activities routes — integration", () => {
           agentId?: string;
           message: string;
           timestamp: string;
+          taskStatus?: string;
         }>;
       }>();
       expect(body.data[0]).toEqual({
@@ -142,6 +143,7 @@ describe("Activities routes — integration", () => {
         agentId: "agent-456",
         message: "Test message",
         timestamp: "2024-01-01T12:00:00.000Z",
+        taskStatus: null,
       });
     });
 

@@ -6,7 +6,6 @@ import {
   Clock,
   Loader2,
   RefreshCw,
-  Bot,
   Pencil,
   Check,
   X,
@@ -425,43 +424,43 @@ export const RecurringView = () => {
                           </p>
                         )}
                         {task.assigned_agent_id && (
-                          <div className="flex items-center gap-1 mb-1">
-                            <Bot
-                              size={9}
-                              className="text-[var(--accent-500)] dark:text-[var(--accent-400)] flex-shrink-0"
-                            />
-                            <span className="text-[9px] font-mono text-[var(--accent-600)] dark:text-[var(--accent-400)]">
-                              {agents.find(
-                                (a) => a.id === task.assigned_agent_id,
-                              )?.name ?? task.assigned_agent_id}
-                            </span>
+                          <div className="flex items-center gap-3 text-[9px] font-mono text-slate-400 dark:text-slate-500 mb-1">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={generateAvatarUrl(
+                                  agents.find(
+                                    (a) => a.id === task.assigned_agent_id,
+                                  )?.name ?? "",
+                                  { size: 40 },
+                                )}
+                                alt="agent"
+                                className="w-3 h-3 rounded-full"
+                              />
+                              <span className="text-[var(--accent-600)] dark:text-[var(--accent-400)]">
+                                {agents.find(
+                                  (a) => a.id === task.assigned_agent_id,
+                                )?.name ?? task.assigned_agent_id}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock size={10} />
+                              <span>{task.schedule_type}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {task.schedule_value && (
+                                <span>{task.schedule_value}</span>
+                              )}
+                              {task.last_triggered_at && (
+                                <span>
+                                  last run{" "}
+                                  {new Date(
+                                    task.last_triggered_at,
+                                  ).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
-                        <div className="flex items-center gap-2 text-[9px] font-mono text-slate-400 dark:text-slate-600">
-                          <Clock size={10} />
-                          <span>{task.schedule_type}</span>
-                          {task.schedule_value && (
-                            <>
-                              <span className="text-slate-300 dark:text-slate-700">
-                                ·
-                              </span>
-                              <span>{task.schedule_value}</span>
-                            </>
-                          )}
-                          {task.last_triggered_at && (
-                            <>
-                              <span className="text-slate-300 dark:text-slate-700">
-                                ·
-                              </span>
-                              <span>
-                                last run{" "}
-                                {new Date(
-                                  task.last_triggered_at,
-                                ).toLocaleString()}
-                              </span>
-                            </>
-                          )}
-                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">

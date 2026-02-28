@@ -254,7 +254,8 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
               title: inProgressRow.title ?? undefined,
               description: inProgressRow.description ?? undefined,
               status: inProgressRow.status as Task["status"],
-              priority: (inProgressRow.priority as Task["priority"]) ?? undefined,
+              priority:
+                (inProgressRow.priority as Task["priority"]) ?? undefined,
               tags: inProgressRow.tags ?? undefined,
               assignee_id: inProgressRow.assignee_id ?? undefined,
               agentId: inProgressRow.agentId ?? undefined,
@@ -269,6 +270,7 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
             agentId: taskAgentId,
             message: `Agent '${taskAgentId}' picked up the task and is now working on it.`,
             timestamp: successNow,
+            taskStatus: "IN_PROGRESS",
           });
         }
         break;
@@ -412,6 +414,7 @@ async function handleJobFailure(
           agentId: taskAgentId,
           message: `error: Agent dispatch failed — ${message}`,
           timestamp: now,
+          taskStatus: stuckRow?.status as Task["status"],
         });
       }
     }

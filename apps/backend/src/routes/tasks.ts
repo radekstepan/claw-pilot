@@ -59,6 +59,7 @@ function activityRowToLog(row: {
   agentId: string | null;
   message: string;
   timestamp: string;
+  taskStatus?: string;
 }): ActivityLog {
   return {
     id: row.id,
@@ -66,6 +67,7 @@ function activityRowToLog(row: {
     agentId: row.agentId ?? undefined,
     message: row.message,
     timestamp: row.timestamp,
+    taskStatus: row.taskStatus as ActivityLog["taskStatus"],
   };
 }
 
@@ -246,6 +248,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       }
 
       const now = new Date().toISOString();
+      const finalStatus = newStatus ?? taskRow.status;
 
       const newActivityRow = {
         id: randomUUID(),
@@ -253,6 +256,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         agentId: body.agentId ?? null,
         message: body.message,
         timestamp: now,
+        taskStatus: finalStatus,
       };
 
       const updatedTaskRow = db.transaction(() => {
@@ -302,6 +306,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       agentId: r.agentId ?? undefined,
       message: r.message,
       timestamp: r.timestamp,
+      taskStatus: r.taskStatus as ActivityLog["taskStatus"],
     }));
 
     return reply.send(activities);
@@ -364,7 +369,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         .values({
           id: routeActivityId,
           taskId: id,
-          agentId: "system",
+          agentId: null,
           message: `Task routed to agent '${body.agentId}' — dispatching…`,
           timestamp: now,
         })
@@ -375,9 +380,10 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         fastify.io.emit("activity_added", {
           id: routeActivityId,
           taskId: id,
-          agentId: "system",
+          agentId: undefined,
           message: `Task routed to agent '${body.agentId}' — dispatching…`,
           timestamp: now,
+          taskStatus: updatedTask.status,
         });
       }
 
@@ -388,7 +394,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
       const taskContext = [
         body.prompt ??
-        [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
+          [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
         `---`,
         `TASK METADATA (do not include in your work output):`,
         `taskId: ${id}`,
@@ -505,7 +511,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             .values({
               id: rejectActivityId,
               taskId: id,
-              agentId: "system",
+              agentId: null,
               message: body.feedback
                 ? `Review rejected with feedback: ${body.feedback}`
                 : `Review rejected — task returned to In Progress.`,
@@ -528,11 +534,12 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
           fastify.io.emit("activity_added", {
             id: rejectActivityId,
             taskId: id,
-            agentId: "system",
+            agentId: undefined,
             message: body.feedback
               ? `Review rejected with feedback: ${body.feedback}`
               : `Review rejected — task returned to In Progress.`,
             timestamp: now,
+            taskStatus: updatedTask.status,
           } satisfies ActivityLog);
         }
       }
@@ -556,12 +563,13 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const priorWorkSection =
           priorActivities.length > 0
             ? [
-              ``,
-              `Prior work log (your previous attempt):`,
-              ...priorActivities.map(
-                (a) => `[${a.timestamp}] ${a.agentId ?? "system"}: ${a.message}`,
-              ),
-            ].join("\n")
+                ``,
+                `Prior work log (your previous attempt):`,
+                ...priorActivities.map(
+                  (a) =>
+                    `[${a.timestamp}] ${a.agentId ?? "system"}: ${a.message}`,
+                ),
+              ].join("\n")
             : "";
 
         const retryPrompt = [
