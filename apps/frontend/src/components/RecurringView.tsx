@@ -22,6 +22,7 @@ import { Badge } from "./ui/Badge";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { Select } from "./ui/Select";
 import { EmptyState } from "./ui/EmptyState";
+import { generateAvatarUrl } from "../utils/avatar";
 
 const SCHEDULE_TYPE_OPTIONS = [
   { value: "HOURLY", label: "Hourly" },
@@ -61,7 +62,11 @@ export const RecurringView = () => {
 
   const agentOptions = [
     { value: "", label: "— None (manual routing) —" },
-    ...agents.map((a) => ({ value: a.id, label: a.name })),
+    ...agents.map((a) => ({
+      value: a.id,
+      label: a.name,
+      avatar: generateAvatarUrl(a.name, { size: 40 }),
+    })),
   ];
 
   const handleCreate = async () => {

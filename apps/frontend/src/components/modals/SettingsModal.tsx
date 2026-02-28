@@ -28,6 +28,7 @@ import type { Model, GatewayStatus } from "../../api/client";
 import { Badge } from "../ui/Badge";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { AgentFormModal } from "./AgentFormModal";
+import { generateAvatarUrl } from "../../utils/avatar";
 import { api } from "../../api/client";
 import { useMissionStore } from "../../store/useMissionStore";
 
@@ -164,8 +165,10 @@ export const SettingsModal = ({
           >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${agent.status === "WORKING" ? "bg-emerald-500" : "bg-slate-300"}`}
+                <img
+                  src={generateAvatarUrl(agent.name, { size: 80 })}
+                  alt={agent.name}
+                  className="w-6 h-6 rounded-full"
                 />
                 <span className="text-[11px] font-bold text-slate-900 dark:text-slate-200">
                   {agent.name}

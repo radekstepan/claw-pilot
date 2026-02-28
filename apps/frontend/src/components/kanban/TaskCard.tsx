@@ -6,6 +6,7 @@ import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { Task } from "@claw-pilot/shared-types";
 import { useMissionStore } from "../../store/useMissionStore";
+import { generateAvatarUrl } from "../../utils/avatar";
 
 function formatTimeAgo(iso: string | undefined, now: number): string {
   if (!iso) return "NEW";
@@ -49,6 +50,10 @@ export const TaskCard = ({
     });
   const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
   const isAgentBusy = isUpdating;
+  const agents = useMissionStore((s) => s.agents);
+  const agent = task.agentId
+    ? agents.find((a) => a.id === task.agentId)
+    : undefined;
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -144,6 +149,13 @@ export const TaskCard = ({
               {formatTimeAgo(task.updatedAt ?? task.createdAt, now)}
             </span>
           </div>
+          {agent && (
+            <img
+              src={generateAvatarUrl(agent.name, { size: 80 })}
+              alt={agent.name}
+              className="w-2.5 h-2.5 rounded-full"
+            />
+          )}
         </div>
       </Card>
     </div>

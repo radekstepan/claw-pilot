@@ -42,6 +42,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Select } from "../ui/Select";
 import { EmptyState } from "../ui/EmptyState";
 import { MarkdownContent } from "../ui/MarkdownContent";
+import { generateAvatarUrl } from "../../utils/avatar";
 
 const updateFormSchema = z.object({
   title: z.string().min(1, "Title cannot be empty."),
@@ -306,7 +307,11 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     { value: NONE_VALUE, label: "— Unassigned —" },
     ...agents
       .filter((a) => !!a.id)
-      .map((a) => ({ value: a.id, label: a.name })),
+      .map((a) => ({
+        value: a.id,
+        label: a.name,
+        avatar: generateAvatarUrl(a.name, { size: 40 }),
+      })),
   ];
 
   const handleRouteToAgent = async () => {
