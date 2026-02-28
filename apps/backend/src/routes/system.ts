@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from "fastify";
-import { db, tasks as tasksTable } from "../db/index.js";
+import { db, tasks as tasksTable, aiJobs } from "../db/index.js";
 import { eq, or, and, count, lt, like } from "drizzle-orm";
 import {
   getAgents,
@@ -9,7 +9,6 @@ import {
   GatewayPairingRequiredError,
 } from "../openclaw/cli.js";
 import { env } from "../config/env.js";
-import { aiQueue } from "../services/aiQueue.js";
 import { z } from "zod";
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
@@ -123,15 +122,27 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
    * Useful for diagnosing back-pressure and tuning AI_QUEUE_CONCURRENCY.
    */
   fastify.get("/queue-stats", async (_request, reply) => {
+    const [{ queuedCount }] = db
+      .select({ queuedCount: count() })
+      .from(aiJobs)
+      .where(eq(aiJobs.status, "queued"))
+      .all();
+
+    const [{ runningCount }] = db
+      .select({ runningCount: count() })
+      .from(aiJobs)
+      .where(eq(aiJobs.status, "running"))
+      .all();
+
     return reply.send({
       /** Jobs queued but not yet running. */
-      size: aiQueue.size,
+      size: queuedCount,
       /** Jobs currently executing (≤ concurrency). */
-      pending: aiQueue.pending,
+      pending: runningCount,
       /** Maximum simultaneous AI calls (AI_QUEUE_CONCURRENCY). */
       concurrency: env.AI_QUEUE_CONCURRENCY,
-      /** Whether the queue is paused (true during graceful shutdown). */
-      paused: aiQueue.isPaused,
+      /** Queue is always running in persistent mode. */
+      paused: false,
     });
   });
 

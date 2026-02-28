@@ -1,18 +1,14 @@
 /**
- * Tests for aiQueue — concurrency-limited queue for heavy AI gateway calls.
+ * Tests for aiQueue — SQLite-backed persistent queue for heavy AI gateway calls.
  */
-import { describe, it, beforeEach, afterEach, expect, vi } from "vitest";
-import PQueue from "p-queue";
-import {
-  createMockFastify,
-  getEmittedEvents,
-  resetModuleState,
-} from "../test/helpers.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   AI_PRIORITY_HIGH,
   AI_PRIORITY_NORMAL,
   enqueueAiJob,
 } from "./aiQueue.js";
+import { db, aiJobs } from "../db/index.js";
+import { eq } from "drizzle-orm";
 
 describe("aiQueue", () => {
   describe("priority constants", () => {
@@ -26,191 +22,128 @@ describe("aiQueue", () => {
   });
 
   describe("enqueueAiJob", () => {
-    let mock: ReturnType<typeof createMockFastify>;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let stdoutWriteSpy: any;
-
-    beforeEach(async () => {
-      mock = createMockFastify();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      stdoutWriteSpy = vi
-        .spyOn(process.stdout, "write" as any)
-        .mockImplementation(() => true);
-      vi.useFakeTimers();
-    });
-
-    afterEach(async () => {
-      vi.restoreAllMocks();
-      vi.useRealTimers();
-    });
-
-    it("emits agent_busy_changed with busy: true before running job", async () => {
-      let jobResolved = false;
-      const fn = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        jobResolved = true;
-      };
-
-      enqueueAiJob("test-job", AI_PRIORITY_NORMAL, fn, mock.fastify, "agent-1");
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      const busyEvents = getEmittedEvents(mock, "agent_busy_changed");
-      expect(busyEvents).toContainEqual({ agentId: "agent-1", busy: true });
-    });
-
-    it("emits agent_busy_changed with busy: false after job completes", async () => {
-      const fn = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      };
-
-      enqueueAiJob("test-job", AI_PRIORITY_NORMAL, fn, mock.fastify, "agent-1");
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      const busyEvents = getEmittedEvents(mock, "agent_busy_changed");
-      expect(busyEvents).toContainEqual({ agentId: "agent-1", busy: false });
-    });
-
-    it("emits agent_error when job throws", async () => {
-      const fn = async () => {
-        throw new Error("Test error");
-      };
-
-      enqueueAiJob(
-        "failing-job",
-        AI_PRIORITY_NORMAL,
-        fn,
-        mock.fastify,
-        "agent-2",
-      );
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      const errorEvents = getEmittedEvents(mock, "agent_error");
-      expect(errorEvents).toHaveLength(1);
-      expect(errorEvents[0]).toMatchObject({
-        agentId: "failing-job",
-        error: "Test error",
-      });
-    });
-
-    it("logs error via fastify.log.error when job throws", async () => {
-      const fn = async () => {
-        throw new Error("Logged error");
-      };
-
-      enqueueAiJob("error-job", AI_PRIORITY_NORMAL, fn, mock.fastify);
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      expect(mock.log.error).toHaveBeenCalled();
-    });
-
-    it("works without agentId (gateway channel)", async () => {
-      const fn = vi.fn().mockResolvedValue(undefined);
-
-      enqueueAiJob("gateway-job", AI_PRIORITY_NORMAL, fn, mock.fastify);
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      const busyEvents = getEmittedEvents(mock, "agent_busy_changed");
-      expect(busyEvents).toHaveLength(0);
-      expect(fn).toHaveBeenCalled();
-    });
-
-    it("handles non-Error thrown values", async () => {
-      const fn = async () => {
-        throw "string error";
-      };
-
-      enqueueAiJob("string-error-job", AI_PRIORITY_NORMAL, fn, mock.fastify);
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      const errorEvents = getEmittedEvents(mock, "agent_error");
-      expect(errorEvents[0]).toMatchObject({
-        agentId: "string-error-job",
-        error: "string error",
-      });
-    });
-
-    it("runs job function when slot is available", async () => {
-      const fn = vi.fn().mockResolvedValue(undefined);
-
-      enqueueAiJob("exec-job", AI_PRIORITY_NORMAL, fn, mock.fastify);
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      expect(fn).toHaveBeenCalledTimes(1);
-    });
-
-    it("accepts different priority levels", async () => {
-      const fn = vi.fn().mockResolvedValue(undefined);
-
-      enqueueAiJob("high-prio", AI_PRIORITY_HIGH, fn, mock.fastify);
-      enqueueAiJob("normal-prio", AI_PRIORITY_NORMAL, fn, mock.fastify);
-
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
-
-      expect(fn).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("queue concurrency", () => {
-    let mock: ReturnType<typeof createMockFastify>;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let stdoutWriteSpy: any;
-
     beforeEach(() => {
-      mock = createMockFastify();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      stdoutWriteSpy = vi
-        .spyOn(process.stdout, "write" as any)
-        .mockImplementation(() => true);
-      vi.useFakeTimers();
+      // Clear any existing jobs before each test
+      db.delete(aiJobs).run();
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
-      vi.useRealTimers();
+      // Clean up after each test
+      db.delete(aiJobs).run();
     });
 
-    it("queues multiple jobs and runs them respecting concurrency", async () => {
-      const running: string[] = [];
-      let concurrency = 0;
+    it("inserts a chat job into the database", () => {
+      enqueueAiJob(
+        "test-job",
+        AI_PRIORITY_NORMAL,
+        "chat",
+        { agentId: "agent-1", message: "Hello" },
+        "agent-1",
+      );
 
-      const makeJob = (name: string) => async () => {
-        running.push(name);
-        concurrency++;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        concurrency--;
-        running.push(`${name}-done`);
-      };
+      const jobs = db
+        .select()
+        .from(aiJobs)
+        .where(eq(aiJobs.label, "test-job"))
+        .all();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe("chat");
+      expect(jobs[0].priority).toBe(AI_PRIORITY_NORMAL);
+      expect(jobs[0].status).toBe("queued");
+      expect(jobs[0].attempts).toBe(0);
+    });
 
-      const jobs = [
-        makeJob("job1"),
-        makeJob("job2"),
-        makeJob("job3"),
-        makeJob("job4"),
-      ];
+    it("inserts a task-route job into the database", () => {
+      enqueueAiJob(
+        "task-route",
+        AI_PRIORITY_NORMAL,
+        "task-route",
+        { taskId: "task-123", agentId: "agent-1", prompt: "Do something" },
+        "agent-1",
+      );
 
-      for (const job of jobs) {
-        enqueueAiJob("job", AI_PRIORITY_NORMAL, job, mock.fastify);
-      }
+      const jobs = db
+        .select()
+        .from(aiJobs)
+        .where(eq(aiJobs.label, "task-route"))
+        .all();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe("task-route");
+      expect(jobs[0].status).toBe("queued");
+    });
 
-      await vi.runAllTimersAsync();
-      await vi.runAllTimersAsync();
+    it("inserts a generate-config job into the database", () => {
+      enqueueAiJob("generate-config", AI_PRIORITY_NORMAL, "generate-config", {
+        requestId: "req-123",
+        prompt: "Create agent",
+        model: "claude",
+      });
 
-      expect(running.length).toBeGreaterThan(0);
+      const jobs = db
+        .select()
+        .from(aiJobs)
+        .where(eq(aiJobs.label, "generate-config"))
+        .all();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe("generate-config");
+      expect(jobs[0].status).toBe("queued");
+    });
+
+    it("assigns high priority correctly", () => {
+      enqueueAiJob(
+        "high-priority-job",
+        AI_PRIORITY_HIGH,
+        "chat",
+        { agentId: "agent-1", message: "Hello" },
+        "agent-1",
+      );
+
+      const jobs = db
+        .select()
+        .from(aiJobs)
+        .where(eq(aiJobs.label, "high-priority-job"))
+        .all();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].priority).toBe(AI_PRIORITY_HIGH);
+    });
+
+    it("works without agentId", () => {
+      enqueueAiJob("no-agent-job", AI_PRIORITY_NORMAL, "activity-route", {
+        message: "Activity message",
+      });
+
+      const jobs = db
+        .select()
+        .from(aiJobs)
+        .where(eq(aiJobs.label, "no-agent-job"))
+        .all();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].agentId).toBeNull();
+    });
+
+    it("generates a unique job id for each job", () => {
+      enqueueAiJob("job-1", AI_PRIORITY_NORMAL, "chat", {
+        agentId: "a",
+        message: "m",
+      });
+      enqueueAiJob("job-2", AI_PRIORITY_NORMAL, "chat", {
+        agentId: "a",
+        message: "m",
+      });
+
+      const jobs = db.select().from(aiJobs).all();
+      expect(jobs).toHaveLength(2);
+      expect(jobs[0].id).not.toBe(jobs[1].id);
+    });
+
+    it("sets maxAttempts to 3 by default", () => {
+      enqueueAiJob("test-job", AI_PRIORITY_NORMAL, "chat", {
+        agentId: "agent-1",
+        message: "Hello",
+      });
+
+      const jobs = db.select().from(aiJobs).all();
+      expect(jobs[0].maxAttempts).toBe(3);
     });
   });
 });

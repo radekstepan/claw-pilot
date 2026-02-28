@@ -23,7 +23,13 @@ vi.mock("../config/env.js", () => ({
   env: { PUBLIC_URL: undefined, PORT: 3000, API_KEY: "test-key" },
 }));
 
+vi.mock("../services/aiQueue.js", () => ({
+  enqueueAiJob: vi.fn(),
+  AI_PRIORITY_NORMAL: 0,
+}));
+
 import { spawnTaskSession } from "../openclaw/cli.js";
+import { enqueueAiJob, AI_PRIORITY_NORMAL } from "./aiQueue.js";
 
 describe("recurringTrigger", () => {
   beforeEach(() => {
@@ -54,7 +60,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -86,7 +92,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -115,7 +121,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -150,7 +156,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -179,7 +185,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -207,7 +213,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       await triggerRecurringTemplate(mock.fastify, recurringRow);
@@ -218,9 +224,8 @@ describe("recurringTrigger", () => {
   });
 
   describe("dispatchRecurringTaskToAgent", () => {
-    it("calls spawnTaskSession with correct params", async () => {
+    it("calls enqueueAiJob to queue the dispatch", async () => {
       const { db } = await import("../db/index.js");
-
       const recurringId = "recurring-spawn-test";
       db.insert(recurringTable)
         .values({
@@ -241,19 +246,24 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       await triggerRecurringTemplate(mock.fastify, recurringRow);
 
-      expect(spawnTaskSession).toHaveBeenCalledWith(
+      expect(enqueueAiJob).toHaveBeenCalledWith(
+        "recurring-spawn",
+        AI_PRIORITY_NORMAL,
+        "recurring-spawn",
+        expect.objectContaining({
+          agentId: "test-agent",
+          prompt: expect.stringContaining("Spawn Test"),
+        }),
         "test-agent",
-        expect.any(String),
-        expect.stringContaining("Spawn Test"),
       );
     });
 
-    it("updates task to IN_PROGRESS on successful spawn", async () => {
+    it("sets task to ASSIGNED when agent is assigned (worker handles IN_PROGRESS async)", async () => {
       const { db } = await import("../db/index.js");
 
       const recurringId = "recurring-inprogress-test";
@@ -274,27 +284,16 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const taskRow = db
-        .select()
-        .from(tasksTable)
-        .where(eq(tasksTable.id, result.task.id))
-        .get();
-
-      expect(taskRow?.status).toBe("IN_PROGRESS");
+      expect(result.task.status).toBe("ASSIGNED");
+      expect(result.dispatchAccepted).toBe(true);
     });
 
-    it("updates task to STUCK on spawn failure", async () => {
-      vi.mocked(spawnTaskSession).mockRejectedValueOnce(
-        new Error("Spawn failed"),
-      );
-
+    it("queues the job and sets task to ASSIGNED (worker handles status async)", async () => {
       const { db } = await import("../db/index.js");
 
       const recurringId = "recurring-stuck-test";
@@ -315,20 +314,14 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       const result = await triggerRecurringTemplate(mock.fastify, recurringRow);
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const taskRow = db
-        .select()
-        .from(tasksTable)
-        .where(eq(tasksTable.id, result.task.id))
-        .get();
-
-      expect(taskRow?.status).toBe("STUCK");
+      expect(result.task.status).toBe("ASSIGNED");
+      expect(result.dispatchAccepted).toBe(true);
+      expect(enqueueAiJob).toHaveBeenCalled();
     });
 
     it.skip("uses PUBLIC_URL when available", async () => {
@@ -366,7 +359,7 @@ describe("recurringTrigger", () => {
         .select()
         .from(recurringTable)
         .where(eq(recurringTable.id, recurringId))
-        .get();
+        .get()!;
 
       const mock = createMockFastify();
       await triggerWithUrl(mock.fastify, recurringRow);

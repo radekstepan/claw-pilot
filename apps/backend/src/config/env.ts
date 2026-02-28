@@ -103,6 +103,32 @@ const EnvSchema = z
     AI_QUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(3),
 
     /**
+     * Timeout (ms) for a single AI job to complete.
+     * Default: 2 hours.
+     */
+    AI_JOB_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(2 * 60 * 60 * 1000),
+
+    /**
+     * Heartbeat interval (ms) for long-running jobs.
+     * Default: 1 minute.
+     */
+    AI_JOB_HEARTBEAT_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60_000),
+
+    /**
+     * Poll interval (ms) for the queue worker loop.
+     * Default: 1 second.
+     */
+    AI_QUEUE_POLL_MS: z.coerce.number().int().positive().default(1_000),
+
+    /**
      * Default workspace base path offered to users when creating a new agent.
      * The UI pre-fills the "Workspace Path" field with this value.
      * Typically the directory where the OpenClaw gateway stores agent workspaces.

@@ -27,7 +27,7 @@ import { startBackupMonitor } from "./monitors/backupMonitor.js";
 import { startRecurringSchedulerMonitor } from "./monitors/recurringSchedulerMonitor.js";
 import { runBootRecovery } from "./monitors/bootRecovery.js";
 import { runMigrations, closeDb } from "./db/index.js";
-import { aiQueue } from "./services/aiQueue.js";
+import { startQueueWorker, stopQueueWorker } from "./services/aiQueue.js";
 
 // Apply any pending DB schema migrations before the app starts.
 runMigrations();
@@ -76,8 +76,12 @@ await fastify.listen({ port: env.PORT, host: env.HOST });
 console.log(`Server listening on http://${env.HOST}:${env.PORT}`);
 
 // Boot-time recovery: mark any IN_PROGRESS tasks that have no live gateway
-// session as STUCK.  Runs detached so startup latency is unaffected.
+// session as STUCK, and recover any orphaned AI jobs. Runs detached so
+// startup latency is unaffected.
 void runBootRecovery(fastify);
+
+// Start the AI queue worker after boot recovery
+startQueueWorker(fastify);
 
 // ---------------------------------------------------------------------------
 // Graceful shutdown — handle SIGINT (Ctrl-C) and SIGTERM (container stop).
@@ -97,16 +101,10 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(backupMonitorTimer);
   clearInterval(recurringSchedulerTimer);
 
-  // Pause and clear the AI job queue so new jobs are aborted.
+  // Stop the AI queue worker so no new jobs are processed.
   // We aggressively terminate to avoid hitting Docker's 15s SIGKILL timeout,
   // relying on state-recovery loops on the next boot to handle interrupted tasks.
-  aiQueue.pause();
-  aiQueue.clear();
-  if (aiQueue.pending > 0) {
-    console.warn(
-      `[claw-pilot] AI queue aborted — ${aiQueue.pending} jobs still in-flight.`,
-    );
-  }
+  stopQueueWorker();
 
   try {
     await fastify.close();

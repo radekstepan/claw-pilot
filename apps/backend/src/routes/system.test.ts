@@ -38,11 +38,21 @@ vi.mock("../openclaw/cli.js", () => ({
 }));
 
 vi.mock("../services/aiQueue.js", () => ({
-  aiQueue: { size: 0, pending: 0, isPaused: false },
+  startQueueWorker: vi.fn(),
+  stopQueueWorker: vi.fn(),
+  enqueueAiJob: vi.fn(),
+  AI_PRIORITY_NORMAL: 0,
+  AI_PRIORITY_HIGH: 1,
 }));
 
 import { getAgents, getLiveSessions, gatewayCall } from "../openclaw/cli.js";
-import { aiQueue as aiQueueModule } from "../services/aiQueue.js";
+import {
+  startQueueWorker,
+  stopQueueWorker,
+  enqueueAiJob,
+  AI_PRIORITY_NORMAL,
+  AI_PRIORITY_HIGH,
+} from "../services/aiQueue.js";
 
 const AUTH = { Authorization: "Bearer test-api-key" };
 
@@ -250,9 +260,7 @@ describe("System routes — integration", () => {
   });
 
   describe("GET /api/queue-stats", () => {
-    it("returns queue size, pending, concurrency, paused", async () => {
-      Object.assign(aiQueueModule, { size: 10, pending: 2, isPaused: false });
-
+    it("returns queue stats from database", async () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/queue-stats",
@@ -266,8 +274,8 @@ describe("System routes — integration", () => {
         concurrency: number;
         paused: boolean;
       }>();
-      expect(body.size).toBe(10);
-      expect(body.pending).toBe(2);
+      expect(body.size).toBe(0);
+      expect(body.pending).toBe(0);
       expect(body.concurrency).toBeDefined();
       expect(body.paused).toBe(false);
     });

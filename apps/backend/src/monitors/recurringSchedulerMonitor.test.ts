@@ -34,12 +34,19 @@ describe("recurringSchedulerMonitor", () => {
     vi.useFakeTimers();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+  afterEach(async () => {
+    // Stop all croner jobs before restoring mocks: clear templates from DB
+    // then reconcile so the monitor stops all jobs. Without this, croner fires
+    // after vi.restoreAllMocks() resets triggerRecurringTemplate to return
+    // undefined → unhandled rejection on `.then()`.
     if (handle) {
+      const { db } = await import("../db/index.js");
+      db.delete(recurringTable).run();
+      handle.reconcile();
       clearInterval(handle.timer);
     }
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("schedules ACTIVE HOURLY template", async () => {
