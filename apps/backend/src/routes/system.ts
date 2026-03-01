@@ -2,17 +2,16 @@ import { FastifyPluginAsync } from "fastify";
 import { db, tasks as tasksTable, aiJobs } from "../db/index.js";
 import { eq, or, and, count, lt, like } from "drizzle-orm";
 import {
-  getAgents,
-  getLiveSessions,
-  gatewayCall,
+  getGateway,
   GatewayOfflineError,
   GatewayPairingRequiredError,
-} from "../openclaw/cli.js";
+} from "../gateway/index.js";
 import { env } from "../config/env.js";
 import { z } from "zod";
 
 const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
   fastify.get("/stats", async (request, reply) => {
+    const gw = getGateway();
     // DB-only stats — always available regardless of gateway state
     const [{ tasksInQueue }] = db
       .select({ tasksInQueue: count() })
@@ -42,8 +41,8 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     let gatewayDeviceId: string | undefined;
     try {
       const [agents, activeSessions] = await Promise.all([
-        getAgents(),
-        getLiveSessions(),
+        gw.getAgents(),
+        gw.getLiveSessions(),
       ]);
       activeAgents = activeSessions.length;
       totalAgents = agents.length;
@@ -75,10 +74,11 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
   });
 
   fastify.get("/monitoring/gateway/status", async (request, reply) => {
-    const gatewayUrl = env.OPENCLAW_GATEWAY_URL;
+    const gw = getGateway();
+    const gatewayUrl = env.GATEWAY_URL;
     const start = Date.now();
     try {
-      await gatewayCall("sessions.list", {});
+      await gw.rawCall("sessions.list", {});
       return reply.send({
         status: "ONLINE",
         gatewayUrl,
@@ -170,7 +170,7 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
    */
   fastify.get("/config", async (_request, reply) => {
     return reply.send({
-      gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+      gatewayUrl: env.GATEWAY_URL,
       apiPort: env.PORT,
       autoRestart: false,
       defaultWorkspace: env.OPENCLAW_DEFAULT_WORKSPACE,
@@ -198,7 +198,7 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
     },
     async (_request, reply) => {
       return reply.send({
-        gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+        gatewayUrl: env.GATEWAY_URL,
         apiPort: env.PORT,
         autoRestart: false,
         defaultWorkspace: env.OPENCLAW_DEFAULT_WORKSPACE,

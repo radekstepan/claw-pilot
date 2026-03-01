@@ -24,11 +24,7 @@ import {
 } from "../db/index.js";
 import type { JobPayload } from "../db/schema.js";
 import type { Task } from "@claw-pilot/shared-types";
-import {
-  routeChatToAgent,
-  spawnTaskSession,
-  generateAgentConfig,
-} from "../openclaw/cli.js";
+import { getGateway } from "../gateway/index.js";
 
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_MULTIPLIER = 2;
@@ -151,6 +147,7 @@ function claimJob(jobId: string): Record<string, unknown> | null {
 
 async function processJob(job: Record<string, unknown>): Promise<void> {
   if (!fastifyInstance) return;
+  const gw = getGateway();
 
   const jobId = String(job.id);
   const jobAgentId = job.agentId ? String(job.agentId) : null;
@@ -183,7 +180,7 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
     const payload = job.payload as JobPayload;
     switch (payload.type) {
       case "chat": {
-        const aiResponseRaw = await routeChatToAgent(
+        const aiResponseRaw = await gw.routeChatToAgent(
           payload.data.agentId,
           payload.data.message,
         );
@@ -224,7 +221,7 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
       case "review-reject":
       case "recurring-spawn": {
         const { taskId, agentId: taskAgentId } = payload.data;
-        await spawnTaskSession(taskAgentId, taskId, payload.data.prompt);
+        await gw.spawnTaskSession(taskAgentId, taskId, payload.data.prompt);
 
         // Transition task to IN_PROGRESS and log activity
         const successNow = new Date().toISOString();
@@ -276,10 +273,10 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
         break;
       }
       case "activity-route":
-        await routeChatToAgent("main", payload.data.message);
+        await gw.routeChatToAgent("main", payload.data.message);
         break;
       case "generate-config": {
-        const config = await generateAgentConfig(
+        const config = await gw.generateAgentConfig(
           payload.data.prompt,
           payload.data.model,
         );

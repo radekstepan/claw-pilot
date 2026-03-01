@@ -5,7 +5,6 @@ import {
   decodeCursor,
 } from "../db/index.js";
 import { randomUUID } from "crypto";
-import { routeChatToAgent } from "../openclaw/cli.js";
 import { z } from "zod";
 import { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { CursorPageQuerySchema, ChatMessage } from "@claw-pilot/shared-types";

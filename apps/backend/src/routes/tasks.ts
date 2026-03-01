@@ -19,7 +19,6 @@ import {
   ActivityLog,
 } from "@claw-pilot/shared-types";
 import { randomUUID } from "crypto";
-import { routeChatToAgent, spawnTaskSession } from "../openclaw/cli.js";
 import { env } from "../config/env.js";
 import { z } from "zod";
 import { enqueueAiJob, AI_PRIORITY_NORMAL } from "../services/aiQueue.js";

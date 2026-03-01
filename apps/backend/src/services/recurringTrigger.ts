@@ -8,7 +8,6 @@ import {
   tasks as tasksTable,
   activities as activitiesTable,
 } from "../db/index.js";
-import { spawnTaskSession } from "../openclaw/cli.js";
 import { env } from "../config/env.js";
 import { enqueueAiJob, AI_PRIORITY_NORMAL } from "./aiQueue.js";
 

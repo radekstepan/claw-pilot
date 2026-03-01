@@ -11,11 +11,19 @@ import {
 } from "../test/helpers.js";
 import { tasks as tasksTable } from "../db/index.js";
 import { runBootRecovery } from "../monitors/bootRecovery.js";
+import { getGateway } from "../gateway/index.js";
 
-vi.mock("../openclaw/cli.js", async () => {
+const mockGateway = {
+  getLiveSessions: vi.fn(),
+  agentIdToSessionKey: vi.fn((agentId: string) => `mc:mc-${agentId}:main`),
+};
+
+vi.mock("../gateway/index.js", async () => {
   return {
-    getLiveSessions: vi.fn(),
-    agentIdToSessionKey: vi.fn((agentId: string) => `mc:mc-${agentId}:main`),
+    getGateway: vi.fn(() => ({
+      getLiveSessions: vi.fn(),
+      agentIdToSessionKey: vi.fn((agentId: string) => `mc:mc-${agentId}:main`),
+    })),
     GatewayOfflineError: class GatewayOfflineError extends Error {
       constructor(method: string, cause: Error) {
         super(`OpenClaw gateway unreachable (${method}): ${cause.message}`);
@@ -37,6 +45,7 @@ describe("bootRecovery", () => {
   beforeEach(async () => {
     createTestDb();
     mock = createMockFastify();
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
   });
 
   afterEach(() => {
@@ -78,8 +87,7 @@ describe("bootRecovery", () => {
       })
       .run();
 
-    const { getLiveSessions } = await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockResolvedValue([
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
       {
         key: "mc:mc-worker-agent:main",
         agent: "worker-agent",
@@ -112,8 +120,7 @@ describe("bootRecovery", () => {
       })
       .run();
 
-    const { getLiveSessions } = await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockResolvedValue([]);
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([]);
 
     await runBootRecovery(mock.fastify);
 
@@ -144,8 +151,7 @@ describe("bootRecovery", () => {
       })
       .run();
 
-    const { getLiveSessions } = await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockResolvedValue([]);
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([]);
 
     await runBootRecovery(mock.fastify);
 
@@ -169,9 +175,8 @@ describe("bootRecovery", () => {
       })
       .run();
 
-    const { getLiveSessions, GatewayOfflineError } =
-      await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockRejectedValue(
+    const { GatewayOfflineError } = await import("../gateway/index.js");
+    vi.mocked(mockGateway.getLiveSessions).mockRejectedValue(
       new GatewayOfflineError("getLiveSessions", new Error("ENOTFOUND")),
     );
 
@@ -201,9 +206,8 @@ describe("bootRecovery", () => {
       })
       .run();
 
-    const { getLiveSessions, GatewayPairingRequiredError } =
-      await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockRejectedValue(
+    const { GatewayPairingRequiredError } = await import("../gateway/index.js");
+    vi.mocked(mockGateway.getLiveSessions).mockRejectedValue(
       new GatewayPairingRequiredError("device-123"),
     );
 
@@ -262,8 +266,7 @@ describe("bootRecovery", () => {
       ])
       .run();
 
-    const { getLiveSessions } = await import("../openclaw/cli.js");
-    vi.mocked(getLiveSessions).mockResolvedValue([
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
       { key: "mc:mc-agent-1:main", agent: "agent-1", status: "WORKING" },
       { key: "mc:mc-agent-2:main", agent: "agent-2", status: "IDLE" },
     ]);

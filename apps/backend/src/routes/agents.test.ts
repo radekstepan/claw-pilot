@@ -15,64 +15,62 @@ import { setTestDb, runMigrations } from "../db/index.js";
 // class definitions like GatewayOfflineError remain the genuine constructors
 // (the route does `instanceof GatewayOfflineError` — must be the same class).
 // ---------------------------------------------------------------------------
-vi.mock("../openclaw/cli.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../openclaw/cli.js")>();
+vi.mock("../gateway/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gateway/index.js")>();
   return {
     ...actual,
-    getAgents: vi.fn().mockResolvedValue([
-      {
-        id: "architect",
-        name: "Architect",
-        status: "OFFLINE",
-        model: "claude-sonnet-4",
-        capabilities: ["planning", "review"],
-      },
-      {
-        id: "developer",
-        name: "Developer",
-        status: "OFFLINE",
-        model: "claude-sonnet-4",
-        capabilities: ["coding", "testing"],
-      },
-    ]),
-    getLiveSessions: vi.fn().mockResolvedValue([
-      {
-        agentId: "architect",
-        agent: "architect",
-        status: "IDLE",
-        key: "session-001",
-      },
-      {
-        agentId: "developer",
-        agent: "developer",
-        status: "WORKING",
-        key: "session-002",
-      },
-    ]),
-    updateAgentMeta: vi.fn().mockResolvedValue(undefined),
-    setAgentFiles: vi.fn().mockResolvedValue(undefined),
-    deleteAgent: vi.fn().mockResolvedValue({ success: true }),
-    getAgentFile: vi.fn().mockResolvedValue(""),
-    getAgentWorkspaceFiles: vi
-      .fn()
-      .mockResolvedValue({ soul: "", tools: "", agentsMd: "" }),
+    getGateway: vi.fn(),
+    GatewayOfflineError: class extends Error {
+      name = "GatewayOfflineError";
+    },
   };
 });
 
-// ---------------------------------------------------------------------------
-// Import the mocked symbols so tests can inspect calls and override behaviour.
-// These come from the vi.mock factory above, NOT the real module.
-// ---------------------------------------------------------------------------
-import {
-  getAgents,
-  getLiveSessions,
-  updateAgentMeta,
-  setAgentFiles,
-  deleteAgent,
-  getAgentFile,
-  getAgentWorkspaceFiles,
-  GatewayOfflineError,
-} from "../openclaw/cli.js";
+const mockGateway = {
+  getAgents: vi.fn().mockResolvedValue([
+    {
+      id: "architect",
+      name: "Architect",
+      status: "OFFLINE",
+      model: "claude-sonnet-4",
+      capabilities: ["planning", "review"],
+    },
+    {
+      id: "developer",
+      name: "Developer",
+      status: "OFFLINE",
+      model: "claude-sonnet-4",
+      capabilities: ["coding", "testing"],
+    },
+  ]),
+  getLiveSessions: vi.fn().mockResolvedValue([
+    {
+      agentId: "architect",
+      agent: "architect",
+      status: "IDLE",
+      key: "session-001",
+    },
+    {
+      agentId: "developer",
+      agent: "developer",
+      status: "WORKING",
+      key: "session-002",
+    },
+  ]),
+  updateAgentMeta: vi.fn().mockResolvedValue(undefined),
+  setAgentFiles: vi.fn().mockResolvedValue(undefined),
+  deleteAgent: vi.fn().mockResolvedValue({ success: true }),
+  getAgentFile: vi.fn().mockResolvedValue(""),
+  getAgentWorkspaceFiles: vi
+    .fn()
+    .mockResolvedValue({ soul: "", tools: "", agentsMd: "" }),
+  createAgent: vi.fn().mockResolvedValue(undefined),
+  generateAgentConfig: vi.fn(),
+  routeChatToAgent: vi.fn(),
+  spawnTaskSession: vi.fn(),
+};
+
+import { getGateway, GatewayOfflineError } from "../gateway/index.js";
 
 // ---------------------------------------------------------------------------
 // Auth header used in every authenticated request
@@ -99,8 +97,9 @@ describe("Agent routes — integration", () => {
     createTestDb();
     app = await buildApp();
     vi.clearAllMocks();
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
     // Restore the default resolved values after clearAllMocks()
-    vi.mocked(getAgents).mockResolvedValue([
+    vi.mocked(mockGateway.getAgents).mockResolvedValue([
       {
         id: "architect",
         name: "Architect",
@@ -116,7 +115,7 @@ describe("Agent routes — integration", () => {
         capabilities: ["coding", "testing"],
       },
     ]);
-    vi.mocked(getLiveSessions).mockResolvedValue([
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
       {
         agentId: "architect",
         agent: "architect",
@@ -130,11 +129,11 @@ describe("Agent routes — integration", () => {
         key: "session-002",
       },
     ]);
-    vi.mocked(updateAgentMeta).mockResolvedValue(undefined);
-    vi.mocked(setAgentFiles).mockResolvedValue(undefined);
-    vi.mocked(deleteAgent).mockResolvedValue({ success: true });
-    vi.mocked(getAgentFile).mockResolvedValue("");
-    vi.mocked(getAgentWorkspaceFiles).mockResolvedValue({
+    vi.mocked(mockGateway.updateAgentMeta).mockResolvedValue(undefined);
+    vi.mocked(mockGateway.setAgentFiles).mockResolvedValue(undefined);
+    vi.mocked(mockGateway.deleteAgent).mockResolvedValue({ success: true });
+    vi.mocked(mockGateway.getAgentFile).mockResolvedValue("");
+    vi.mocked(mockGateway.getAgentWorkspaceFiles).mockResolvedValue({
       soul: "",
       tools: "",
       agentsMd: "",
@@ -167,7 +166,7 @@ describe("Agent routes — integration", () => {
     });
 
     it("agents with no matching session get status OFFLINE", async () => {
-      vi.mocked(getLiveSessions).mockResolvedValue([]);
+      vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([]);
 
       const res = await app.inject({
         method: "GET",
@@ -181,7 +180,7 @@ describe("Agent routes — integration", () => {
     });
 
     it("returns 503 when the gateway is unreachable", async () => {
-      vi.mocked(getAgents).mockRejectedValueOnce(
+      vi.mocked(mockGateway.getAgents).mockRejectedValueOnce(
         new GatewayOfflineError("config.get", new Error("ECONNREFUSED")),
       );
 
@@ -212,10 +211,13 @@ describe("Agent routes — integration", () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(vi.mocked(updateAgentMeta)).toHaveBeenCalledWith("architect", {
-        model: "claude-opus-4",
-        capabilities: ["planning", "review", "architecture"],
-      });
+      expect(vi.mocked(mockGateway.updateAgentMeta)).toHaveBeenCalledWith(
+        "architect",
+        {
+          model: "claude-opus-4",
+          capabilities: ["planning", "review", "architecture"],
+        },
+      );
     });
 
     it("updates SOUL.md and TOOLS.md files — calls setAgentFiles with correct args", async () => {
@@ -227,10 +229,13 @@ describe("Agent routes — integration", () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(vi.mocked(setAgentFiles)).toHaveBeenCalledWith("developer", {
-        soul: "# Dev\nYou are a developer.",
-        tools: "# Tools",
-      });
+      expect(vi.mocked(mockGateway.setAgentFiles)).toHaveBeenCalledWith(
+        "developer",
+        {
+          soul: "# Dev\nYou are a developer.",
+          tools: "# Tools",
+        },
+      );
     });
 
     it("returns 400 when the payload has no fields", async () => {
@@ -245,7 +250,7 @@ describe("Agent routes — integration", () => {
     });
 
     it("returns 503 when the gateway is unreachable", async () => {
-      vi.mocked(updateAgentMeta).mockRejectedValueOnce(
+      vi.mocked(mockGateway.updateAgentMeta).mockRejectedValueOnce(
         new GatewayOfflineError("updateAgentMeta", new Error("ECONNREFUSED")),
       );
 
@@ -265,7 +270,7 @@ describe("Agent routes — integration", () => {
   // -----------------------------------------------------------------------
   describe("GET /api/agents/:id/files", () => {
     it("returns SOUL.md, TOOLS.md and AGENTS.md content from the gateway", async () => {
-      vi.mocked(getAgentWorkspaceFiles).mockResolvedValue({
+      vi.mocked(mockGateway.getAgentWorkspaceFiles).mockResolvedValue({
         soul: "# Architect Soul",
         tools: "# Architect Tools",
         agentsMd: "# Architect Agents",
@@ -289,7 +294,7 @@ describe("Agent routes — integration", () => {
     });
 
     it("returns empty strings when the gateway reports no file content", async () => {
-      vi.mocked(getAgentFile).mockResolvedValue("");
+      vi.mocked(mockGateway.getAgentFile).mockResolvedValue("");
 
       const res = await app.inject({
         method: "GET",
@@ -322,11 +327,13 @@ describe("Agent routes — integration", () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ success: true });
-      expect(vi.mocked(deleteAgent)).toHaveBeenCalledWith("developer");
+      expect(vi.mocked(mockGateway.deleteAgent)).toHaveBeenCalledWith(
+        "developer",
+      );
     });
 
     it("returns 503 when the gateway is unreachable", async () => {
-      vi.mocked(deleteAgent).mockRejectedValueOnce(
+      vi.mocked(mockGateway.deleteAgent).mockRejectedValueOnce(
         new GatewayOfflineError("agents.delete", new Error("ECONNREFUSED")),
       );
 

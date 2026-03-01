@@ -32,14 +32,19 @@ const { GatewayOfflineError, GatewayPairingRequiredError } = vi.hoisted(() => {
   return { GatewayOfflineError, GatewayPairingRequiredError };
 });
 
-vi.mock("../openclaw/cli.js", () => ({
-  getAgents: vi.fn(),
-  getLiveSessions: vi.fn(),
+vi.mock("../gateway/index.js", () => ({
+  getGateway: vi.fn(),
   GatewayOfflineError,
   GatewayPairingRequiredError,
 }));
 
-import { getAgents, getLiveSessions } from "../openclaw/cli.js";
+const mockGateway = {
+  getAgents: vi.fn(),
+  getLiveSessions: vi.fn(),
+  agentIdToSessionKey: vi.fn((id: string) => `mc-gateway:gateway:${id}`),
+};
+
+import { getGateway } from "../gateway/index.js";
 
 describe("sessionMonitor", () => {
   let mock: ReturnType<typeof createMockFastify>;
@@ -60,8 +65,9 @@ describe("sessionMonitor", () => {
     mock = createMockFastify();
     vi.useFakeTimers();
     vi.clearAllMocks();
-    vi.mocked(getAgents).mockResolvedValue([]);
-    vi.mocked(getLiveSessions).mockResolvedValue([]);
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
+    vi.mocked(mockGateway.getAgents).mockResolvedValue([]);
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -90,7 +96,7 @@ describe("sessionMonitor", () => {
       const mockAgents = [
         { id: "agent-1", name: "Agent One", status: "OFFLINE" },
       ];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
       handle = startSessionMonitor(mock.fastify);
       await tick();
@@ -102,7 +108,7 @@ describe("sessionMonitor", () => {
 
     it("first tick does NOT log agent status changes", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
       handle = startSessionMonitor(mock.fastify);
       await tick();
@@ -115,7 +121,7 @@ describe("sessionMonitor", () => {
 
   describe("gateway offline flow", () => {
     it("emits gateway_status online=false when GatewayOfflineError thrown", async () => {
-      vi.mocked(getAgents).mockRejectedValue(
+      vi.mocked(mockGateway.getAgents).mockRejectedValue(
         new GatewayOfflineError("Gateway unreachable"),
       );
 
@@ -132,7 +138,7 @@ describe("sessionMonitor", () => {
     });
 
     it("logs warning message on gateway offline", async () => {
-      vi.mocked(getAgents).mockRejectedValue(
+      vi.mocked(mockGateway.getAgents).mockRejectedValue(
         new GatewayOfflineError("Gateway unreachable"),
       );
 
@@ -145,7 +151,7 @@ describe("sessionMonitor", () => {
 
   describe("pairing required flow", () => {
     it("emits gateway_status with pairingRequired=true and deviceId", async () => {
-      vi.mocked(getAgents).mockRejectedValue(
+      vi.mocked(mockGateway.getAgents).mockRejectedValue(
         new GatewayPairingRequiredError("device-123"),
       );
 
@@ -165,8 +171,8 @@ describe("sessionMonitor", () => {
   describe("agent status transitions", () => {
     it("emits agent_status_changed only on actual status change", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
-      vi.mocked(getLiveSessions).mockResolvedValue([
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
         { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
       ]);
 
@@ -181,9 +187,9 @@ describe("sessionMonitor", () => {
 
     it("logs status change on subsequent ticks", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -220,9 +226,9 @@ describe("sessionMonitor", () => {
         .run();
 
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -261,9 +267,9 @@ describe("sessionMonitor", () => {
         .run();
 
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -307,9 +313,9 @@ describe("sessionMonitor", () => {
         .run();
 
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -346,9 +352,9 @@ describe("sessionMonitor", () => {
         .run();
 
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -400,9 +406,9 @@ describe("sessionMonitor", () => {
         .run();
 
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
-      vi.mocked(getLiveSessions)
+      vi.mocked(mockGateway.getLiveSessions)
         .mockResolvedValueOnce([
           { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
         ])
@@ -430,8 +436,8 @@ describe("sessionMonitor", () => {
   describe("status mapping", () => {
     it("maps session status WORKING to agent status WORKING", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
-      vi.mocked(getLiveSessions).mockResolvedValue([
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
         { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
       ]);
 
@@ -444,8 +450,8 @@ describe("sessionMonitor", () => {
 
     it("maps session status IDLE to agent status IDLE", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
-      vi.mocked(getLiveSessions).mockResolvedValue([
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
         { agent: "agent-1", agentId: "agent-1", status: "IDLE" },
       ]);
 
@@ -458,7 +464,7 @@ describe("sessionMonitor", () => {
 
     it("maps no session to agent status OFFLINE", async () => {
       const mockAgents = [{ id: "agent-1", name: "Test Agent" }];
-      vi.mocked(getAgents).mockResolvedValue(mockAgents as any);
+      vi.mocked(mockGateway.getAgents).mockResolvedValue(mockAgents as any);
 
       handle = startSessionMonitor(mock.fastify);
       await tick();

@@ -1,16 +1,5 @@
 import { FastifyPluginAsync } from "fastify";
-import {
-  getAgents,
-  getLiveSessions,
-  generateAgentConfig,
-  createAgent,
-  deleteAgent,
-  updateAgentMeta,
-  setAgentFiles,
-  getAgentFile,
-  getAgentWorkspaceFiles,
-  GatewayOfflineError,
-} from "../openclaw/cli.js";
+import { getGateway, GatewayOfflineError } from "../gateway/index.js";
 import { Agent } from "@claw-pilot/shared-types";
 import { z } from "zod";
 import { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -19,10 +8,11 @@ import { enqueueAiJob, AI_PRIORITY_NORMAL } from "../services/aiQueue.js";
 
 const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
   fastify.get("/", async (request, reply) => {
+    const gw = getGateway();
     try {
       const [agents, sessions] = await Promise.all([
-        getAgents(),
-        getLiveSessions(),
+        gw.getAgents(),
+        gw.getLiveSessions(),
       ]);
 
       // Find active sessions that correspond to the agents
@@ -108,14 +98,15 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
       reply.status(202).send({ requestId, status: "pending" });
 
+      const gw = getGateway();
       void (async () => {
         try {
           // 1. Create the base agent entry and set model/capabilities
-          await createAgent(name, workspace, model, capabilities);
+          await gw.createAgent(name, workspace, model, capabilities);
 
           // 2. Set SOUL/TOOLS/AGENTS files if provided
           if (soul !== undefined || tools !== undefined) {
-            await setAgentFiles(name, { soul, tools });
+            await gw.setAgentFiles(name, { soul, tools });
           }
 
           if (fastify.io) {
@@ -162,23 +153,24 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as z.infer<typeof PatchAgentSchema>;
+      const gw = getGateway();
       try {
         const { soul, tools, ...meta } = body;
 
         // 1. Update metadata (name, model, capabilities)
         if (Object.keys(meta).length > 0) {
-          await updateAgentMeta(id, meta);
+          await gw.updateAgentMeta(id, meta);
         }
 
         // 2. Update behavioral files
         if (soul !== undefined || tools !== undefined) {
-          await setAgentFiles(id, { soul, tools });
+          await gw.setAgentFiles(id, { soul, tools });
         }
 
         // Re-fetch so the response reflects the updated state from the gateway.
         const [agents, sessions] = await Promise.all([
-          getAgents(),
-          getLiveSessions(),
+          gw.getAgents(),
+          gw.getLiveSessions(),
         ]);
         const activeSessions = sessions.filter(
           (s) => s.status === "WORKING" || s.status === "IDLE",
@@ -212,8 +204,9 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
   // DELETE /api/agents/:id — removes an agent from the gateway.
   fastify.delete("/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
+    const gw = getGateway();
     try {
-      await deleteAgent(id);
+      await gw.deleteAgent(id);
       return reply.send({ success: true });
     } catch (error) {
       if (error instanceof GatewayOfflineError) {
@@ -228,9 +221,9 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
   fastify.get("/:id/files", async (request, reply) => {
     const { id } = request.params as { id: string };
-
+    const gw = getGateway();
     try {
-      const files = await getAgentWorkspaceFiles(id);
+      const files = await gw.getAgentWorkspaceFiles(id);
       return reply.send(files);
     } catch (error) {
       fastify.log.error(error);
@@ -250,8 +243,9 @@ const agentRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as z.infer<typeof UpdateAgentFilesSchema>;
+      const gw = getGateway();
       try {
-        await setAgentFiles(id, body);
+        await gw.setAgentFiles(id, body);
         return reply.send({ success: true });
       } catch (error) {
         fastify.log.error(error);

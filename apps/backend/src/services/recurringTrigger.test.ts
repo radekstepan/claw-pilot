@@ -15,12 +15,25 @@ import {
 import { eq } from "drizzle-orm";
 import { triggerRecurringTemplate } from "./recurringTrigger.js";
 
-vi.mock("../openclaw/cli.js", () => ({
-  spawnTaskSession: vi.fn().mockResolvedValue(undefined),
+vi.mock("../gateway/index.js", () => ({
+  getGateway: vi.fn(() => ({
+    spawnTaskSession: vi.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 vi.mock("../config/env.js", () => ({
-  env: { PUBLIC_URL: undefined, PORT: 3000, API_KEY: "test-key" },
+  env: {
+    PUBLIC_URL: undefined,
+    PORT: 3000,
+    API_KEY: "test-key",
+    GATEWAY_URL: "ws://localhost:18789",
+    GATEWAY_ID: "gateway",
+    GATEWAY_WS_TIMEOUT: 15000,
+    GATEWAY_AI_TIMEOUT: 120000,
+    GATEWAY_DEVICE_IDENTITY_PATH: "data/device-identity.json",
+    BACKEND_TYPE: "openclaw" as const,
+    GATEWAY_TOKEN: undefined,
+  },
 }));
 
 vi.mock("../services/aiQueue.js", () => ({
@@ -28,7 +41,7 @@ vi.mock("../services/aiQueue.js", () => ({
   AI_PRIORITY_NORMAL: 0,
 }));
 
-import { spawnTaskSession } from "../openclaw/cli.js";
+import { getGateway } from "../gateway/index.js";
 import { enqueueAiJob, AI_PRIORITY_NORMAL } from "./aiQueue.js";
 
 describe("recurringTrigger", () => {
@@ -364,7 +377,7 @@ describe("recurringTrigger", () => {
       const mock = createMockFastify();
       await triggerWithUrl(mock.fastify, recurringRow);
 
-      expect(spawnTaskSession).toHaveBeenCalledWith(
+      expect(getGateway().spawnTaskSession).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
         expect.stringContaining("https://custom.url"),

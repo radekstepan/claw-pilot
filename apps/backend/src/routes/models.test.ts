@@ -9,15 +9,25 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { setTestDb, runMigrations } from "../db/index.js";
 
-vi.mock("../openclaw/cli.js", async () => {
-  const actual = await vi.importActual("../openclaw/cli.js");
+vi.mock("../gateway/index.js", async () => {
+  const actual = await vi.importActual("../gateway/index.js");
   return {
     ...actual,
-    getModels: vi.fn(),
+    getGateway: vi.fn(),
+    GatewayOfflineError: class extends Error {
+      name = "GatewayOfflineError";
+    },
+    GatewayPairingRequiredError: class extends Error {
+      name = "GatewayPairingRequiredError";
+    },
   };
 });
 
-import { getModels, GatewayOfflineError } from "../openclaw/cli.js";
+import { getGateway, GatewayOfflineError } from "../gateway/index.js";
+
+const mockGateway = {
+  getModels: vi.fn(),
+};
 
 const AUTH = { Authorization: "Bearer test-api-key" };
 
@@ -35,6 +45,7 @@ describe("Models routes — integration", () => {
     createTestDb();
     app = await buildApp();
     vi.clearAllMocks();
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
   });
 
   afterEach(async () => {
@@ -43,7 +54,7 @@ describe("Models routes — integration", () => {
 
   describe("GET /api/models", () => {
     it("returns models list when gateway online", async () => {
-      vi.mocked(getModels).mockResolvedValue([
+      vi.mocked(mockGateway.getModels).mockResolvedValue([
         { id: "gpt-4", name: "GPT-4" },
         { id: "gpt-3.5", name: "GPT-3.5 Turbo" },
       ]);
@@ -61,7 +72,7 @@ describe("Models routes — integration", () => {
     });
 
     it("returns 503 with error when gateway offline", async () => {
-      vi.mocked(getModels).mockRejectedValue(
+      vi.mocked(mockGateway.getModels).mockRejectedValue(
         new GatewayOfflineError(
           "test-method",
           new Error("Gateway unreachable"),
@@ -81,7 +92,9 @@ describe("Models routes — integration", () => {
     });
 
     it("returns 500 on unexpected error", async () => {
-      vi.mocked(getModels).mockRejectedValue(new Error("Unexpected error"));
+      vi.mocked(mockGateway.getModels).mockRejectedValue(
+        new Error("Unexpected error"),
+      );
 
       const res = await app.inject({
         method: "GET",
@@ -94,7 +107,7 @@ describe("Models routes — integration", () => {
     });
 
     it("returns empty array when no models available", async () => {
-      vi.mocked(getModels).mockResolvedValue([]);
+      vi.mocked(mockGateway.getModels).mockResolvedValue([]);
 
       const res = await app.inject({
         method: "GET",

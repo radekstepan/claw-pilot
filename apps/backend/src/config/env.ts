@@ -45,35 +45,40 @@ const EnvSchema = z
       .default("development"),
 
     /**
-     * WebSocket URL of the OpenClaw gateway.
+     * Which backend to use (openclaw, nanoclaw, etc.)
+     */
+    BACKEND_TYPE: z.enum(["openclaw", "nanoclaw"]).default("openclaw"),
+
+    /**
+     * WebSocket URL of the gateway.
      * Example: ws://localhost:18789  or  wss://myhost:18789
      */
-    OPENCLAW_GATEWAY_URL: z.string().url().default("ws://localhost:18789"),
+    GATEWAY_URL: z.string().url().default("ws://localhost:18789"),
 
     /**
      * Optional bearer token passed as `?token=…` on every gateway connection.
      * Leave unset when the gateway is configured without authentication.
      */
-    OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
+    GATEWAY_TOKEN: z.string().optional(),
 
     /**
      * Logical identifier for this gateway instance.
      * Used to construct the main-agent session key: mc-gateway:{id}:main
      */
-    OPENCLAW_GATEWAY_ID: z.string().min(1).default("gateway"),
+    GATEWAY_ID: z.string().min(1).default("gateway"),
 
     /** Timeout (ms) for fast/informational gateway RPC calls (sessions list, health, etc.). */
-    OPENCLAW_WS_TIMEOUT: z.coerce.number().int().positive().default(15_000),
+    GATEWAY_WS_TIMEOUT: z.coerce.number().int().positive().default(15_000),
 
     /** Timeout (ms) for heavy AI gateway calls (chat routing, session spawn, agent generation). */
-    OPENCLAW_AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
+    GATEWAY_AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
 
     /**
      * Path to the device identity file (Ed25519 key pair + deviceToken).
      * Defaults to `data/device-identity.json` relative to the process working directory.
      * Override this in Docker / VPS deployments to point at a persistent volume.
      */
-    OPENCLAW_DEVICE_IDENTITY_PATH: z
+    GATEWAY_DEVICE_IDENTITY_PATH: z
       .string()
       .default(resolve("data/device-identity.json")),
 
@@ -163,11 +168,36 @@ const EnvSchema = z
 export type Env = z.infer<typeof EnvSchema>;
 
 /**
+ * Backward-compat: map deprecated OPENCLAW_* vars to the new generic names.
+ * Emits a deprecation warning for each one found.
+ */
+const DEPRECATED_ENV_MAP: Record<string, string> = {
+  OPENCLAW_GATEWAY_URL: "GATEWAY_URL",
+  OPENCLAW_GATEWAY_TOKEN: "GATEWAY_TOKEN",
+  OPENCLAW_GATEWAY_ID: "GATEWAY_ID",
+  OPENCLAW_WS_TIMEOUT: "GATEWAY_WS_TIMEOUT",
+  OPENCLAW_AI_TIMEOUT: "GATEWAY_AI_TIMEOUT",
+  OPENCLAW_DEVICE_IDENTITY_PATH: "GATEWAY_DEVICE_IDENTITY_PATH",
+};
+
+function applyDeprecatedEnvVars(): void {
+  for (const [oldKey, newKey] of Object.entries(DEPRECATED_ENV_MAP)) {
+    if (process.env[oldKey] && !process.env[newKey]) {
+      console.warn(
+        `[claw-pilot] ⚠️  ${oldKey} is deprecated. Use ${newKey} instead.`,
+      );
+      process.env[newKey] = process.env[oldKey];
+    }
+  }
+}
+
+/**
  * Parses and validates process.env against the schema.
  * Throws a descriptive Error (crashing the process) if any required variable is
  * missing or any constraint is violated — the T3 Env pattern for fail-fast boot.
  */
 function parseEnv(): Env {
+  applyDeprecatedEnvVars();
   const result = EnvSchema.safeParse(process.env);
   if (!result.success) {
     const issues = result.error.issues

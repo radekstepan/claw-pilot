@@ -1,11 +1,9 @@
 import { FastifyInstance } from "fastify";
 import {
-  getAgents,
-  getLiveSessions,
-  agentIdToSessionKey,
+  getGateway,
   GatewayOfflineError,
   GatewayPairingRequiredError,
-} from "../openclaw/cli.js";
+} from "../gateway/index.js";
 import { Agent, Task } from "@claw-pilot/shared-types";
 import { db, tasks as tasksTable } from "../db/index.js";
 import { eq } from "drizzle-orm";
@@ -20,6 +18,7 @@ export interface SessionMonitorHandle {
 export function startSessionMonitor(
   fastify: FastifyInstance,
 ): SessionMonitorHandle {
+  const gw = getGateway();
   const previousAgentStatuses: Record<string, string> = {};
   /** Tri-state: null = unknown (first tick), true = online, false = offline */
   let gatewayOnline: boolean | null = null;
@@ -119,10 +118,12 @@ export function startSessionMonitor(
 
   const intervalHandle = setInterval(async () => {
     let agents: Agent[] = [];
-    let sessions: Awaited<ReturnType<typeof getLiveSessions>> = [];
-
+    let sessions: Awaited<ReturnType<typeof gw.getLiveSessions>> = [];
     try {
-      [agents, sessions] = await Promise.all([getAgents(), getLiveSessions()]);
+      [agents, sessions] = await Promise.all([
+        gw.getAgents(),
+        gw.getLiveSessions(),
+      ]);
       emitGatewayStatus(true);
     } catch (error: unknown) {
       if (error instanceof GatewayPairingRequiredError) {

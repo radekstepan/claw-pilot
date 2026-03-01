@@ -18,13 +18,14 @@ import type { FastifyInstance } from "fastify";
 import { db, tasks as tasksTable, aiJobs } from "../db/index.js";
 import type { Task } from "@claw-pilot/shared-types";
 import {
-  getLiveSessions,
-  agentIdToSessionKey,
+  getGateway,
   GatewayOfflineError,
   GatewayPairingRequiredError,
-} from "../openclaw/cli.js";
+} from "../gateway/index.js";
 
 export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
+  const gw = getGateway();
+
   // 0. Handle orphaned running AI jobs from previous process
   const runningJobs = db
     .select()
@@ -100,9 +101,9 @@ export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
   );
 
   // 2. Fetch live gateway sessions.  Abort if the gateway is unreachable.
-  let liveSessions: Awaited<ReturnType<typeof getLiveSessions>>;
+  let liveSessions: Awaited<ReturnType<typeof gw.getLiveSessions>>;
   try {
-    liveSessions = await getLiveSessions();
+    liveSessions = await gw.getLiveSessions();
   } catch (err) {
     if (err instanceof GatewayPairingRequiredError) {
       fastify.log.warn(
@@ -142,7 +143,9 @@ export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
     // If the task has an assigned agent, check whether its session is live.
     // Tasks with no agentId were somehow left IN_PROGRESS without being routed —
     // treat those as orphaned too.
-    const sessionKey = task.agentId ? agentIdToSessionKey(task.agentId) : null;
+    const sessionKey = task.agentId
+      ? gw.agentIdToSessionKey(task.agentId)
+      : null;
     const hasActiveSession =
       sessionKey !== null && activeSessionKeys.has(sessionKey);
 

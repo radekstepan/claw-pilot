@@ -29,12 +29,11 @@ const { GatewayOfflineError, GatewayPairingRequiredError } = vi.hoisted(() => {
   return { GatewayOfflineError, GatewayPairingRequiredError };
 });
 
-vi.mock("../openclaw/cli.js", () => ({
-  getAgents: vi.fn(),
-  getLiveSessions: vi.fn(),
-  gatewayCall: vi.fn(),
+vi.mock("../gateway/index.js", () => ({
+  getGateway: vi.fn(),
   GatewayOfflineError,
   GatewayPairingRequiredError,
+  __resetGatewayForTest: vi.fn(),
 }));
 
 vi.mock("../services/aiQueue.js", () => ({
@@ -45,7 +44,26 @@ vi.mock("../services/aiQueue.js", () => ({
   AI_PRIORITY_HIGH: 1,
 }));
 
-import { getAgents, getLiveSessions, gatewayCall } from "../openclaw/cli.js";
+import { getGateway } from "../gateway/index.js";
+
+const mockGateway = {
+  getAgents: vi.fn(),
+  getLiveSessions: vi.fn(),
+  rawCall: vi.fn(),
+  agentIdToSessionKey: vi.fn(
+    (agentId: string) => `mc-gateway:gateway:${agentId}`,
+  ),
+  getModels: vi.fn(),
+  routeChatToAgent: vi.fn(),
+  spawnTaskSession: vi.fn(),
+  generateAgentConfig: vi.fn(),
+  createAgent: vi.fn(),
+  updateAgentMeta: vi.fn(),
+  deleteAgent: vi.fn(),
+  getAgentFile: vi.fn(),
+  getAgentWorkspaceFiles: vi.fn(),
+  setAgentFiles: vi.fn(),
+};
 import {
   startQueueWorker,
   stopQueueWorker,
@@ -70,8 +88,9 @@ describe("System routes — integration", () => {
     createTestDb();
     app = await buildApp();
     vi.clearAllMocks();
-    vi.mocked(getAgents).mockResolvedValue([]);
-    vi.mocked(getLiveSessions).mockResolvedValue([]);
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
+    vi.mocked(mockGateway.getAgents).mockResolvedValue([]);
+    vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -80,7 +99,7 @@ describe("System routes — integration", () => {
 
   describe("GET /api/stats", () => {
     it("returns DB-only stats when gateway offline", async () => {
-      vi.mocked(getAgents).mockRejectedValue(
+      vi.mocked(mockGateway.getAgents).mockRejectedValue(
         new GatewayOfflineError("Gateway unreachable"),
       );
 
@@ -144,10 +163,10 @@ describe("System routes — integration", () => {
     });
 
     it("returns gateway stats when online", async () => {
-      vi.mocked(getAgents).mockResolvedValue([
+      vi.mocked(mockGateway.getAgents).mockResolvedValue([
         { id: "agent-1", name: "Agent 1" },
       ] as any);
-      vi.mocked(getLiveSessions).mockResolvedValue([
+      vi.mocked(mockGateway.getLiveSessions).mockResolvedValue([
         { agent: "agent-1", agentId: "agent-1", status: "WORKING" },
       ]);
 
@@ -169,7 +188,7 @@ describe("System routes — integration", () => {
     });
 
     it("returns pairingRequired=true when pairing needed", async () => {
-      vi.mocked(getAgents).mockRejectedValue(
+      vi.mocked(mockGateway.getAgents).mockRejectedValue(
         new GatewayPairingRequiredError("device-123"),
       );
 
@@ -193,7 +212,7 @@ describe("System routes — integration", () => {
 
   describe("GET /api/monitoring/gateway/status", () => {
     it("returns ONLINE when gateway reachable", async () => {
-      vi.mocked(gatewayCall).mockResolvedValue({});
+      vi.mocked(mockGateway.rawCall).mockResolvedValue({});
 
       const res = await app.inject({
         method: "GET",
@@ -207,7 +226,7 @@ describe("System routes — integration", () => {
     });
 
     it("returns OFFLINE with error when gateway unreachable", async () => {
-      vi.mocked(gatewayCall).mockRejectedValue(
+      vi.mocked(mockGateway.rawCall).mockRejectedValue(
         new GatewayOfflineError("Connection refused"),
       );
 
@@ -224,7 +243,7 @@ describe("System routes — integration", () => {
     });
 
     it("returns PAIRING_REQUIRED with deviceId when pairing needed", async () => {
-      vi.mocked(gatewayCall).mockRejectedValue(
+      vi.mocked(mockGateway.rawCall).mockRejectedValue(
         new GatewayPairingRequiredError("device-456"),
       );
 

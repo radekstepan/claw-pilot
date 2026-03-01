@@ -10,13 +10,11 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { setTestDb, runMigrations } from "../db/index.js";
 
-vi.mock("../openclaw/cli.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../openclaw/cli.js")>();
+vi.mock("../gateway/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gateway/index.js")>();
   return {
     ...actual,
-    routeChatToAgent: vi
-      .fn()
-      .mockResolvedValue({ message: "Mock AI response" }),
+    getGateway: vi.fn(),
   };
 });
 
@@ -26,8 +24,12 @@ vi.mock("../services/aiQueue.js", () => ({
   AI_PRIORITY_NORMAL: 0,
 }));
 
-import { routeChatToAgent } from "../openclaw/cli.js";
+import { getGateway } from "../gateway/index.js";
 import { enqueueAiJob } from "../services/aiQueue.js";
+
+const mockGateway = {
+  routeChatToAgent: vi.fn().mockResolvedValue({ message: "Mock AI response" }),
+};
 
 const AUTH = { Authorization: "Bearer test-api-key" };
 
@@ -45,6 +47,7 @@ describe("Chat routes — integration", () => {
     createTestDb();
     app = await buildApp();
     vi.clearAllMocks();
+    vi.mocked(getGateway).mockReturnValue(mockGateway as any);
   });
 
   afterEach(async () => {

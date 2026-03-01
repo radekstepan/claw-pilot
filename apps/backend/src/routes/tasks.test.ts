@@ -22,21 +22,23 @@ const { enqueueAiJobSpy } = vi.hoisted(() => ({
 // Prevent actual openclaw CLI calls from activity / review routes.
 // vi.mock() is hoisted to the top of the module by Vitest automatically.
 // ---------------------------------------------------------------------------
-vi.mock("../openclaw/cli.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../openclaw/cli.js")>();
+vi.mock("../gateway/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gateway/index.js")>();
   return {
     ...actual,
-    routeChatToAgent: vi.fn().mockResolvedValue({ response: "mock" }),
-    getLiveSessions: vi.fn().mockResolvedValue([]),
-    getAgents: vi.fn().mockResolvedValue([]),
-    // Prevent tests from hitting a real gateway when exercising the route endpoint.
-    spawnTaskSession: vi.fn().mockResolvedValue(undefined),
+    getGateway: vi.fn(() => ({
+      routeChatToAgent: vi.fn().mockResolvedValue({ response: "mock" }),
+      getLiveSessions: vi.fn().mockResolvedValue([]),
+      getAgents: vi.fn().mockResolvedValue([]),
+      spawnTaskSession: vi.fn().mockResolvedValue(undefined),
+    })),
   };
 });
 
 // Spy on enqueueAiJob so tests can inspect the payload without running the worker.
 vi.mock("../services/aiQueue.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/aiQueue.js")>();
+  const actual =
+    await importOriginal<typeof import("../services/aiQueue.js")>();
   return { ...actual, enqueueAiJob: enqueueAiJobSpy };
 });
 
@@ -316,7 +318,11 @@ describe("Task routes — integration", () => {
           method: "POST",
           url: "/api/tasks",
           headers: AUTH,
-          payload: { title: "Task With History", status: "IN_PROGRESS", agentId: "worker-001" },
+          payload: {
+            title: "Task With History",
+            status: "IN_PROGRESS",
+            agentId: "worker-001",
+          },
         })
       ).json<{ id: string }>();
 
@@ -325,7 +331,10 @@ describe("Task routes — integration", () => {
         method: "POST",
         url: `/api/tasks/${id}/activity`,
         headers: AUTH,
-        payload: { agentId: "worker-001", message: "I tried approach A but it failed." },
+        payload: {
+          agentId: "worker-001",
+          message: "I tried approach A but it failed.",
+        },
       });
 
       // 3. Move task to REVIEW so it can be rejected.
@@ -352,7 +361,9 @@ describe("Task routes — integration", () => {
       );
       expect(rejectCall).toBeDefined();
 
-      const prompt = (rejectCall![3] as { taskId: string; agentId: string; prompt: string }).prompt;
+      const prompt = (
+        rejectCall![3] as { taskId: string; agentId: string; prompt: string }
+      ).prompt;
 
       expect(prompt).toContain("Try approach B instead.");
       expect(prompt).toContain("Prior work log (your previous attempt):");
