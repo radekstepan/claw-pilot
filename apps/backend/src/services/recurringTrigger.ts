@@ -65,7 +65,7 @@ export async function triggerRecurringTemplate(
         .values({
           id: routeActivityId,
           taskId: newTask.id,
-          agentId: null,
+          agentId: assignedAgentId,
           message: `Task auto-routed to agent '${assignedAgentId}' from recurring template '${recurringTask.title}' — dispatching…`,
           timestamp: now,
         })
@@ -83,7 +83,7 @@ export async function triggerRecurringTemplate(
   fastify.io?.emit("activity_added", {
     id: routeActivityId,
     taskId: newTask.id,
-    agentId: undefined,
+    agentId: assignedAgentId,
     message: `Task auto-routed to agent '${assignedAgentId}' from recurring template '${recurringTask.title}' — dispatching…`,
     timestamp: now,
     taskStatus: newTask.status,

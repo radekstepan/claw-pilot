@@ -252,7 +252,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const newActivityRow = {
         id: randomUUID(),
         taskId: id,
-        agentId: body.agentId ?? null,
+        agentId: taskRow.agentId ?? null,
         message: body.message,
         timestamp: now,
         taskStatus: finalStatus,
