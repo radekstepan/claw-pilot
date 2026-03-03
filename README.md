@@ -80,6 +80,7 @@ printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
+| `BACKEND_TYPE` | | `openclaw` | Choose the gateway backend: `openclaw` or `nanoclaw`. If using `nanoclaw`, the app talks to a NanoClaw device. |
 | `API_KEY` | ✅ | — | Shared secret — frontend must send `Authorization: Bearer <key>`. Also used by agents for remote callbacks. |
 | `PORT` | | `54321` | HTTP port for the Fastify server |
 | `HOST` | | `127.0.0.1` | Interface to bind — use `0.0.0.0` for Docker or Tailscale/remote visibility |
@@ -89,6 +90,8 @@ printf "VITE_API_URL=http://localhost:54321\nVITE_SOCKET_URL=http://localhost:54
 | `OPENCLAW_GATEWAY_TOKEN` | | _(none)_ | Bearer token appended as `?token=…` to each gateway connection |
 | `OPENCLAW_GATEWAY_ID` | | `gateway` | Gateway identifier — used to build the main agent session key |
 | `OPENCLAW_WS_TIMEOUT` | | `15000` | Timeout (ms) for fast RPC calls (health, sessions list, models) |
+| `GATEWAY_URL` | | `ws://localhost:18789` | URL of the gateway (OpenClaw WebSocket or NanoClaw HTTP) |
+| `GATEWAY_TOKEN` | | _(none)_ | Optional token for NanoClaw HTTP authentication |
 | `OPENCLAW_AI_TIMEOUT` | | `120000` | Timeout (ms) for heavy AI calls (chat, agent generation) |
 | `OPENCLAW_DEVICE_IDENTITY_PATH`| | `data/device-identity.json` | Path to the Ed25519 key pair + deviceToken file |
 | `PUBLIC_URL` | | `http://localhost:{PORT}` | Publicly reachable base URL of this server. Embedded in every dispatched agent prompt as the callback URL. **Must be set when Claw-Pilot and OpenClaw run on different machines** (e.g. `http://100.78.90.125:54321`). |

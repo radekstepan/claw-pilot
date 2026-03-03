@@ -1,6 +1,7 @@
 import { env } from "../config/env.js";
 import type { GatewayBackend } from "./types.js";
 import { OpenClawBackend } from "./backends/openclaw/api.js";
+import { NanoClawBackend } from "./backends/nanoclaw/api.js";
 
 let _gateway: GatewayBackend | null = null;
 
@@ -12,7 +13,8 @@ export function getGateway(): GatewayBackend {
       _gateway = new OpenClawBackend();
       return _gateway;
     case "nanoclaw":
-      throw new Error("NanoClaw backend not yet implemented");
+      _gateway = new NanoClawBackend();
+      return _gateway;
     default:
       throw new Error(`Unknown BACKEND_TYPE: ${env.BACKEND_TYPE}`);
   }

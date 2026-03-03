@@ -17,6 +17,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@claw-pilot/nanoclaw-gateway": "*",
     "@claw-pilot/shared-types": "*",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
