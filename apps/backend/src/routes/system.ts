@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from "fastify";
-import { db, tasks as tasksTable, aiJobs } from "../db/index.js";
+import { db, tasks as tasksTable, aiJobs, notArchived } from "../db/index.js";
 import { eq, or, and, count, lt, like } from "drizzle-orm";
 import {
   getGateway,
@@ -17,7 +17,10 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
       .select({ tasksInQueue: count() })
       .from(tasksTable)
       .where(
-        or(eq(tasksTable.status, "TODO"), eq(tasksTable.status, "BACKLOG")),
+        and(
+          or(eq(tasksTable.status, "TODO"), eq(tasksTable.status, "BACKLOG")),
+          notArchived,
+        ),
       )
       .all();
 
@@ -29,6 +32,7 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
         and(
           eq(tasksTable.status, "DONE"),
           like(tasksTable.updatedAt, `${today}%`),
+          notArchived,
         ),
       )
       .all();
@@ -156,6 +160,7 @@ const systemRoutes: FastifyPluginAsync = async (fastify, opts) => {
         and(
           eq(tasksTable.status, "IN_PROGRESS"),
           lt(tasksTable.updatedAt, cutoff),
+          notArchived,
         ),
       )
       .all();

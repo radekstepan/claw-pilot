@@ -72,6 +72,7 @@ export const tasks = sqliteTable("tasks", {
   deliverables: text("deliverables", { mode: "json" }).$type<Deliverable[]>(),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
+  archivedAt: text("archivedAt"),
 });
 
 // ---------------------------------------------------------------------------

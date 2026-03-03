@@ -3,8 +3,9 @@ import {
   db,
   tasks as tasksTable,
   activities as activitiesTable,
+  notArchived,
 } from "../db/index.js";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, and, lt, inArray } from "drizzle-orm";
 import { Server } from "socket.io";
 import {
   ClientToServerEvents,
@@ -79,10 +80,15 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const q = request.query as { limit: number; offset: number };
       const { limit, offset } = q;
 
-      const [{ total }] = db.select({ total: count() }).from(tasksTable).all();
+      const [{ total }] = db
+        .select({ total: count() })
+        .from(tasksTable)
+        .where(notArchived)
+        .all();
       const rows = db
         .select()
         .from(tasksTable)
+        .where(notArchived)
         .limit(limit)
         .offset(offset)
         .all();
@@ -135,6 +141,63 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     },
   );
 
+  // POST /api/tasks/archive — archive tasks older than X days with selected statuses
+  fastify.post(
+    "/archive",
+    {
+      schema: {
+        body: z.object({
+          olderThan: z.enum(["1h", "1d", "1w"]),
+          statuses: z.array(z.string()),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        olderThan: "1h" | "1d" | "1w";
+        statuses: string[];
+      };
+      const now = new Date();
+
+      let cutoffMs: number;
+      switch (body.olderThan) {
+        case "1h":
+          cutoffMs = 60 * 60 * 1000;
+          break;
+        case "1d":
+          cutoffMs = 24 * 60 * 60 * 1000;
+          break;
+        case "1w":
+          cutoffMs = 7 * 24 * 60 * 60 * 1000;
+          break;
+      }
+
+      const cutoff = new Date(now.getTime() - cutoffMs).toISOString();
+      const isAllStatuses = body.statuses.includes("ALL");
+
+      const targetRows = db
+        .select()
+        .from(tasksTable)
+        .where(and(notArchived, lt(tasksTable.createdAt, cutoff)))
+        .all();
+
+      const toArchive = targetRows.filter(
+        (row) => isAllStatuses || body.statuses.includes(row.status),
+      );
+
+      const idsToArchive = toArchive.map((r) => r.id);
+
+      if (idsToArchive.length > 0) {
+        db.update(tasksTable)
+          .set({ archivedAt: now.toISOString() })
+          .where(inArray(tasksTable.id, idsToArchive))
+          .run();
+      }
+
+      return reply.send({ archivedCount: idsToArchive.length });
+    },
+  );
+
   fastify.patch(
     "/:id",
     { schema: { body: UpdateTaskSchema } },
@@ -152,7 +215,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const existing = db
         .select()
         .from(tasksTable)
-        .where(eq(tasksTable.id, id))
+        .where(and(eq(tasksTable.id, id), notArchived))
         .get();
       if (!existing) {
         return reply.status(404).send({ error: "Task not found" });
@@ -194,7 +257,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     const existing = db
       .select({ id: tasksTable.id })
       .from(tasksTable)
-      .where(eq(tasksTable.id, id))
+      .where(and(eq(tasksTable.id, id), notArchived))
       .get();
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
@@ -269,7 +332,11 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             .run();
         }
         db.insert(activitiesTable).values(newActivityRow).run();
-        return db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        return db
+          .select()
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, id), notArchived))
+          .get();
       });
 
       const newActivity = activityRowToLog(newActivityRow);
@@ -291,7 +358,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     const taskRow = db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.id, id))
+      .where(and(eq(tasksTable.id, id), notArchived))
       .get();
     if (!taskRow) return reply.status(404).send({ error: "Task not found" });
 
@@ -330,7 +397,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const taskRow = db
         .select()
         .from(tasksTable)
-        .where(eq(tasksTable.id, id))
+        .where(and(eq(tasksTable.id, id), notArchived))
         .get();
       if (!taskRow) {
         return reply.status(404).send({ error: "Task not found" });
@@ -441,7 +508,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const taskRow = db
         .select()
         .from(tasksTable)
-        .where(eq(tasksTable.id, id))
+        .where(and(eq(tasksTable.id, id), notArchived))
         .get();
       if (!taskRow) {
         return reply.status(404).send({ error: "Task not found" });
@@ -492,7 +559,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const taskRow = db
         .select()
         .from(tasksTable)
-        .where(eq(tasksTable.id, id))
+        .where(and(eq(tasksTable.id, id), notArchived))
         .get();
       if (!taskRow) {
         return reply.status(404).send({ error: "Task not found" });
@@ -522,7 +589,11 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             .run();
         }
 
-        return db.select().from(tasksTable).where(eq(tasksTable.id, id)).get();
+        return db
+          .select()
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, id), notArchived))
+          .get();
       });
 
       const updatedTask = updatedRow

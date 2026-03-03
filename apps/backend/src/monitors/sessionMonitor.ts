@@ -5,8 +5,8 @@ import {
   GatewayPairingRequiredError,
 } from "../gateway/index.js";
 import { Agent, Task } from "@claw-pilot/shared-types";
-import { db, tasks as tasksTable } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { db, tasks as tasksTable, notArchived } from "../db/index.js";
+import { eq, and } from "drizzle-orm";
 
 const GRACE_PERIOD_MS = 30_000; // 30 seconds
 
@@ -159,7 +159,7 @@ export function startSessionMonitor(
         const inProgressTasks = db
           .select()
           .from(tasksTable)
-          .where(eq(tasksTable.agentId, agent.id))
+          .where(and(eq(tasksTable.agentId, agent.id), notArchived))
           .all()
           .filter((t) => t.status === "IN_PROGRESS");
 
@@ -172,7 +172,7 @@ export function startSessionMonitor(
         const inProgressTasks = db
           .select()
           .from(tasksTable)
-          .where(eq(tasksTable.agentId, agent.id))
+          .where(and(eq(tasksTable.agentId, agent.id), notArchived))
           .all()
           .filter((t) => t.status === "IN_PROGRESS");
 

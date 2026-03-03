@@ -13,9 +13,9 @@
  *     "orphaned" from "still running autonomously" without a live session
  *     list, so we err on the side of caution.
  */
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db, tasks as tasksTable, aiJobs } from "../db/index.js";
+import { db, tasks as tasksTable, aiJobs, notArchived } from "../db/index.js";
 import type { Task } from "@claw-pilot/shared-types";
 import {
   getGateway,
@@ -88,7 +88,7 @@ export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
   const inProgressTasks = db
     .select()
     .from(tasksTable)
-    .where(eq(tasksTable.status, "IN_PROGRESS"))
+    .where(and(eq(tasksTable.status, "IN_PROGRESS"), notArchived))
     .all();
 
   if (inProgressTasks.length === 0) {

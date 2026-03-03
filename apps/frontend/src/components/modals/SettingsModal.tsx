@@ -21,12 +21,14 @@ import {
   Upload,
   FileText,
   AlertCircle,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Agent, AppConfig, RecurringTask } from "@claw-pilot/shared-types";
 import type { Model, GatewayStatus } from "../../api/client";
 import { Badge } from "../ui/Badge";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { Select } from "../ui/Select";
 import { AgentFormModal } from "./AgentFormModal";
 import { generateAvatarUrl } from "../../utils/avatar";
 import { api } from "../../api/client";
@@ -88,7 +90,7 @@ export const SettingsModal = ({
   const [confirmImport, setConfirmImport] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const { refreshAgents } = useMissionStore();
+  const { refreshAgents, fetchInitialData } = useMissionStore();
 
   // Config state for System tab
   const [config, setConfig] = useState<AppConfig>({
@@ -99,6 +101,15 @@ export const SettingsModal = ({
     notificationSounds: true,
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  // Archive tab state
+  const [archiveOlderThan, setArchiveOlderThan] = useState<"1h" | "1d" | "1w">(
+    "1w",
+  );
+  const [archiveSelectAll, setArchiveSelectAll] = useState(false);
+  const [archiveIncludeDone, setArchiveIncludeDone] = useState(true);
+  const [archiveIncludeError, setArchiveIncludeError] = useState(true);
+  const [archiveIsArchiving, setArchiveIsArchiving] = useState(false);
 
   // Sync config once data is loaded
   useEffect(() => {
@@ -276,6 +287,124 @@ export const SettingsModal = ({
       </div>
     </div>
   );
+
+  const renderArchiveTab = () => {
+    const handleArchive = async () => {
+      const statuses = archiveSelectAll
+        ? ["ALL"]
+        : [
+            ...(archiveIncludeDone ? ["DONE"] : []),
+            ...(archiveIncludeError ? ["STUCK"] : []),
+          ];
+
+      if (statuses.length === 0) {
+        toast.error("Please select at least one status to archive");
+        return;
+      }
+
+      setArchiveIsArchiving(true);
+      try {
+        const data = await api.archiveTasks(archiveOlderThan, statuses);
+        toast.success(`Archived ${data.archivedCount} tasks`);
+        await fetchInitialData();
+      } catch {
+        toast.error("Failed to archive tasks");
+      } finally {
+        setArchiveIsArchiving(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">
+            Archive Old Tasks
+          </h3>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-6">
+            Archive tasks older than a specified time threshold. Archived tasks
+            will be hidden from the UI but preserved in the database.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 mb-2">
+              Archive tasks older than
+            </label>
+            <Select
+              value={archiveOlderThan}
+              onValueChange={(v) =>
+                setArchiveOlderThan(v as "1h" | "1d" | "1w")
+              }
+              options={[
+                { value: "1h", label: "1 hour" },
+                { value: "1d", label: "1 day" },
+                { value: "1w", label: "1 week" },
+              ]}
+              className="w-32"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+            <label className="flex items-center gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={archiveSelectAll}
+                onChange={(e) => setArchiveSelectAll(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-[var(--accent-500)] focus:ring-[var(--accent-500)]"
+              />
+              <span className="text-[11px] text-slate-700 dark:text-slate-300 font-medium">
+                Select All
+              </span>
+            </label>
+
+            <div className="space-y-2 pl-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={archiveSelectAll || archiveIncludeDone}
+                  disabled={archiveSelectAll}
+                  onChange={(e) => setArchiveIncludeDone(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-[var(--accent-500)] focus:ring-[var(--accent-500)] disabled:opacity-40"
+                />
+                <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Done
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={archiveSelectAll || archiveIncludeError}
+                  disabled={archiveSelectAll}
+                  onChange={(e) => setArchiveIncludeError(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-[var(--accent-500)] focus:ring-[var(--accent-500)] disabled:opacity-40"
+                />
+                <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Error
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-4">
+          <button
+            onClick={handleArchive}
+            disabled={
+              archiveIsArchiving ||
+              (!archiveSelectAll && !archiveIncludeDone && !archiveIncludeError)
+            }
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[10px] uppercase tracking-widest font-bold rounded transition-all"
+          >
+            {archiveIsArchiving && (
+              <Loader2 size={12} className="animate-spin" />
+            )}
+            {archiveIsArchiving ? "Archiving..." : "Archive Now"}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const renderAppearanceTab = () => {
     const accentSwatches = [
@@ -841,6 +970,7 @@ export const SettingsModal = ({
                 { id: "system", label: "OpenClaw", icon: Activity },
                 { id: "notifications", label: "Notifications", icon: Bell },
                 { id: "backup", label: "Backup", icon: Server },
+                { id: "archive", label: "Archive", icon: Archive },
                 { id: "appearance", label: "Appearance", icon: Palette },
               ] as const
             ).map((tab) => (
@@ -874,6 +1004,7 @@ export const SettingsModal = ({
             {activeTab === "system" && renderSystemTab()}
             {activeTab === "notifications" && renderNotificationsTab()}
             {activeTab === "backup" && renderBackupTab()}
+            {activeTab === "archive" && renderArchiveTab()}
             {activeTab === "appearance" && renderAppearanceTab()}
           </div>
         </div>

@@ -3,8 +3,9 @@ import {
   db,
   tasks as tasksTable,
   chatMessages as chatTable,
+  notArchived,
 } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { ChatMessage } from "@claw-pilot/shared-types";
 
@@ -25,7 +26,7 @@ export function startStuckTaskMonitor(
       const inProgressTasks = db
         .select()
         .from(tasksTable)
-        .where(eq(tasksTable.status, "IN_PROGRESS"))
+        .where(and(eq(tasksTable.status, "IN_PROGRESS"), notArchived))
         .all();
 
       for (const task of inProgressTasks) {

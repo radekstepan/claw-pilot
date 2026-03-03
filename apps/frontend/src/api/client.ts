@@ -73,6 +73,16 @@ export const api = {
   deleteTask: async (taskId: string): Promise<void> => {
     await apiClient.delete(`/tasks/${taskId}`);
   },
+  archiveTasks: async (
+    olderThan: "1h" | "1d" | "1w",
+    statuses: string[],
+  ): Promise<{ archivedCount: number }> => {
+    const response = await apiClient.post("/tasks/archive", {
+      olderThan,
+      statuses,
+    });
+    return response.data;
+  },
   reviewTask: async (
     taskId: string,
     action: "approve" | "reject",
