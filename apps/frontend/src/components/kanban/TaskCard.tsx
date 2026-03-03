@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { Clock, AlertTriangle, Loader2 } from "lucide-react";
-import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { Task } from "@claw-pilot/shared-types";
@@ -25,29 +23,17 @@ function formatTimeAgo(iso: string | undefined, now: number): string {
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
-  isOverlay?: boolean;
   /** True when this card's swimlane changed since the user last opened it. */
   isUnread?: boolean;
 }
 
-export const TaskCard = ({
-  task,
-  onClick,
-  isOverlay,
-  isUnread,
-}: TaskCardProps) => {
+export const TaskCard = ({ task, onClick, isUnread }: TaskCardProps) => {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: task.id,
-      data: { task },
-      disabled: isOverlay,
-    });
   const isUpdating = useMissionStore((s) => s.updatingTaskIds.has(task.id));
   const isAgentBusy = isUpdating;
   const agents = useMissionStore((s) => s.agents);
@@ -58,31 +44,20 @@ export const TaskCard = ({
     ? agents.find((a) => a.id === task.assignee_id)
     : undefined;
 
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.35 : 1,
-    zIndex: isDragging ? 50 : 1,
-    position: "relative" as const,
-  };
-
   const isStuck = task.status === "STUCK";
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
       className={`transition-opacity duration-300 ${
         isUpdating ? "opacity-50 animate-pulse pointer-events-none" : ""
       }`}
     >
       <Card
         onClick={onClick}
-        className={`p-3 mb-2 cursor-grab active:cursor-grabbing select-none shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] ${isDragging ? "ring-2 ring-[var(--accent-500)]" : ""} ${isOverlay ? "shadow-2xl cursor-grabbing" : ""} ${isStuck ? "ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10" : ""} ${isUnread && !isStuck ? "border-l-2 border-l-[var(--accent-500)]" : ""}`}
+        className={`p-3 mb-2 cursor-pointer shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] ${isStuck ? "ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10" : ""} ${isUnread && !isStuck ? "border-l-2 border-l-[var(--accent-500)]" : ""}`}
         role="button"
-        aria-label={`Task: ${task.title}. Priority: ${task.priority ?? "LOW"}. Drag to move.`}
-        tabIndex={isOverlay ? -1 : 0}
+        aria-label={`Task: ${task.title}. Priority: ${task.priority ?? "LOW"}.`}
+        tabIndex={0}
       >
         <div className="flex items-start justify-between mb-2">
           <span className="text-[9px] font-mono text-slate-400 dark:text-slate-600 group-hover:text-[var(--accent-600)] dark:group-hover:text-[var(--accent-400)] transition-colors">

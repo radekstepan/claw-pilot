@@ -14,7 +14,6 @@ import {
   Package,
   Zap,
   ScrollText,
-  GripVertical,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -26,14 +25,6 @@ import type {
   ActivityLog,
   Deliverable,
 } from "@claw-pilot/shared-types";
-import { DndContext, DragEndEvent, closestCenter } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  arrayMove,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "../ui/Badge";
 import { COLUMN_TITLES } from "../../constants";
 import { useMissionStore } from "../../store/useMissionStore";
@@ -176,40 +167,12 @@ function SortableDeliverableItem({
   taskId,
   onToggle,
 }: SortableDeliverableItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: d.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-[var(--accent-scroll-hover)] transition-all"
-    >
-      {/* Drag handle */}
-      <button
-        type="button"
-        className="pl-2 py-2 text-slate-300 dark:text-slate-700 hover:text-slate-500 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing focus-visible:outline-none flex-shrink-0 touch-none"
-        aria-label="Drag to reorder"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical size={12} />
-      </button>
-      {/* Toggle button */}
+    <div className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-[var(--accent-scroll-hover)] transition-all">
       <button
         type="button"
         onClick={() => onToggle(d.id, taskId)}
-        className="flex-1 flex items-center gap-3 py-2 pr-2 text-left focus-visible:outline-none"
+        className="flex-1 flex items-center gap-3 py-2 px-2 text-left focus-visible:outline-none"
       >
         <div className="w-4 h-4 flex-shrink-0 text-emerald-600 dark:text-emerald-500">
           {d.status === "COMPLETED" ? (
@@ -279,7 +242,6 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     updateTask,
     deleteTask,
     toggleDeliverable,
-    reorderDeliverables,
     routeTask,
   } = useMissionStore();
 
@@ -852,46 +814,16 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                     description="No deliverables defined for this task."
                   />
                 ) : (
-                  <DndContext
-                    collisionDetection={closestCenter}
-                    onDragEnd={(event: DragEndEvent) => {
-                      const { active, over } = event;
-                      if (!over || active.id === over.id || !task.deliverables)
-                        return;
-                      const oldIndex = task.deliverables.findIndex(
-                        (d) => d.id === active.id,
-                      );
-                      const newIndex = task.deliverables.findIndex(
-                        (d) => d.id === over.id,
-                      );
-                      if (oldIndex === -1 || newIndex === -1) return;
-                      const reordered = arrayMove(
-                        task.deliverables,
-                        oldIndex,
-                        newIndex,
-                      );
-                      reorderDeliverables(
-                        task.id,
-                        reordered.map((d) => d.id),
-                      );
-                    }}
-                  >
-                    <SortableContext
-                      items={task.deliverables.map((d) => d.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-2">
-                        {task.deliverables.map((d) => (
-                          <SortableDeliverableItem
-                            key={d.id}
-                            deliverable={d}
-                            taskId={task.id}
-                            onToggle={toggleDeliverable}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
+                  <div className="space-y-2">
+                    {task.deliverables.map((d) => (
+                      <SortableDeliverableItem
+                        key={d.id}
+                        deliverable={d}
+                        taskId={task.id}
+                        onToggle={toggleDeliverable}
+                      />
+                    ))}
+                  </div>
                 )}
               </section>
             </div>

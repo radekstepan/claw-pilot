@@ -25,6 +25,7 @@ import {
 import type { JobPayload } from "../db/schema.js";
 import type { Task } from "@claw-pilot/shared-types";
 import { getGateway } from "../gateway/index.js";
+import { markTaskStuck } from "./taskLifecycle.js";
 
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_MULTIPLIER = 2;
@@ -80,8 +81,8 @@ export function startQueueWorker(fastify: FastifyInstance): void {
 
   fastify.log.info(
     `[aiQueue] started worker with poll interval ${env.AI_QUEUE_POLL_MS}ms, ` +
-      `concurrency=${env.AI_QUEUE_CONCURRENCY}, timeout=${env.AI_JOB_TIMEOUT_MS}ms, ` +
-      `heartbeat=${env.AI_JOB_HEARTBEAT_INTERVAL_MS}ms`,
+    `concurrency=${env.AI_QUEUE_CONCURRENCY}, timeout=${env.AI_JOB_TIMEOUT_MS}ms, ` +
+    `heartbeat=${env.AI_JOB_HEARTBEAT_INTERVAL_MS}ms`,
   );
 }
 
@@ -188,10 +189,10 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
           typeof aiResponseRaw === "string"
             ? aiResponseRaw
             : aiResponseRaw !== null &&
-                typeof aiResponseRaw === "object" &&
-                "message" in aiResponseRaw &&
-                typeof (aiResponseRaw as Record<string, unknown>).message ===
-                  "string"
+              typeof aiResponseRaw === "object" &&
+              "message" in aiResponseRaw &&
+              typeof (aiResponseRaw as Record<string, unknown>).message ===
+              "string"
               ? ((aiResponseRaw as Record<string, unknown>).message as string)
               : JSON.stringify(aiResponseRaw);
 
@@ -370,50 +371,7 @@ async function handleJobFailure(
       payload.type === "recurring-spawn"
     ) {
       const { taskId, agentId: taskAgentId } = payload.data;
-      const errActivityId = randomUUID();
-
-      const stuckRow = db
-        .update(tasksTable)
-        .set({ status: "STUCK", updatedAt: now })
-        .where(eq(tasksTable.id, taskId))
-        .returning()
-        .get();
-
-      db.insert(activitiesTable)
-        .values({
-          id: errActivityId,
-          taskId,
-          agentId: taskAgentId,
-          message: `error: Agent dispatch failed — ${message}`,
-          timestamp: now,
-        })
-        .run();
-
-      if (fastifyInstance.io) {
-        if (stuckRow) {
-          fastifyInstance.io.emit("task_updated", {
-            id: stuckRow.id,
-            title: stuckRow.title ?? undefined,
-            description: stuckRow.description ?? undefined,
-            status: stuckRow.status as Task["status"],
-            priority: (stuckRow.priority as Task["priority"]) ?? undefined,
-            tags: stuckRow.tags ?? undefined,
-            assignee_id: stuckRow.assignee_id ?? undefined,
-            agentId: stuckRow.agentId ?? undefined,
-            deliverables: stuckRow.deliverables ?? undefined,
-            createdAt: stuckRow.createdAt,
-            updatedAt: stuckRow.updatedAt,
-          });
-        }
-        fastifyInstance.io.emit("activity_added", {
-          id: errActivityId,
-          taskId,
-          agentId: taskAgentId,
-          message: `error: Agent dispatch failed — ${message}`,
-          timestamp: now,
-          taskStatus: stuckRow?.status as Task["status"],
-        });
-      }
+      markTaskStuck(taskId, taskAgentId, `Agent dispatch failed — ${message}`, fastifyInstance.io);
     }
 
     if (payload.type !== "generate-config") {

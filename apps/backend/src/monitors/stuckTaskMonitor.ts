@@ -3,11 +3,18 @@ import {
   db,
   tasks as tasksTable,
   chatMessages as chatTable,
+  activities as activitiesTable,
   notArchived,
 } from "../db/index.js";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { ChatMessage } from "@claw-pilot/shared-types";
+import { ChatMessage, Task } from "@claw-pilot/shared-types";
+import {
+  getGateway,
+  GatewayOfflineError,
+  GatewayPairingRequiredError,
+} from "../gateway/index.js";
+import { markTaskStuck } from "../services/taskLifecycle.js";
 
 const notifiedStuckTasks = new Set<string>();
 
@@ -18,7 +25,7 @@ export function resetStuckTaskMonitor(): void {
 export function startStuckTaskMonitor(
   fastify: FastifyInstance,
 ): NodeJS.Timeout {
-  return setInterval(() => {
+  return setInterval(async () => {
     try {
       const now = new Date();
       const stuckThreshold = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -29,38 +36,64 @@ export function startStuckTaskMonitor(
         .where(and(eq(tasksTable.status, "IN_PROGRESS"), notArchived))
         .all();
 
-      for (const task of inProgressTasks) {
-        if (!task.updatedAt || notifiedStuckTasks.has(task.id)) continue;
+      if (inProgressTasks.length === 0) return;
 
-        const timeDiff = now.getTime() - new Date(task.updatedAt).getTime();
-        if (timeDiff <= stuckThreshold) continue;
+      let liveSessions: any[] = [];
+      let sessionsAvailable = false;
+      let getSessionKey: ((id: string) => string) | null = null;
 
-        fastify.log.warn(
-          `Task ${task.id} has been IN_PROGRESS for over 24 hours.`,
-        );
-
-        const systemMessage: ChatMessage = {
-          id: randomUUID(),
-          role: "system",
-          content: `System Alert: Task "${task.title ?? task.id}" has been stuck IN_PROGRESS for over 24 hours.`,
-          timestamp: new Date().toISOString(),
-        };
-
-        db.transaction(() => {
-          db.insert(chatTable)
-            .values({
-              id: systemMessage.id,
-              agentId: null,
-              role: systemMessage.role,
-              content: systemMessage.content,
-              timestamp: systemMessage.timestamp,
-            })
-            .run();
-        });
-
-        if (fastify.io) {
-          fastify.io.emit("chat_message", systemMessage);
+      try {
+        const gw = getGateway();
+        liveSessions = await gw.getLiveSessions();
+        getSessionKey = gw.agentIdToSessionKey.bind(gw);
+        sessionsAvailable = true;
+      } catch (err) {
+        if (
+          err instanceof GatewayPairingRequiredError ||
+          err instanceof GatewayOfflineError
+        ) {
+          // Normal offline scenarios, we can't do the live session check.
+        } else {
+          fastify.log.error(
+            { err },
+            "stuckTaskMonitor: error or gateway unavailable, falling back to 24h idle checks",
+          );
         }
+      }
+
+      const activeSessionKeys = new Set(
+        liveSessions
+          .map((s) => s.key)
+          .filter((k): k is string => typeof k === "string"),
+      );
+
+      for (const task of inProgressTasks) {
+        // 1. Time-based fallback (24 hours) for tasks that are IN_PROGRESS and seemingly doing nothing
+        const timeDiff = task.updatedAt
+          ? now.getTime() - new Date(task.updatedAt).getTime()
+          : 0;
+        const isTimeStuck = task.updatedAt && timeDiff > stuckThreshold;
+
+        // 2. Active session check — if we can verify the agent disconnected, it's immediately stuck.
+        let isSessionStuck = false;
+
+        if (sessionsAvailable && getSessionKey) {
+          const sessionKey = task.agentId
+            ? getSessionKey(task.agentId)
+            : null;
+          isSessionStuck = sessionKey === null || !activeSessionKeys.has(sessionKey);
+        }
+
+        if (!isTimeStuck && !isSessionStuck) continue;
+        if (notifiedStuckTasks.has(task.id)) continue;
+
+        const reason = isSessionStuck
+          ? `agent offline (no active session for ${task.agentId || "unknown"})`
+          : "exceeded 24h idle threshold";
+
+        fastify.log.warn(`Task ${task.id} is stuck: ${reason}. Marking as STUCK.`);
+
+        markTaskStuck(task.id, task.agentId, reason, fastify.io);
 
         notifiedStuckTasks.add(task.id);
       }
@@ -69,5 +102,5 @@ export function startStuckTaskMonitor(
         `Error in stuck task monitor loop: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-  }, 60_000);
+  }, 30_000);
 }

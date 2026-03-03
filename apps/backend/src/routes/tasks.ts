@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import { env } from "../config/env.js";
 import { z } from "zod";
 import { enqueueAiJob, AI_PRIORITY_NORMAL } from "../services/aiQueue.js";
+import { validateTransition } from "../services/taskLifecycle.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -221,31 +222,70 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         return reply.status(404).send({ error: "Task not found" });
       }
 
-      const updatedRow = db
-        .update(tasksTable)
-        .set({
-          title: body.title ?? existing.title,
-          description: body.description ?? existing.description,
-          status: body.status ?? existing.status,
-          priority: body.priority ?? existing.priority,
-          tags: body.tags !== undefined ? (body.tags ?? null) : existing.tags,
-          assignee_id:
-            "assignee_id" in body
-              ? (body.assignee_id ?? null)
-              : existing.assignee_id,
-          agentId: body.agentId ?? existing.agentId,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(tasksTable.id, id))
-        .returning()
-        .get();
+      if (body.status && body.status !== existing.status) {
+        if (!validateTransition(existing.status, body.status)) {
+          return reply.status(409).send({
+            error: `Task is already in '${existing.status}' state and cannot transition to '${body.status}'.`,
+          });
+        }
+      }
 
-      if (!updatedRow)
+      const now = new Date().toISOString();
+
+      const updatedRow = db.transaction(() => {
+        const row = db
+          .update(tasksTable)
+          .set({
+            title: body.title ?? existing.title,
+            description: body.description ?? existing.description,
+            status: body.status ?? existing.status,
+            priority: body.priority ?? existing.priority,
+            tags: body.tags !== undefined ? (body.tags ?? null) : existing.tags,
+            assignee_id:
+              "assignee_id" in body
+                ? (body.assignee_id ?? null)
+                : existing.assignee_id,
+            agentId: body.agentId ?? existing.agentId,
+            updatedAt: now,
+          })
+          .where(eq(tasksTable.id, id))
+          .returning()
+          .get();
+
+        let newActivity: ActivityLog | null = null;
+        if (body.status && body.status !== existing.status) {
+          const activityId = randomUUID();
+          db.insert(activitiesTable).values({
+            id: activityId,
+            taskId: id,
+            agentId: body.agentId ?? null,
+            message: `Status changed: ${existing.status} → ${body.status}`,
+            timestamp: now,
+            taskStatus: body.status as ActivityLog["taskStatus"],
+          }).run();
+
+          newActivity = {
+            id: activityId,
+            taskId: id,
+            agentId: body.agentId ?? undefined,
+            message: `Status changed: ${existing.status} → ${body.status}`,
+            timestamp: now,
+            taskStatus: body.status as ActivityLog["taskStatus"],
+          };
+        }
+
+        return { row, newActivity };
+      });
+
+      if (!updatedRow.row)
         return reply.status(404).send({ error: "Task not found" });
 
-      const updatedTask = rowToTask(updatedRow);
+      const updatedTask = rowToTask(updatedRow.row);
       if (fastify.io) {
         fastify.io.emit("task_updated", updatedTask);
+        if (updatedRow.newActivity) {
+          fastify.io.emit("activity_added", updatedRow.newActivity);
+        }
       }
       return reply.send(updatedTask);
     },
@@ -464,7 +504,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
       const taskContext = [
         body.prompt ??
-          [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
+        [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
         `---`,
         `TASK METADATA (do not include in your work output):`,
         `taskId: ${id}`,
@@ -637,13 +677,13 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const priorWorkSection =
           priorActivities.length > 0
             ? [
-                ``,
-                `Prior work log (your previous attempt):`,
-                ...priorActivities.map(
-                  (a) =>
-                    `[${a.timestamp}] ${a.agentId ?? "system"}: ${a.message}`,
-                ),
-              ].join("\n")
+              ``,
+              `Prior work log (your previous attempt):`,
+              ...priorActivities.map(
+                (a) =>
+                  `[${a.timestamp}] ${a.agentId ?? "system"}: ${a.message}`,
+              ),
+            ].join("\n")
             : "";
 
         const retryPrompt = [

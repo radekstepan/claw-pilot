@@ -22,6 +22,7 @@ import {
   GatewayOfflineError,
   GatewayPairingRequiredError,
 } from "../gateway/index.js";
+import { markTaskStuck } from "../services/taskLifecycle.js";
 
 export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
   const gw = getGateway();
@@ -156,41 +157,20 @@ export async function runBootRecovery(fastify: FastifyInstance): Promise<void> {
       continue;
     }
 
-    const stuckRow = db
-      .update(tasksTable)
-      .set({ status: "STUCK", updatedAt: now })
-      .where(eq(tasksTable.id, task.id))
-      .returning()
-      .get();
+    const reason = task.agentId
+      ? `agent offline (no active session on boot for ${task.agentId})`
+      : "agent offline (no agentId on boot)";
 
-    if (stuckRow) {
-      // Cast Drizzle row (status: string) to the shared Task type (status: enum).
-      const taskPayload: Task = {
-        id: stuckRow.id,
-        title: stuckRow.title ?? undefined,
-        description: stuckRow.description ?? undefined,
-        status: stuckRow.status as Task["status"],
-        priority: (stuckRow.priority as Task["priority"]) ?? undefined,
-        tags: stuckRow.tags ?? undefined,
-        assignee_id: stuckRow.assignee_id ?? undefined,
-        agentId: stuckRow.agentId ?? undefined,
-        deliverables: stuckRow.deliverables ?? undefined,
-        createdAt: stuckRow.createdAt,
-        updatedAt: stuckRow.updatedAt,
-      };
-      fastify.io?.emit("task_updated", taskPayload);
-      fastify.log.info(
-        `bootRecovery: task ${task.id} ("${task.title}") marked STUCK` +
-          (task.agentId
-            ? ` (no active session for agent ${task.agentId})`
-            : " (no agentId)"),
-      );
-      markedCount++;
-    }
+    markTaskStuck(task.id, task.agentId, reason, fastify.io);
+
+    fastify.log.info(
+      `bootRecovery: task ${task.id} ("${task.title}") marked STUCK (${reason})`
+    );
+    markedCount++;
   }
 
   fastify.log.info(
     `bootRecovery: complete — ${markedCount} task(s) marked STUCK, ` +
-      `${inProgressTasks.length - markedCount} left IN_PROGRESS`,
+    `${inProgressTasks.length - markedCount} left IN_PROGRESS`,
   );
 }

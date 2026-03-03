@@ -1,15 +1,4 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import {
-  DndContext,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  pointerWithin,
-  useSensor,
-  useSensors,
-  MouseSensor,
-  TouchSensor,
-} from "@dnd-kit/core";
 import { Toaster, toast } from "sonner";
 import { Header } from "./components/layout/Header";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -18,9 +7,8 @@ import { TaskModal } from "./components/modals/TaskModal";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { NewTaskModal } from "./components/modals/NewTaskModal";
 import { RecurringView } from "./components/RecurringView";
-import { TaskCard } from "./components/kanban/TaskCard";
 import { Task } from "@claw-pilot/shared-types";
-import type { CreateTaskPayload, TaskStatus } from "@claw-pilot/shared-types";
+import type { CreateTaskPayload } from "@claw-pilot/shared-types";
 import { COLUMN_IDS, COLUMN_TITLES } from "./constants";
 import { useMissionStore } from "./store/useMissionStore";
 import { useSocketListener } from "./hooks/useSocketListener";
@@ -86,7 +74,6 @@ export default function App() {
     agents,
     fetchInitialData,
     fetchRecurring,
-    updateTaskStatus,
     isSocketConnected,
     gatewayOnline,
     gatewayPairingRequired,
@@ -101,7 +88,6 @@ export default function App() {
     "kanban",
   );
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -198,36 +184,6 @@ export default function App() {
     dismissNotification(notification.id);
   };
 
-  const mouseSensor = useSensor(MouseSensor, {
-    activationConstraint: { distance: 5 },
-  });
-  const touchSensor = useSensor(TouchSensor, {
-    activationConstraint: { delay: 250, tolerance: 5 },
-  });
-  const sensors = useSensors(mouseSensor, touchSensor);
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const draggedTask = tasks.find((t) => t.id === event.active.id);
-    setActiveDragTask(draggedTask ?? null);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveDragTask(null);
-    const { active, over } = event;
-    if (!over) return;
-
-    const taskId = active.id as string;
-    const newStatus = over.id as TaskStatus;
-
-    // UI-level guard: block direct drag to DONE (backend enforces 403, but give instant feedback)
-    if (newStatus === "DONE") return;
-
-    const task = tasks.find((t) => t.id === taskId);
-    if (task && task.status !== newStatus) {
-      updateTaskStatus(taskId, newStatus);
-    }
-  };
-
   return (
     <div
       className={`flex flex-col h-screen font-sans selection:bg-violet-500/30 overflow-hidden ${theme === "dark" ? "bg-[#08070b] text-slate-400" : "bg-white text-slate-600"}`}
@@ -275,36 +231,17 @@ export default function App() {
           {activeView === "kanban" && (
             <>
               <div className="flex-1 flex overflow-x-auto overflow-y-hidden custom-scrollbar bg-transparent">
-                <DndContext
-                  sensors={sensors}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  collisionDetection={pointerWithin}
-                >
-                  {COLUMN_IDS.map((colId) => (
-                    <KanbanColumn
-                      key={colId}
-                      id={colId}
-                      title={COLUMN_TITLES[colId]}
-                      tasks={filteredTasks.filter((t) => t.status === colId)}
-                      onTaskClick={handleTaskClick}
-                      isLoading={isLoading}
-                      isDragging={activeDragTask !== null}
-                      readSet={readSet}
-                    />
-                  ))}
-                  <DragOverlay dropAnimation={null}>
-                    {activeDragTask ? (
-                      <div className="rotate-1 opacity-95 pointer-events-none">
-                        <TaskCard
-                          task={activeDragTask}
-                          onClick={() => {}}
-                          isOverlay
-                        />
-                      </div>
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
+                {COLUMN_IDS.map((colId) => (
+                  <KanbanColumn
+                    key={colId}
+                    id={colId}
+                    title={COLUMN_TITLES[colId]}
+                    tasks={filteredTasks.filter((t) => t.status === colId)}
+                    onTaskClick={handleTaskClick}
+                    isLoading={isLoading}
+                    readSet={readSet}
+                  />
+                ))}
               </div>
             </>
           )}

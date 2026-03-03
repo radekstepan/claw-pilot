@@ -17,6 +17,19 @@ import {
   resetStuckTaskMonitor,
 } from "../monitors/stuckTaskMonitor.js";
 
+vi.mock("../gateway/index.js", () => {
+  class GatewayOfflineError extends Error { }
+  class GatewayPairingRequiredError extends Error { }
+  return {
+    getGateway: vi.fn(() => ({
+      getLiveSessions: vi.fn().mockResolvedValue([{ key: "agent-1" }]),
+      agentIdToSessionKey: vi.fn((id: string) => id),
+    })),
+    GatewayOfflineError,
+    GatewayPairingRequiredError,
+  };
+});
+
 describe("stuckTaskMonitor", () => {
   let mock: ReturnType<typeof createMockFastify>;
   let intervalHandle: NodeJS.Timeout | null;
@@ -50,6 +63,7 @@ describe("stuckTaskMonitor", () => {
         title: "Recent Task",
         status: "IN_PROGRESS",
         priority: "MEDIUM",
+        agentId: "agent-1",
         createdAt: recentTime,
         updatedAt: recentTime,
       })
@@ -57,7 +71,7 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const chatMessages = getEmittedEvents(mock, "chat_message");
     expect(chatMessages).toHaveLength(0);
@@ -74,6 +88,7 @@ describe("stuckTaskMonitor", () => {
         title: "Old Task",
         status: "IN_PROGRESS",
         priority: "HIGH",
+        agentId: "agent-1",
         createdAt: oldTime,
         updatedAt: oldTime,
       })
@@ -81,14 +96,14 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const chatMessages = getEmittedEvents(mock, "chat_message");
     expect(chatMessages).toHaveLength(1);
     expect(chatMessages[0]).toMatchObject({
       role: "system",
       content: expect.stringContaining(
-        "has been stuck IN_PROGRESS for over 24 hours",
+        "is stuck",
       ),
     });
   });
@@ -104,6 +119,7 @@ describe("stuckTaskMonitor", () => {
         title: "Duplicate Task",
         status: "IN_PROGRESS",
         priority: "MEDIUM",
+        agentId: "agent-1",
         createdAt: oldTime,
         updatedAt: oldTime,
       })
@@ -111,10 +127,11 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
-    expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const ev1 = getEmittedEvents(mock, "chat_message");
+    expect(ev1).toHaveLength(1);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
   });
 
@@ -154,7 +171,7 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const chatMessages = getEmittedEvents(mock, "chat_message");
     expect(chatMessages).toHaveLength(3);
@@ -163,7 +180,7 @@ describe("stuckTaskMonitor", () => {
   it("runs cleanly with no IN_PROGRESS tasks", async () => {
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const chatMessages = getEmittedEvents(mock, "chat_message");
     expect(chatMessages).toHaveLength(0);
@@ -206,7 +223,7 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const chatMessages = getEmittedEvents(mock, "chat_message");
     expect(chatMessages).toHaveLength(0);
@@ -226,6 +243,7 @@ describe("stuckTaskMonitor", () => {
         title: "Updated Task",
         status: "IN_PROGRESS",
         priority: "MEDIUM",
+        agentId: "agent-1",
         createdAt: oldTime,
         updatedAt: oldTime,
       })
@@ -233,7 +251,7 @@ describe("stuckTaskMonitor", () => {
 
     intervalHandle = startStuckTaskMonitor(mock.fastify);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
 
     db.update(tasksTable)
@@ -241,7 +259,7 @@ describe("stuckTaskMonitor", () => {
       .where(eq(tasksTable.id, "task-updated"))
       .run();
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
   });
 });

@@ -7,6 +7,7 @@ import {
 import { Agent, Task } from "@claw-pilot/shared-types";
 import { db, tasks as tasksTable, notArchived } from "../db/index.js";
 import { eq, and } from "drizzle-orm";
+import { markTaskStuck } from "../services/taskLifecycle.js";
 
 const GRACE_PERIOD_MS = 30_000; // 30 seconds
 
@@ -41,37 +42,16 @@ export function startSessionMonitor(
   function markTaskAsStuck(taskId: string, agentId: string) {
     if (notifiedGhostTasks.has(taskId)) return;
 
-    const now = new Date().toISOString();
-    const stuckRow = db
-      .update(tasksTable)
-      .set({ status: "STUCK", updatedAt: now })
-      .where(eq(tasksTable.id, taskId))
-      .returning()
-      .get();
+    const reason = `Ghost callback detected for task "${taskId}" — marked STUCK`;
+    markTaskStuck(taskId, agentId, reason, fastify.io);
 
-    if (stuckRow) {
-      const taskPayload: Task = {
-        id: stuckRow.id,
-        title: stuckRow.title ?? undefined,
-        description: stuckRow.description ?? undefined,
-        status: stuckRow.status as Task["status"],
-        priority: (stuckRow.priority as Task["priority"]) ?? undefined,
-        tags: stuckRow.tags ?? undefined,
-        assignee_id: stuckRow.assignee_id ?? undefined,
-        agentId: stuckRow.agentId ?? undefined,
-        deliverables: stuckRow.deliverables ?? undefined,
-        createdAt: stuckRow.createdAt,
-        updatedAt: stuckRow.updatedAt,
-      };
-      fastify.io?.emit("task_updated", taskPayload);
-      fastify.io?.emit("agent_error", {
-        agentId,
-        error: `Ghost callback detected for task "${stuckRow.title ?? taskId}" — marked STUCK`,
-      });
-      fastify.log.warn(
-        `[sessionMonitor] Ghost callback detected for task ${taskId} (agent ${agentId}) — marked STUCK`,
-      );
-    }
+    fastify.io?.emit("agent_error", {
+      agentId,
+      error: reason,
+    });
+    fastify.log.warn(
+      `[sessionMonitor] Ghost callback detected for task ${taskId} (agent ${agentId}) — marked STUCK`,
+    );
 
     notifiedGhostTasks.add(taskId);
     gracePeriods.delete(taskId);

@@ -134,7 +134,7 @@ describe("Task routes — integration", () => {
           method: "POST",
           url: "/api/tasks",
           headers: AUTH,
-          payload: { title: "Human Done Task" },
+          payload: { title: "Human Done Task", status: "REVIEW" },
         })
       ).json<{ id: string }>();
 
