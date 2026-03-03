@@ -166,7 +166,10 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
           status: body.status ?? existing.status,
           priority: body.priority ?? existing.priority,
           tags: body.tags !== undefined ? (body.tags ?? null) : existing.tags,
-          assignee_id: body.assignee_id ?? existing.assignee_id,
+          assignee_id:
+            "assignee_id" in body
+              ? (body.assignee_id ?? null)
+              : existing.assignee_id,
           agentId: body.agentId ?? existing.agentId,
           updatedAt: new Date().toISOString(),
         })

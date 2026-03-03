@@ -53,7 +53,7 @@ export const TaskSchema = z.object({
   status: TaskStatusEnum.default("TODO"),
   priority: TaskPriorityEnum.optional(),
   tags: z.array(z.string()).optional(),
-  assignee_id: z.string().optional(),
+  assignee_id: z.string().nullable().optional(),
   /** ID of the OpenClaw agent currently assigned to this task. */
   agentId: z.string().optional(),
   deliverables: z.array(DeliverableSchema).optional(),

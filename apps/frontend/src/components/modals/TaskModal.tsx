@@ -333,6 +333,22 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     }
   };
 
+  const handleDispatch = async () => {
+    const assigneeId = watch("assignee_id");
+    if (!assigneeId || assigneeId === NONE_VALUE) {
+      return;
+    }
+    setIsRouting(true);
+    try {
+      await routeTask(task.id, assigneeId);
+      onClose();
+    } catch {
+      // error toast is handled in store
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
   const handleApprove = async () => {
     setIsSubmitting(true);
     const snapshot = { ...task };
@@ -394,8 +410,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
           data.priority === NONE_VALUE
             ? undefined
             : (data.priority as Task["priority"]),
-        assignee_id:
-          data.assignee_id === NONE_VALUE ? undefined : data.assignee_id,
+        assignee_id: data.assignee_id === NONE_VALUE ? null : data.assignee_id,
       };
       await updateTask(task.id, patch);
       toast.success("Task updated.");
@@ -595,7 +610,13 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                               { value: "__NONE__", label: "— Pick an agent —" },
                               ...agents
                                 .filter((a) => !!a.id)
-                                .map((a) => ({ value: a.id, label: a.name })),
+                                .map((a) => ({
+                                  value: a.id,
+                                  label: a.name,
+                                  avatar: generateAvatarUrl(a.name, {
+                                    size: 40,
+                                  }),
+                                })),
                             ]}
                             placeholder="— Pick an agent —"
                           />
@@ -617,62 +638,6 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                   )}
                 </section>
               )}
-
-              {task.status !== "IN_PROGRESS" &&
-                task.status !== "REVIEW" &&
-                task.status !== "DONE" &&
-                task.status !== "STUCK" && (
-                  <section className="mb-8 p-4 border border-[var(--accent-scroll-hover)] bg-[var(--accent-scroll-sm)] rounded">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Zap size={14} className="text-[var(--accent-500)]" />
-                      <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--accent-600)] dark:text-[var(--accent-400)]">
-                        Dispatch to Agent
-                      </h3>
-                    </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
-                      Route this task to an AI agent. The agent will receive the
-                      title and description as its prompt and begin working
-                      immediately.
-                    </p>
-                    {agents.length === 0 ? (
-                      <EmptyState
-                        icon={Zap}
-                        title="No agents available"
-                        description="No agents are connected. Check the gateway."
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <Select
-                            value={routeAgentId || "__NONE__"}
-                            onValueChange={(v) =>
-                              setRouteAgentId(v === "__NONE__" ? "" : v)
-                            }
-                            options={[
-                              { value: "__NONE__", label: "— Pick an agent —" },
-                              ...agents
-                                .filter((a) => !!a.id)
-                                .map((a) => ({ value: a.id, label: a.name })),
-                            ]}
-                            placeholder="— Pick an agent —"
-                          />
-                        </div>
-                        <button
-                          onClick={handleRouteToAgent}
-                          disabled={isRouting || !routeAgentId}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent-600)] hover:bg-[var(--accent-500)] disabled:opacity-50 text-white text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm whitespace-nowrap"
-                        >
-                          {isRouting ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <Zap size={12} />
-                          )}
-                          Route
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                )}
 
               {task.status === "REVIEW" && (
                 <section className="mb-8 p-4 border border-amber-400/40 bg-amber-400/[0.06] rounded">
@@ -942,12 +907,31 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
             <button
               onClick={handleSubmit(handleUpdateTask)}
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-5 py-2 bg-[var(--accent-600)] text-white text-[10px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] disabled:opacity-50 transition-all"
+              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${
+                watch("assignee_id") !== NONE_VALUE
+                  ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
+                  : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
+              }`}
             >
               {isSubmitting && <Loader2 size={12} className="animate-spin" />}
               Update Task
             </button>
           )}
+          {watch("assignee_id") !== NONE_VALUE &&
+            task.status !== "IN_PROGRESS" &&
+            task.status !== "REVIEW" &&
+            task.status !== "DONE" &&
+            task.status !== "STUCK" && (
+              <button
+                onClick={handleDispatch}
+                disabled={isRouting}
+                className="flex items-center gap-1.5 px-5 py-2 bg-[var(--accent-600)] text-white text-[10px] uppercase tracking-widest font-bold hover:bg-[var(--accent-500)] disabled:opacity-50 transition-all"
+              >
+                {isRouting && <Loader2 size={12} className="animate-spin" />}
+                <Zap size={12} />
+                Dispatch
+              </button>
+            )}
         </div>
       </div>
 
