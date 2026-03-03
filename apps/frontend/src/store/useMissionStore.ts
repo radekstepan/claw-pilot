@@ -72,7 +72,10 @@ interface MissionState {
     parentTaskId: string,
   ) => Promise<void>;
   reorderDeliverables: (taskId: string, orderedIds: string[]) => Promise<void>;
-  createTask: (payload: CreateTaskPayload) => Promise<void>;
+  createTask: (
+    payload: CreateTaskPayload,
+    options?: { skipRoute?: boolean },
+  ) => Promise<void>;
   setSocketConnected: (connected: boolean) => void;
   setGatewayOnline: (online: boolean) => void;
   setGatewayPairing: (required: boolean, deviceId?: string) => void;
@@ -351,15 +354,15 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     }
   },
 
-  createTask: async (payload: CreateTaskPayload) => {
+  createTask: async (payload: CreateTaskPayload, options) => {
     try {
       const newTask = await api.createTask(payload);
-      // If an agent was assigned, kick off the routing flow immediately.
+      // If an agent was assigned and we're not skipping route, kick off the routing flow.
       // POST /api/tasks/:id/route runs spawnTaskSession in the background and
       // will transition the task ASSIGNED → IN_PROGRESS (or STUCK on failure)
       // via Socket.io task_updated events.
       // Socket events (task_created, task_updated) will update the UI state.
-      if (payload.assignee_id) {
+      if (payload.assignee_id && !options?.skipRoute) {
         await api.routeTask(newTask.id, payload.assignee_id);
       }
       toast.success("Task created successfully.");

@@ -510,6 +510,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       onValueChange={field.onChange}
                       options={agentOptions}
                       placeholder="— Unassigned —"
+                      disabled={task.status === "DONE"}
                     />
                   )}
                 />
@@ -528,6 +529,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       onValueChange={field.onChange}
                       options={PRIORITY_OPTIONS}
                       placeholder="— None —"
+                      disabled={task.status === "DONE"}
                     />
                   )}
                 />

@@ -420,6 +420,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         .update(tasksTable)
         .set({
           agentId: body.agentId,
+          assignee_id: body.agentId,
           status: "ASSIGNED",
           updatedAt: now,
         })

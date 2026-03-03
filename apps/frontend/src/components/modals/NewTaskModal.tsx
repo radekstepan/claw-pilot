@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, X, Send } from "lucide-react";
+import { Plus, X, Send, Zap } from "lucide-react";
 import type { Agent, CreateTaskPayload } from "@claw-pilot/shared-types";
 import { Select } from "../ui/Select";
 import { generateAvatarUrl } from "../../utils/avatar";
 
 const formSchema = z.object({
-  title: z.string().min(1, "Mission title is required."),
+  title: z.string().min(1, "Task title is required."),
   description: z.string().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]),
   assignee_id: z.string().optional(),
@@ -27,11 +27,15 @@ const NONE_VALUE = "__NONE__";
 interface NewTaskModalProps {
   agents: Agent[];
   onClose: () => void;
-  onAdd: (payload: CreateTaskPayload) => void;
+  onAdd: (
+    payload: CreateTaskPayload,
+    options?: { skipRoute?: boolean },
+  ) => void;
 }
 
 export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
   const [tagInput, setTagInput] = useState("");
+  const [isRouting, setIsRouting] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -47,6 +51,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
     control,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -79,7 +84,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
     );
   };
 
-  const onSubmit = (data: FormValues) => {
+  const submitTask = (data: FormValues, options?: { skipRoute?: boolean }) => {
     const assignedId =
       data.assignee_id && data.assignee_id !== NONE_VALUE
         ? data.assignee_id
@@ -92,8 +97,27 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
       tags: data.tags.length > 0 ? data.tags : undefined,
       status: assignedId ? "ASSIGNED" : "TODO",
     };
-    onAdd(payload);
+    onAdd(payload, options);
     onClose();
+  };
+
+  const handleSave = () => {
+    const data = getValues();
+    submitTask(data, { skipRoute: true });
+  };
+
+  const handleRoute = async () => {
+    setIsRouting(true);
+    try {
+      const data = getValues();
+      submitTask(data);
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
+  const onSubmit = (data: FormValues) => {
+    submitTask(data);
   };
 
   const agentOptions = [
@@ -121,7 +145,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
               className="text-[var(--accent-600)] dark:text-[var(--accent-500)]"
             />
             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-900 dark:text-white">
-              Initialize New Mission
+              New Task
             </span>
           </div>
           <button
@@ -139,7 +163,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
           {/* Title */}
           <div className="space-y-2">
             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">
-              Mission Title
+              Task Title
             </label>
             <input
               autoFocus
@@ -159,7 +183,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
           {/* Description */}
           <div className="space-y-2">
             <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">
-              Mission Briefing
+              Task Description
             </label>
             <textarea
               {...register("description")}
@@ -254,13 +278,38 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
           >
             Cancel
           </button>
-          <button
-            onClick={handleSubmit(onSubmit)}
-            disabled={isSubmitting}
-            className="px-6 py-2 bg-[var(--accent-600)] text-white text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--accent-500)] flex items-center gap-2 disabled:opacity-50 transition-all"
-          >
-            <Send size={12} /> Launch Mission
-          </button>
+          {watch("assignee_id") && watch("assignee_id") !== NONE_VALUE ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSubmitting}
+                className="px-5 py-2 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-widest font-bold hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+              >
+                Save
+              </button>
+              <button
+                onClick={handleRoute}
+                disabled={isRouting}
+                className="px-6 py-2 bg-[var(--accent-600)] text-white text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--accent-500)] flex items-center gap-2 disabled:opacity-50 transition-all"
+              >
+                {isRouting ? (
+                  <Send size={12} className="animate-spin" />
+                ) : (
+                  <Zap size={12} />
+                )}
+                Route
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleSubmit(onSubmit)}
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-[var(--accent-600)] text-white text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--accent-500)] flex items-center gap-2 disabled:opacity-50 transition-all"
+            >
+              <Send size={12} /> Save
+            </button>
+          )}
         </div>
       </div>
     </div>

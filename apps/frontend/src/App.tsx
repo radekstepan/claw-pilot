@@ -158,9 +158,12 @@ export default function App() {
       );
   }, [tasks, filterText]);
 
-  const addTask = async (payload: CreateTaskPayload) => {
+  const addTask = async (
+    payload: CreateTaskPayload,
+    options?: { skipRoute?: boolean },
+  ) => {
     try {
-      await useMissionStore.getState().createTask(payload);
+      await useMissionStore.getState().createTask(payload, options);
     } catch {
       // toast already shown in the store
     }

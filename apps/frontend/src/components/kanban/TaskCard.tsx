@@ -54,6 +54,9 @@ export const TaskCard = ({
   const agent = task.agentId
     ? agents.find((a) => a.id === task.agentId)
     : undefined;
+  const assignee = task.assignee_id
+    ? agents.find((a) => a.id === task.assignee_id)
+    : undefined;
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -149,13 +152,24 @@ export const TaskCard = ({
               {formatTimeAgo(task.updatedAt ?? task.createdAt, now)}
             </span>
           </div>
-          {agent && (
-            <img
-              src={generateAvatarUrl(agent.name, { size: 80 })}
-              alt={agent.name}
-              className="w-2.5 h-2.5 rounded-full"
-            />
-          )}
+          <div className="flex items-center gap-0.5">
+            {assignee && (
+              <img
+                src={generateAvatarUrl(assignee.name, { size: 80 })}
+                alt={assignee.name}
+                className="w-2.5 h-2.5 rounded-full ring-1 ring-slate-200 dark:ring-slate-700"
+                title={`Assignee: ${assignee.name}`}
+              />
+            )}
+            {agent && agent.id !== assignee?.id && (
+              <img
+                src={generateAvatarUrl(agent.name, { size: 80 })}
+                alt={agent.name}
+                className="w-2.5 h-2.5 rounded-full"
+                title={`Agent: ${agent.name}`}
+              />
+            )}
+          </div>
         </div>
       </Card>
     </div>
