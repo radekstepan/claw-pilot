@@ -262,4 +262,58 @@ describe("stuckTaskMonitor", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
   });
+
+  it("does not flag tasks as session-stuck within the 5-minute grace period", async () => {
+    const now = new Date();
+    // 3 minutes ago
+    const recentTime = new Date(now.getTime() - 3 * 60 * 1000).toISOString();
+
+    const { db } = await import("../db/index.js");
+    db.insert(tasksTable)
+      .values({
+        id: "task-grace",
+        title: "Grace Period Task",
+        status: "IN_PROGRESS",
+        priority: "MEDIUM",
+        agentId: "agent-offline", // not in live sessions
+        createdAt: recentTime,
+        updatedAt: recentTime,
+      })
+      .run();
+
+    intervalHandle = startStuckTaskMonitor(mock.fastify);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const chatMessages = getEmittedEvents(mock, "chat_message");
+    expect(chatMessages).toHaveLength(0);
+  });
+
+  it("flags tasks as session-stuck after the 5-minute grace period if offline", async () => {
+    const now = new Date();
+    // 6 minutes ago
+    const pastGraceTime = new Date(now.getTime() - 6 * 60 * 1000).toISOString();
+
+    const { db } = await import("../db/index.js");
+    db.insert(tasksTable)
+      .values({
+        id: "task-offline",
+        title: "Offline Task",
+        status: "IN_PROGRESS",
+        priority: "MEDIUM",
+        agentId: "agent-offline", // not in live sessions
+        createdAt: pastGraceTime,
+        updatedAt: pastGraceTime,
+      })
+      .run();
+
+    intervalHandle = startStuckTaskMonitor(mock.fastify);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const chatMessages = getEmittedEvents(mock, "chat_message");
+    expect(chatMessages).toHaveLength(1);
+    expect(chatMessages[0]).toMatchObject({
+      role: "system",
+      content: expect.stringContaining("agent offline"),
+    });
+  });
 });

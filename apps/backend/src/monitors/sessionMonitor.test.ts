@@ -55,8 +55,8 @@ describe("sessionMonitor", () => {
     await Promise.resolve();
   };
 
-  const tick30 = async () => {
-    vi.advanceTimersByTime(30_000);
+  const tickGracePeriod = async () => {
+    vi.advanceTimersByTime(30 * 60 * 1000); // 30 minutes
     await Promise.resolve();
   };
 
@@ -241,7 +241,7 @@ describe("sessionMonitor", () => {
 
       await tick();
 
-      await tick30();
+      await tickGracePeriod();
 
       const stuckEvents = getEmittedEvents(mock, "task_updated");
       const stuckTask = stuckEvents.find(
@@ -287,7 +287,7 @@ describe("sessionMonitor", () => {
 
       await tick();
 
-      await tick30();
+      await tickGracePeriod();
 
       const stuckEvents = getEmittedEvents(mock, "task_updated");
       const stuckTask = stuckEvents.find(
@@ -328,7 +328,7 @@ describe("sessionMonitor", () => {
 
       await tick();
 
-      await tick30();
+      await tickGracePeriod();
 
       const errorEvents = getEmittedEvents(mock, "agent_error");
       expect(errorEvents).toHaveLength(1);
@@ -370,7 +370,7 @@ describe("sessionMonitor", () => {
 
       await tick();
 
-      await tick30();
+      await tickGracePeriod();
 
       const stuckEvents1 = getEmittedEvents(mock, "task_updated");
       const stuckCount1 = stuckEvents1.filter(
@@ -423,7 +423,7 @@ describe("sessionMonitor", () => {
 
       handle.shutdown();
 
-      await tick30();
+      await tickGracePeriod();
 
       const stuckEvents = getEmittedEvents(mock, "task_updated");
       const stuckTask = stuckEvents.find(

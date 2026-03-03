@@ -9,7 +9,7 @@ import { db, tasks as tasksTable, notArchived } from "../db/index.js";
 import { eq, and } from "drizzle-orm";
 import { markTaskStuck } from "../services/taskLifecycle.js";
 
-const GRACE_PERIOD_MS = 30_000; // 30 seconds
+const GRACE_PERIOD_MS = 30 * 60 * 1000; // 30 minutes
 
 export interface SessionMonitorHandle {
   interval: NodeJS.Timeout;
@@ -66,7 +66,7 @@ export function startSessionMonitor(
 
     gracePeriods.set(taskId, timeout);
     fastify.log.info(
-      `[sessionMonitor] Agent ${agentId} is IDLE — starting ${GRACE_PERIOD_MS / 1000}s grace period for task ${taskId}`,
+      `[sessionMonitor] Agent ${agentId} is IDLE — starting ${GRACE_PERIOD_MS / 60000}m grace period for task ${taskId}`,
     );
   }
 

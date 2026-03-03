@@ -75,9 +75,12 @@ export function startStuckTaskMonitor(
         const isTimeStuck = task.updatedAt && timeDiff > stuckThreshold;
 
         // 2. Active session check — if we can verify the agent disconnected, it's immediately stuck.
+        // We allow a 5-minute grace period for the agent's session to be established after updating.
         let isSessionStuck = false;
+        const sessionGracePeriodMs = 5 * 60 * 1000;
+        const passedGracePeriod = task.updatedAt ? timeDiff > sessionGracePeriodMs : true;
 
-        if (sessionsAvailable && getSessionKey) {
+        if (sessionsAvailable && getSessionKey && passedGracePeriod) {
           const sessionKey = task.agentId
             ? getSessionKey(task.agentId)
             : null;
