@@ -72,9 +72,12 @@ export const CreateTaskSchema = z.object({
 });
 export type CreateTaskPayload = z.infer<typeof CreateTaskSchema>;
 
-export const UpdateTaskSchema = TaskSchema.partial().extend({
-  agentId: z.string().optional(),
-});
+export const UpdateTaskSchema = TaskSchema.omit({ status: true })
+  .extend({
+    status: TaskStatusEnum.optional(),
+    agentId: z.string().optional(),
+  })
+  .partial();
 export type UpdateTaskPayload = z.infer<typeof UpdateTaskSchema>;
 
 export interface GeneratedAgentConfig {
