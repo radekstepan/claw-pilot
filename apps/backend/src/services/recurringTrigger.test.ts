@@ -337,7 +337,7 @@ describe("recurringTrigger", () => {
       expect(enqueueAiJob).toHaveBeenCalled();
     });
 
-    it.skip("uses PUBLIC_URL when available", async () => {
+    it("uses PUBLIC_URL when available to generate webhook URL", async () => {
       resetModuleState();
 
       vi.doMock("../config/env.js", () => ({
@@ -354,7 +354,7 @@ describe("recurringTrigger", () => {
         await import("./recurringTrigger.js");
       const { db } = await import("../db/index.js");
 
-      const recurringId = "recurring-url-test";
+      const recurringId = `recurring-url-test-${Date.now()}`;
       db.insert(recurringTable)
         .values({
           id: recurringId,
@@ -377,10 +377,18 @@ describe("recurringTrigger", () => {
       const mock = createMockFastify();
       await triggerWithUrl(mock.fastify, recurringRow);
 
-      expect(getGateway().spawnTaskSession).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-        expect.stringContaining("https://custom.url"),
+      const { enqueueAiJob: mockEnqueueAiJob } = await import("./aiQueue.js");
+      expect(mockEnqueueAiJob).toHaveBeenCalledWith(
+        "recurring-spawn",
+        0,
+        "recurring-spawn",
+        expect.objectContaining({
+          agentId: "agent-url",
+          webhook: expect.objectContaining({
+            url: expect.stringContaining("https://custom.url")
+          })
+        }),
+        "agent-url"
       );
     });
   });

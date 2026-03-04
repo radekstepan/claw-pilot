@@ -8,6 +8,11 @@ export interface LiveSession {
   [key: string]: unknown;
 }
 
+export interface WebhookConfig {
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface GatewayBackend {
   getAgents(): Promise<Agent[]>;
   createAgent(
@@ -28,6 +33,7 @@ export interface GatewayBackend {
     agentId: string,
     taskId: string,
     prompt: string,
+    webhook?: WebhookConfig,
   ): Promise<void>;
   agentIdToSessionKey(agentId: string): string;
 

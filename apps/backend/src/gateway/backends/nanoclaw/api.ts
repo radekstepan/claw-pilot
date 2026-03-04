@@ -1,5 +1,5 @@
 import type { Agent } from "@claw-pilot/shared-types";
-import type { GatewayBackend, LiveSession } from "../../types.js";
+import type { GatewayBackend, LiveSession, WebhookConfig } from "../../types.js";
 import { env } from "../../../config/env.js";
 import { NanoClawClient } from "@claw-pilot/nanoclaw-gateway";
 import { GatewayOfflineError, GatewayPairingRequiredError } from "../../errors.js";
@@ -80,9 +80,10 @@ export class NanoClawBackend implements GatewayBackend {
         agentId: string,
         taskId: string,
         prompt: string,
+        webhook?: WebhookConfig,
     ): Promise<void> {
         try {
-            await client.spawnTask(agentId, taskId, prompt);
+            await client.spawnTask(agentId, taskId, prompt, webhook);
         } catch (e) {
             handleNetworkError("spawnTaskSession", e);
         }

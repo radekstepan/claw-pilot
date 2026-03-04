@@ -101,19 +101,18 @@ function dispatchRecurringTaskToAgent(
   const taskId = newTask.id;
   const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
   const callbackUrl = `${baseUrl}/api/tasks/${taskId}/activity`;
+  const webhook = {
+    url: callbackUrl,
+    headers: { Authorization: `Bearer ${env.API_KEY}` }
+  };
   const taskContext = [
     [newTask.title, newTask.description].filter(Boolean).join("\n\n"),
     `---`,
     `TASK METADATA (do not include in your work output):`,
     `taskId: ${taskId}`,
-    `When you have finished, POST your result to:`,
-    `  POST ${callbackUrl}`,
-    `  Authorization: Bearer ${env.API_KEY}`,
-    `  Content-Type: application/json`,
-    `  Body: { "agent_id": "${assignedAgentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
-    `IMPORTANT: The "message" field must contain your COMPLETE work output. Do NOT abbreviate.`,
-    `Start the message with "completed: " followed by the full output.`,
-    `On error use: { "agent_id": "${assignedAgentId}", "message": "error: <description>" }`,
+    `IMPORTANT: Your final message will be automatically delivered to the user.`,
+    `You MUST start your final output with "completed: " followed by the full text, answer, or result. Do NOT abbreviate or summarize.`,
+    `If you encounter an unrecoverable error, start your message with "error: " followed by the description.`
   ].join("\n");
 
   enqueueAiJob(
@@ -124,6 +123,7 @@ function dispatchRecurringTaskToAgent(
       taskId,
       agentId: assignedAgentId,
       prompt: taskContext,
+      webhook,
     },
     assignedAgentId,
   );

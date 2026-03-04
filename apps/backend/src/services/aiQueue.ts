@@ -221,8 +221,8 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
       case "task-route":
       case "review-reject":
       case "recurring-spawn": {
-        const { taskId, agentId: taskAgentId } = payload.data;
-        await gw.spawnTaskSession(taskAgentId, taskId, payload.data.prompt);
+        const { taskId, agentId: taskAgentId, prompt, webhook } = payload.data;
+        await gw.spawnTaskSession(taskAgentId, taskId, prompt, webhook);
 
         // Transition task to IN_PROGRESS and log activity
         const successNow = new Date().toISOString();

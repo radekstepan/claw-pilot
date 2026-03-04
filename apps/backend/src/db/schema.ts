@@ -1,19 +1,21 @@
 import { sqliteTable, text, index, integer } from "drizzle-orm/sqlite-core";
 import { Deliverable } from "@claw-pilot/shared-types";
+import type { WebhookConfig } from "../gateway/types.js";
 
 // ---------------------------------------------------------------------------
 // Job payload types for the persistent AI queue
 // ---------------------------------------------------------------------------
+
 export type JobPayload =
   | { type: "chat"; data: { agentId: string; message: string } }
   | {
       type: "task-route";
-      data: { taskId: string; agentId: string; prompt: string };
+      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
     }
   | { type: "activity-route"; data: { message: string } }
   | {
       type: "review-reject";
-      data: { taskId: string; agentId: string; prompt: string };
+      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
     }
   | {
       type: "generate-config";
@@ -21,7 +23,7 @@ export type JobPayload =
     }
   | {
       type: "recurring-spawn";
-      data: { taskId: string; agentId: string; prompt: string };
+      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
     };
 
 export type AiJobStatus =

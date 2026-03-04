@@ -1,3 +1,8 @@
+export interface WebhookConfig {
+    url: string;
+    headers?: Record<string, string>;
+}
+
 export class NanoClawClient {
     private baseUrl: string;
     private token?: string;
@@ -65,8 +70,8 @@ export class NanoClawClient {
         return this.request<any>('POST', `/api/agents/${agentId}/chat`, { message });
     }
 
-    async spawnTask(agentId: string, taskId: string, prompt: string): Promise<any> {
-        return this.request<any>('POST', `/api/agents/${agentId}/tasks`, { taskId, prompt });
+    async spawnTask(agentId: string, taskId: string, prompt: string, webhook?: WebhookConfig): Promise<any> {
+        return this.request<any>('POST', `/api/agents/${agentId}/tasks`, { taskId, prompt, webhook });
     }
 
     async getAgentFile(agentId: string, fileName: string): Promise<any> {

@@ -502,21 +502,20 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
       const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
       const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
+      const webhook = {
+        url: callbackUrl,
+        headers: { Authorization: `Bearer ${env.API_KEY}` }
+      };
+
       const taskContext = [
         body.prompt ??
         [taskRow.title, taskRow.description].filter(Boolean).join("\n\n"),
         `---`,
         `TASK METADATA (do not include in your work output):`,
         `taskId: ${id}`,
-        `When you have finished, POST your result to:`,
-        `  POST ${callbackUrl}`,
-        `  Authorization: Bearer ${env.API_KEY}`,
-        `  Content-Type: application/json`,
-        `  Body: { "agent_id": "${body.agentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
-        `IMPORTANT: The "message" field must contain your COMPLETE work output — the full text,`,
-        `answer, or result. Do NOT abbreviate or summarize. A human reviewer reads it directly`,
-        `from the activity log. Start the message with "completed: " followed by the full output.`,
-        `On error use: { "agent_id": "${body.agentId}", "message": "error: <description>" }`,
+        `IMPORTANT: Your final message will be automatically delivered to the user.`,
+        `You MUST start your final output with "completed: " followed by the full text, answer, or result. Do NOT abbreviate or summarize.`,
+        `If you encounter an unrecoverable error, start your message with "error: " followed by the description.`
       ].join("\n");
       const prompt = taskContext;
 
@@ -528,6 +527,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
           taskId: id,
           agentId: body.agentId,
           prompt,
+          webhook,
         },
         body.agentId,
       );
@@ -664,6 +664,10 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         const assignedAgentId = taskRow.agentId ?? "main";
         const baseUrl = env.PUBLIC_URL ?? `http://localhost:${env.PORT}`;
         const callbackUrl = `${baseUrl}/api/tasks/${id}/activity`;
+        const webhook = {
+          url: callbackUrl,
+          headers: { Authorization: `Bearer ${env.API_KEY}` }
+        };
 
         // Fetch the prior activity log (chronological order) so the agent
         // knows what it did in the previous attempt.
@@ -697,15 +701,9 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
           `---`,
           `TASK METADATA (do not include in your work output):`,
           `taskId: ${id}`,
-          `When you have finished, POST your result to:`,
-          `  POST ${callbackUrl}`,
-          `  Authorization: Bearer ${env.API_KEY}`,
-          `  Content-Type: application/json`,
-          `  Body: { "agent_id": "${assignedAgentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
-          `IMPORTANT: The "message" field must contain your COMPLETE work output — the full text,`,
-          `answer, or result. Do NOT abbreviate or summarize. A human reviewer reads it directly`,
-          `from the activity log. Start the message with "completed: " followed by the full output.`,
-          `On error use: { "agent_id": "${assignedAgentId}", "message": "error: <description>" }`,
+          `IMPORTANT: Your final message will be automatically delivered to the user.`,
+          `You MUST start your final output with "completed: " followed by the full text, answer, or result. Do NOT abbreviate or summarize.`,
+          `If you encounter an unrecoverable error, start your message with "error: " followed by the description.`
         ].join("\n");
 
         enqueueAiJob(
@@ -716,6 +714,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
             taskId: id,
             agentId: assignedAgentId,
             prompt: retryPrompt,
+            webhook,
           },
           assignedAgentId,
         );

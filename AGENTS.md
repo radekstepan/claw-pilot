@@ -14,6 +14,7 @@ Read these rules carefully before writing or modifying any code.
 - **DO NOT** attempt to import an `openclaw` npm package. OpenClaw is a Python CLI tool with a **WebSocket RPC gateway**.
 - Claw-Pilot communicates with OpenClaw EXCLUSIVELY via WebSocket JSON-RPC, using the `gatewayCall` helper in `apps/backend/src/openclaw/cli.ts`.
 - **Never use `child_process` / `execFile`** to shell out to the `openclaw` binary.
+- **Native Webhooks:** The backend natively supplies a `webhook` object (`url` and `headers`) when calling `spawnTaskSession` via the gateway API. The OpenClaw/NanoClaw Gateway engine uses this webhook to automatically POST the agent's final message back to the Mission Control backend. Agents *do not* need to execute `curl` or write network requests themselves.
 
 **Reference:** See `docs/openclaw_api.md` for exact RPC payloads, authentication handshakes, and session key formats.
 
@@ -25,10 +26,6 @@ Read these rules carefully before writing or modifying any code.
 
 ## 3. Database Migrations (Drizzle Kit)
 After modifying `apps/backend/src/db/schema.ts`, you **must** generate a migration:
-```bash
-cd apps/backend
-npx tsx node_modules/.bin/drizzle-kit generate
-```
 > **Why `tsx`?** The backend uses `"type": "module"` (ESM). Running `drizzle-kit` directly fails with `require is not defined`. Wrapping it with `tsx` fixes the CJS/ESM interop.
 
 Do NOT hand-write migration SQL files or edit `drizzle/meta/_journal.json` manually — always let `drizzle-kit generate` produce them.

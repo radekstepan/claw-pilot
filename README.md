@@ -39,7 +39,7 @@ graph LR
     MON -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
     GW --> CFG
     GW -- "sessions.patch + chat.send" --> AGENT
-    AGENT -- "POST /api/tasks/:id/activity\n(Callback)" --> API
+    AGENT -- "POST /api/tasks/:id/activity\n(Webhook Callback)" --> API
 ```
 
 > **Data flow summary:** The React UI communicates with the Fastify server via REST (Bearer-token auth) and Socket.io. The server communicates with OpenClaw agents through the **WebSocket gateway RPC API** — never via CLI subprocess. Each RPC call (`gatewayCall`) opens a fresh WebSocket connection, performs a **Mode-A (Device Identity)** handshake, fires one JSON-RPC method, reads the response, and closes. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io. Agents can report progress or completion by calling back to the backend's REST API, triggering automatic status transitions in the Kanban board.
@@ -146,10 +146,10 @@ Claw-Pilot is designed for an autonomous task loop. You move tasks from **Inbox*
 3.  **Dispatch**: Open the Task Modal, select an agent from the "Dispatch to Agent" drop-down, and click **Route Task**.
     *   The backend creates an isolated OpenClaw session (`mc-gateway:{id}:main`) using the specified model.
     *   The task title + description are sent as the initial prompt with `deliver: true`.
-    *   The `taskId`, full callback URL, and `API_KEY` are **automatically appended** to the prompt — the agent knows exactly where to POST back without any manual configuration.
+    *   The `taskId`, full callback URL, and `API_KEY` are **passed natively** to the gateway as a `webhook` parameter. The gateway engine will automatically POST the agent's final output back to Claw-Pilot.
     *   The task automatically moves to **In Progress**.
 4.  **Work**: The agent performs its work.
-5.  **Completion**: When the agent finishes, it calls back to the backend. If it includes the word `completed` or `done` in its message, the task moves to **Review**.
+5.  **Completion**: When the agent finishes, the gateway natively calls back to the backend. If the agent includes the word `completed` or `done` in its final message, the task moves to **Review**.
 6.  **Human Review**: You approve or reject the work. Approval moves it to **Done**. Rejection moves it back to **In Progress** with your feedback.
 
 > **Remote Agents:** See [docs/api.md](docs/api.md#8-agent-callback-protocol-remote-setup) for how to configure agents running on a separate VPS (e.g., via Tailscale) to call back to your local machine.
@@ -158,12 +158,12 @@ Claw-Pilot is designed for an autonomous task loop. You move tasks from **Inbox*
 
 ## Prompt Engineering & Callback Format
 
-When interacting with tasks via the OpenClaw gateway, agents notify the backend of their progress or completion using the API callback URL injected into their prompt.
+When interacting with tasks via the OpenClaw gateway, agents notify the backend of their progress or completion using the native webhook configuration configured by the backend.
 
-### Formatting the Callback Payload
+### Formatting the Final Payload
 Agents MUST format their completion message so the backend correctly transitions the task status. The backend parses the `"message"` field to determine if the task is complete.
 
-To successfully mark a task as ready for Human Review (moving it to the `REVIEW` column), the `message` string **MUST** start with `completed:` or `done:` (case-insensitive). Optional Markdown bolding like `**completed:**` is supported.
+To successfully mark a task as ready for Human Review (moving it to the `REVIEW` column), the text of the final message **MUST** start with `completed:` or `done:` (case-insensitive). Optional Markdown bolding like `**completed:**` is supported. The backend handles making the actual HTTP request.
 
 **✅ Correct examples that trigger REVIEW transition:**
 ```json
@@ -180,8 +180,8 @@ To successfully mark a task as ready for Human Review (moving it to the `REVIEW`
 ```
 
 **❌ Incorrect examples (Task will stay IN PROGRESS):**
-- `"message": "Task completed successfully"` (Starts with "Task", not "completed:")
-- `"message": "I am done parsing the log."` (Starts with "I am")
+- `Task completed successfully` (Starts with "Task", not "completed:")
+- `I am done parsing the log.` (Starts with "I am")
 
 ---
 
@@ -229,7 +229,7 @@ claw-pilot/
 | Mode A Auth (Device Identity) | Provides secure, persistent pairing without passwords. A stable Ed25519 key pair is stored in `data/device-identity.json` |
 | Atomic db writes | Drizzle ORM with SQLite transactions + WAL mode — a mid-write crash never corrupts the database |
 | 202 Accepted for AI calls | AI gateway calls take minutes; HTTP requests must not block. The result is pushed via Socket.io |
-| Agent Callback Logic | Remote agents notify the backend of completion via HTTP POST, moving tasks to `REVIEW` autonomously |
+| Agent Callback Logic | Remote agents notify the backend of completion via HTTP POST natively utilizing the gateway webhooks, moving tasks to `REVIEW` autonomously |
 | `timingSafeEqual` for API key | Prevents timing side-channel attacks |
 | Fresh WS per RPC call | No connection-state management; failures are isolated; the gateway is stateless from the client's perspective |
 

@@ -100,6 +100,12 @@ describe('NanoClawBackend Adapter', () => {
         await expect(backend.getAgents()).rejects.toThrow(GatewayPairingRequiredError);
     });
 
+    it('should pass webhook down to spawnTask', async () => {
+        const webhook = { url: 'abc', headers: { 'Authorization': 'token' } };
+        await backend.spawnTaskSession('agent1', 'task1', 'prompt', webhook);
+        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt', webhook);
+    });
+
     it('should return empty string when getAgentFile fails', async () => {
         mockClientInstance.getAgentFile.mockRejectedValueOnce(new Error('File not found'));
 

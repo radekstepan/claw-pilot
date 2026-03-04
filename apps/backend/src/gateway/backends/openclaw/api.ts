@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import type { Agent } from "@claw-pilot/shared-types";
-import type { GatewayBackend, LiveSession } from "../../types.js";
+import type { GatewayBackend, LiveSession, WebhookConfig } from "../../types.js";
 import { env } from "../../../config/env.js";
 import {
   gatewayCall,
@@ -412,6 +412,7 @@ export class OpenClawBackend implements GatewayBackend {
     agentId: string,
     taskId: string,
     prompt: string,
+    webhook?: WebhookConfig,
   ): Promise<void> {
     try {
       const sessionKey = `task-${taskId}`;
@@ -427,6 +428,7 @@ export class OpenClawBackend implements GatewayBackend {
           message: prompt,
           deliver: true,
           idempotencyKey: randomUUID(),
+          webhook,
         },
         { timeout: AI_TIMEOUT },
       );

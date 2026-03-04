@@ -54,6 +54,26 @@ describe('NanoClawClient', () => {
 
         expect(newAgent).toEqual({ id: '2', name: 'New Agent' });
     });
+    
+    it('should handle spawnTask with optional webhook', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true })
+        } as Response);
+
+        const webhook = { url: 'http://webhook', headers: { Authorization: 'token' } };
+        await client.spawnTask('agent-1', 'task-1', 'Hello', webhook);
+
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents/agent-1/tasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer test-token'
+            },
+            body: JSON.stringify({ taskId: 'task-1', prompt: 'Hello', webhook })
+        });
+    });
 
     it('should throw an error on non-ok HTTP responses', async () => {
         mockFetch.mockResolvedValueOnce({
