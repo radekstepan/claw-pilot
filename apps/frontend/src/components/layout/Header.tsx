@@ -100,7 +100,7 @@ export const Header = ({
 
   return (
     <>
-      <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[#060509] flex items-center justify-between sticky top-0 z-50 pr-4 md:pr-6">
+      <header className="h-14 border-b border-black/[0.06] dark:border-white/[0.06] bg-[#f8fafc] dark:bg-[var(--bg-dark-base)] flex items-center justify-between sticky top-0 z-50 pr-4 md:pr-6">
         <div className="flex items-center h-full">
           {/* BRANDING SECTION - matches sidebar width */}
           <div className="md:w-64 md:border-r border-black/[0.06] dark:border-white/[0.06] h-full flex items-center px-4 md:px-4 gap-3 flex-shrink-0">

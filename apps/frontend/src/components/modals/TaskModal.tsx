@@ -109,7 +109,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             </button>
             <button
               onClick={() =>
-                navigator.clipboard.writeText(a.message).catch(() => {})
+                navigator.clipboard.writeText(a.message).catch(() => { })
               }
               className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
@@ -127,7 +127,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() =>
-                  navigator.clipboard.writeText(a.message).catch(() => {})
+                  navigator.clipboard.writeText(a.message).catch(() => { })
                 }
                 className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
@@ -402,14 +402,14 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         className="absolute inset-0 bg-slate-900/50 dark:bg-black/80"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col max-h-[90vh] animate-fadeIn">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-[var(--bg-dark-surface)] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col max-h-[90vh] animate-fadeIn">
         <div className="p-6 border-b border-black/[0.04] dark:border-white/[0.04] flex items-start justify-between">
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-mono text-[var(--accent-600)] dark:text-[var(--accent-400)]">
                 {task.id}
               </span>
-              <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+              <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/20" />
               <Badge
                 variant={
                   task.status === "DONE"
@@ -733,22 +733,20 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       <button
                         type="button"
                         onClick={() => setDescPreview(false)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                          !descPreview
-                            ? "bg-[var(--accent-600)] text-white"
-                            : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                        }`}
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
+                          ? "bg-[var(--accent-600)] text-white"
+                          : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                          }`}
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setDescPreview(true)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                          descPreview
-                            ? "bg-[var(--accent-600)] text-white"
-                            : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                        }`}
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
+                          ? "bg-[var(--accent-600)] text-white"
+                          : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                          }`}
                       >
                         Preview
                       </button>
@@ -771,9 +769,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       rows={5}
                       {...register("description")}
                       placeholder="No description…"
-                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${
-                        descPreview ? "hidden" : ""
-                      }`}
+                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${descPreview ? "hidden" : ""
+                        }`}
                     />
                     {descPreview && (
                       <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
@@ -841,11 +838,10 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
             <button
               onClick={handleSubmit(handleUpdateTask)}
               disabled={isSubmitting}
-              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${
-                watch("assignee_id") !== NONE_VALUE
-                  ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
-                  : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
-              }`}
+              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${watch("assignee_id") !== NONE_VALUE
+                ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
+                : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
+                }`}
             >
               {isSubmitting && <Loader2 size={12} className="animate-spin" />}
               Update Task

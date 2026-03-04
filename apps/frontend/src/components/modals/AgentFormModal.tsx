@@ -138,7 +138,7 @@ export const AgentFormModal = ({
             className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-black/10 dark:border-white/10 rounded shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-full max-w-2xl bg-white dark:bg-[var(--bg-dark-surface)] border border-black/10 dark:border-white/10 rounded shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
                     <div className="flex items-center gap-2">
@@ -171,7 +171,7 @@ export const AgentFormModal = ({
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="e.g. data-viz-expert"
-                                className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 transition-colors"
+                                className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 transition-colors"
                             />
                         </div>
 
@@ -203,7 +203,7 @@ export const AgentFormModal = ({
                                         setIsWorkspaceModified(true);
                                     }}
                                     placeholder="~/openclaw-agents/my-agent"
-                                    className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 transition-colors"
+                                    className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 transition-colors"
                                 />
                                 <p className="text-[9px] text-slate-400 dark:text-slate-500">
                                     Recommended: a unique directory for this agent.
@@ -231,7 +231,7 @@ export const AgentFormModal = ({
                             value={capabilities}
                             onChange={(e) => setCapabilities(e.target.value)}
                             placeholder="python, scraping, visualization"
-                            className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50"
+                            className="w-full bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-1.5 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50"
                         />
                         <p className="text-[9px] text-slate-400 dark:text-slate-500">
                             Comma-separated list of tags for the gateway configuration.
@@ -250,7 +250,7 @@ export const AgentFormModal = ({
                                         value={soul}
                                         onChange={(e) => setSoul(e.target.value)}
                                         placeholder="# System Prompt&#10;You are an expert..."
-                                        className="w-full h-40 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
+                                        className="w-full h-40 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
                                     />
                                 </div>
                             )}
@@ -263,7 +263,7 @@ export const AgentFormModal = ({
                                         value={tools}
                                         onChange={(e) => setTools(e.target.value)}
                                         placeholder="- name: my_tool&#10;  description: ..."
-                                        className="w-full h-28 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
+                                        className="w-full h-28 bg-slate-50 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded p-3 text-[10px] font-mono text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)]/50 resize-y"
                                     />
                                 </div>
                             )}

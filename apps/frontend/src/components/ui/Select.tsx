@@ -85,7 +85,7 @@ export const Select = ({
           sideOffset={0}
           className={[
             "z-[300] overflow-hidden",
-            "bg-white border border-slate-200 shadow-xl dark:bg-[#0c0a14] dark:border-white/10",
+            "bg-white border border-slate-200 shadow-xl dark:bg-[var(--bg-dark-surface)] dark:border-white/10",
             "w-[var(--radix-select-trigger-width)]",
             "max-h-60",
             "animate-fadeIn",

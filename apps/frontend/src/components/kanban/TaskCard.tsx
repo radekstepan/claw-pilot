@@ -48,13 +48,12 @@ export const TaskCard = ({ task, onClick, isUnread }: TaskCardProps) => {
 
   return (
     <div
-      className={`transition-opacity duration-300 ${
-        isUpdating ? "opacity-50 animate-pulse pointer-events-none" : ""
-      }`}
+      className={`transition-opacity duration-300 ${isUpdating ? "opacity-50 animate-pulse pointer-events-none" : ""
+        }`}
     >
       <Card
         onClick={onClick}
-        className={`p-3 mb-2 cursor-pointer shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] ${isStuck ? "ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10" : ""} ${isUnread && !isStuck ? "border-l-2 border-l-[var(--accent-500)]" : ""}`}
+        className={`p-3 mb-2 cursor-pointer shadow-sm dark:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-500)] ${isStuck ? "ring-1 ring-rose-500/60 dark:ring-rose-500/40 bg-rose-50/40 dark:bg-rose-900/10" : ""} ${isUnread && !isStuck ? "border-l-2 border-l-[var(--accent-500)] dark:border-l-[var(--accent-500)]" : ""}`}
         role="button"
         aria-label={`Task: ${task.title}. Priority: ${task.priority ?? "LOW"}.`}
         tabIndex={0}

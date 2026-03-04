@@ -137,7 +137,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
         className="absolute inset-0 bg-slate-900/60 dark:bg-black/80"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col animate-fadeIn overflow-hidden">
+      <div className="relative w-full max-w-xl bg-white dark:bg-[var(--bg-dark-surface)] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col animate-fadeIn overflow-hidden">
         <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01]">
           <div className="flex items-center gap-2">
             <Plus
@@ -170,7 +170,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
               type="text"
               {...register("title")}
               placeholder="e.g. Refactor Data Stream Gateway"
-              className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors aria-[invalid=true]:border-rose-500/50"
+              className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors aria-[invalid=true]:border-rose-500/50"
               aria-invalid={errors.title ? "true" : "false"}
             />
             {errors.title && (
@@ -188,7 +188,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
             <textarea
               {...register("description")}
               placeholder="Detail the parameters and expected outcomes..."
-              className="w-full h-24 bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
+              className="w-full h-24 bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
             />
           </div>
 
@@ -265,7 +265,7 @@ export const NewTaskModal = ({ agents, onClose, onAdd }: NewTaskModalProps) => {
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleAddTag}
               placeholder="Type tag and press enter..."
-              className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-zinc-900 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
+              className="w-full bg-slate-100 focus:bg-white dark:bg-black/20 dark:focus:bg-black/40 border border-black/10 dark:border-white/10 rounded px-3 py-2 text-xs text-slate-900 dark:text-slate-300 outline-none focus:border-[var(--accent-500)] transition-colors"
             />
           </div>
         </form>

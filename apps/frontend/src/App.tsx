@@ -186,7 +186,7 @@ export default function App() {
 
   return (
     <div
-      className={`flex flex-col h-screen font-sans selection:bg-violet-500/30 overflow-hidden ${theme === "dark" ? "bg-[#08070b] text-slate-400" : "bg-white text-slate-600"}`}
+      className={`flex flex-col h-screen font-sans selection:bg-violet-500/30 overflow-hidden ${theme === "dark" ? "bg-[var(--bg-dark-base)] text-slate-400" : "bg-white text-slate-600"}`}
     >
       <Toaster
         theme={theme as "dark" | "light"}

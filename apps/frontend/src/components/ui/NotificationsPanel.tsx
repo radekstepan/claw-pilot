@@ -148,7 +148,7 @@ export function NotificationsPanel({
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#0e0c14] border border-black/10 dark:border-white/10 rounded-md shadow-2xl z-50 flex flex-col overflow-hidden"
+          className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[var(--bg-dark-surface)] border border-black/10 dark:border-white/10 rounded-md shadow-2xl z-50 flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06]">

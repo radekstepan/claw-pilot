@@ -39,25 +39,22 @@ export const LiveFeed = () => {
               className="relative pl-4 border-l border-black/5 dark:border-white/5 group"
             >
               <div
-                className={`absolute top-1 -left-[3px] w-1.5 h-1.5 rounded-full transition-colors ${
-                  isReview
+                className={`absolute top-1 -left-[3px] w-1.5 h-1.5 rounded-full transition-colors ${isReview
                     ? "bg-[var(--accent-500)] dark:bg-[var(--accent-400)] shadow-[0_0_6px_var(--accent-500)] dark:shadow-[0_0_6px_var(--accent-400)]"
-                    : "bg-slate-300 dark:bg-slate-700 group-hover:bg-[var(--accent-500)] dark:group-hover:bg-[var(--accent-400)]"
-                }`}
+                    : "bg-slate-300 dark:bg-white/20 group-hover:bg-[var(--accent-500)] dark:group-hover:bg-[var(--accent-400)]"
+                  }`}
               />
               <div
-                className={`text-[10px] mb-0.5 leading-relaxed line-clamp-3 ${
-                  isReview
+                className={`text-[10px] mb-0.5 leading-relaxed line-clamp-3 ${isReview
                     ? "text-[var(--accent-600)] dark:text-[var(--accent-400)]"
                     : "text-slate-600 dark:text-slate-300"
-                }`}
+                  }`}
               >
                 <span
-                  className={`font-bold mr-1 ${
-                    isReview
+                  className={`font-bold mr-1 ${isReview
                       ? "text-[var(--accent-600)] dark:text-[var(--accent-400)]"
                       : "text-slate-600 dark:text-slate-300"
-                  }`}
+                    }`}
                 >
                   {getAgentDisplayName(item.agentId, agents)}
                 </span>

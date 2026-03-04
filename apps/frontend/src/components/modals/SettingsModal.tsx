@@ -293,9 +293,9 @@ export const SettingsModal = ({
       const statuses = archiveSelectAll
         ? ["ALL"]
         : [
-            ...(archiveIncludeDone ? ["DONE"] : []),
-            ...(archiveIncludeError ? ["STUCK"] : []),
-          ];
+          ...(archiveIncludeDone ? ["DONE"] : []),
+          ...(archiveIncludeError ? ["STUCK"] : []),
+        ];
 
       if (statuses.length === 0) {
         toast.error("Please select at least one status to archive");
@@ -939,7 +939,7 @@ export const SettingsModal = ({
         className="absolute inset-0 bg-slate-900/40 dark:bg-black/60"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-3xl bg-white dark:bg-[#0c0a14] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded">
+      <div className="relative w-full max-w-3xl bg-white dark:bg-[var(--bg-dark-surface)] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col h-[600px] animate-fadeIn overflow-hidden rounded">
         {/* Modal header */}
         <div className="h-12 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center px-6 justify-between bg-slate-50 dark:bg-white/[0.01] flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -977,17 +977,16 @@ export const SettingsModal = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-3 px-4 py-2.5 text-[10px] uppercase tracking-wider font-bold transition-all text-left border-l-2 w-full ${
-                  activeTab === tab.id
+                className={`flex items-center gap-3 px-4 py-2.5 text-[10px] uppercase tracking-wider font-bold transition-all text-left border-l-2 w-full ${activeTab === tab.id
                     ? "border-[var(--accent-500)] text-slate-900 dark:text-white"
                     : "border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                }`}
+                  }`}
                 style={
                   activeTab === tab.id
                     ? {
-                        backgroundColor:
-                          "color-mix(in srgb, var(--accent-500) 8%, transparent)",
-                      }
+                      backgroundColor:
+                        "color-mix(in srgb, var(--accent-500) 8%, transparent)",
+                    }
                     : undefined
                 }
               >
