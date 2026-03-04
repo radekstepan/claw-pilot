@@ -421,14 +421,31 @@ export class OpenClawBackend implements GatewayBackend {
         { key: sessionKey, label: sessionKey },
         { timeout: WS_TIMEOUT },
       );
+
+      let message = prompt;
+      if (webhook) {
+        const authLine = webhook.headers?.Authorization
+          ? `\n  Authorization: ${webhook.headers.Authorization}`
+          : '';
+        message += [
+          ``,
+          `When you have finished, POST your result to:`,
+          `  POST ${webhook.url}${authLine}`,
+          `  Content-Type: application/json`,
+          `  Body: { "agent_id": "${agentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
+          `IMPORTANT: The "message" field must contain your COMPLETE work output. Do NOT abbreviate.`,
+          `Start the message with "completed: " followed by the full output.`,
+          `On error use: { "agent_id": "${agentId}", "message": "error: <description>" }`
+        ].join("\n");
+      }
+
       await gatewayCall(
         "chat.send",
         {
           sessionKey,
-          message: prompt,
+          message,
           deliver: true,
           idempotencyKey: randomUUID(),
-          webhook,
         },
         { timeout: AI_TIMEOUT },
       );
