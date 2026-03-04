@@ -338,58 +338,51 @@ describe("recurringTrigger", () => {
     });
 
     it("uses PUBLIC_URL when available to generate webhook URL", async () => {
-      resetModuleState();
+      const { env } = await import("../config/env.js");
+      const originalUrl = env.PUBLIC_URL;
+      env.PUBLIC_URL = "https://custom.url";
 
-      vi.doMock("../config/env.js", () => ({
-        env: {
-          PUBLIC_URL: "https://custom.url",
-          PORT: 3000,
-          API_KEY: "test-key",
-        },
-      }));
+      try {
+        const { db } = await import("../db/index.js");
 
-      createTestDb();
-
-      const { triggerRecurringTemplate: triggerWithUrl } =
-        await import("./recurringTrigger.js");
-      const { db } = await import("../db/index.js");
-
-      const recurringId = `recurring-url-test-${Date.now()}`;
-      db.insert(recurringTable)
-        .values({
-          id: recurringId,
-          title: "URL Test",
-          schedule_type: "DAILY",
-          status: "ACTIVE",
-          assigned_agent_id: "agent-url",
-          last_triggered_at: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-        .run();
-
-      const recurringRow = db
-        .select()
-        .from(recurringTable)
-        .where(eq(recurringTable.id, recurringId))
-        .get()!;
-
-      const mock = createMockFastify();
-      await triggerWithUrl(mock.fastify, recurringRow);
-
-      const { enqueueAiJob: mockEnqueueAiJob } = await import("./aiQueue.js");
-      expect(mockEnqueueAiJob).toHaveBeenCalledWith(
-        "recurring-spawn",
-        0,
-        "recurring-spawn",
-        expect.objectContaining({
-          agentId: "agent-url",
-          webhook: expect.objectContaining({
-            url: expect.stringContaining("https://custom.url")
+        const recurringId = `recurring-url-test-${Date.now()}`;
+        db.insert(recurringTable)
+          .values({
+            id: recurringId,
+            title: "URL Test",
+            schedule_type: "DAILY",
+            status: "ACTIVE",
+            assigned_agent_id: "agent-url",
+            last_triggered_at: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           })
-        }),
-        "agent-url"
-      );
+          .run();
+
+        const recurringRow = db
+          .select()
+          .from(recurringTable)
+          .where(eq(recurringTable.id, recurringId))
+          .get()!;
+
+        const mock = createMockFastify();
+        await triggerRecurringTemplate(mock.fastify, recurringRow);
+
+        expect(enqueueAiJob).toHaveBeenCalledWith(
+          "recurring-spawn",
+          0,
+          "recurring-spawn",
+          expect.objectContaining({
+            agentId: "agent-url",
+            webhook: expect.objectContaining({
+              url: expect.stringContaining("https://custom.url")
+            })
+          }),
+          "agent-url"
+        );
+      } finally {
+        env.PUBLIC_URL = originalUrl;
+      }
     });
   });
 });
