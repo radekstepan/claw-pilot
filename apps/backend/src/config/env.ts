@@ -90,7 +90,7 @@ const EnvSchema = z
      *          http://claw-pilot:54321      (Docker service name)
      * Defaults to http://localhost:{PORT} — only correct when the agent runs on the same machine.
      */
-    PUBLIC_URL: z.string().url().optional(),
+    PUBLIC_URL: z.string().url().transform((url) => url.replace(/^https?:\/\/(https?:\/\/)/i, '$1')).optional(),
 
     /**
      * Maximum number of AI gateway calls (routeChatToAgent, spawnTaskSession, generateAgentConfig)
@@ -205,7 +205,7 @@ function parseEnv(): Env {
       .join("\n");
     throw new Error(
       `\n[claw-pilot] ❌ Invalid environment configuration:\n\n${issues}\n\n` +
-        `Fix the above issues in the root .env file and restart.\n`,
+      `Fix the above issues in the root .env file and restart.\n`,
     );
   }
   return result.data;

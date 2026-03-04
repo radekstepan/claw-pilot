@@ -424,18 +424,25 @@ export class OpenClawBackend implements GatewayBackend {
 
       let message = prompt;
       if (webhook) {
+        // Remove the automatic delivery language so the agent isn't tricked into just responding conversationally
+        message = message
+          .replace("IMPORTANT: Your final message will be automatically delivered to the user.", "")
+          .replace("You MUST start your final output with \"completed: \" followed by the full text, answer, or result. Do NOT abbreviate or summarize.", "")
+          .replace("If you encounter an unrecoverable error, start your message with \"error: \" followed by the description.", "");
+
         const authLine = webhook.headers?.Authorization
           ? `\n  Authorization: ${webhook.headers.Authorization}`
           : '';
         message += [
           ``,
-          `When you have finished, POST your result to:`,
+          `When you have finished, you MUST use a web request (e.g. curl) to POST your result to:`,
           `  POST ${webhook.url}${authLine}`,
           `  Content-Type: application/json`,
           `  Body: { "agent_id": "${agentId}", "message": "completed: <FULL OUTPUT HERE>" }`,
           `IMPORTANT: The "message" field must contain your COMPLETE work output. Do NOT abbreviate.`,
           `Start the message with "completed: " followed by the full output.`,
-          `On error use: { "agent_id": "${agentId}", "message": "error: <description>" }`
+          `On error use: { "agent_id": "${agentId}", "message": "error: <description>" }`,
+          `DO NOT simply reply with the text. You MUST execute the network request to deliver your answers.`
         ].join("\n");
       }
 

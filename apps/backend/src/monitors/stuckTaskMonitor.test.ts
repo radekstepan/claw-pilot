@@ -263,10 +263,10 @@ describe("stuckTaskMonitor", () => {
     expect(getEmittedEvents(mock, "chat_message")).toHaveLength(1);
   });
 
-  it("does not flag tasks as session-stuck within the 5-minute grace period", async () => {
+  it("does not flag tasks as session-stuck within the 30-minute grace period", async () => {
     const now = new Date();
-    // 3 minutes ago
-    const recentTime = new Date(now.getTime() - 3 * 60 * 1000).toISOString();
+    // 28 minutes ago
+    const recentTime = new Date(now.getTime() - 28 * 60 * 1000).toISOString();
 
     const { db } = await import("../db/index.js");
     db.insert(tasksTable)
@@ -288,10 +288,10 @@ describe("stuckTaskMonitor", () => {
     expect(chatMessages).toHaveLength(0);
   });
 
-  it("flags tasks as session-stuck after the 5-minute grace period if offline", async () => {
+  it("flags tasks as session-stuck after the 30-minute grace period if offline", async () => {
     const now = new Date();
-    // 6 minutes ago
-    const pastGraceTime = new Date(now.getTime() - 6 * 60 * 1000).toISOString();
+    // 32 minutes ago
+    const pastGraceTime = new Date(now.getTime() - 32 * 60 * 1000).toISOString();
 
     const { db } = await import("../db/index.js");
     db.insert(tasksTable)
