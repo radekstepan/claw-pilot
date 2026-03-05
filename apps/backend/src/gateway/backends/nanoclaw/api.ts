@@ -94,7 +94,7 @@ export class NanoClawBackend implements GatewayBackend {
         model?: string,
     ): Promise<Record<string, unknown>> {
         try {
-            return await client.generateConfig(prompt, model);
+            return (await client.generateConfig(prompt, model)) as unknown as Record<string, unknown>;
         } catch (e) {
             handleNetworkError("generateAgentConfig", e);
         }
@@ -107,7 +107,12 @@ export class NanoClawBackend implements GatewayBackend {
         capabilities?: string[],
     ): Promise<void> {
         try {
-            await client.createAgent({ name, workspace, model, capabilities });
+            await client.createAgent({
+                jid: `tg:${Date.now()}`,
+                name,
+                folder: workspace,
+                trigger: `@${name.replace(/\\s+/g, '')}`
+            });
         } catch (e) {
             handleNetworkError("createAgent", e);
         }

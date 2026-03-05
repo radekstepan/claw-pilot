@@ -1,15 +1,36 @@
 {
     "name": "@claw-pilot/nanoclaw-gateway",
     "version": "1.0.0",
+    "description": "HTTP client for interfacing with NanoClaw devices",
     "type": "module",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
     "scripts": {
         "build": "tsc",
         "lint": "eslint src/",
-        "test": "vitest run"
+        "test": "vitest run",
+        "prepack": "npm run build"
     },
-    "dependencies": {},
+    "keywords": [
+        "nanoclaw",
+        "claude",
+        "agent",
+        "gateway",
+        "api"
+    ],
+    "author": "Claw Pilot",
+    "license": "MIT",
     "devDependencies": {
         "typescript": "^5.0.4",
         "vitest": "^2.0.0"

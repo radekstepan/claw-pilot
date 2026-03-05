@@ -17,7 +17,7 @@ describe('NanoClawClient', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             status: 200,
-            json: async () => ([{ id: '1', name: 'Agent 1' }])
+            json: async () => ([{ id: '1', name: 'Agent 1', folder: 'main' }])
         } as Response);
 
         const agents = await client.getAgents();
@@ -31,17 +31,22 @@ describe('NanoClawClient', () => {
             body: undefined
         });
 
-        expect(agents).toEqual([{ id: '1', name: 'Agent 1' }]);
+        expect(agents).toEqual([{ id: '1', name: 'Agent 1', folder: 'main' }]);
     });
 
-    it('should handle successful POST requests with bodies', async () => {
+    it('should handle successful POST requests with NanoClaw-native format', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             status: 201,
-            json: async () => ({ id: '2', name: 'New Agent' })
+            json: async () => ({ id: '2', name: 'New Agent', folder: 'main' })
         } as Response);
 
-        const newAgent = await client.createAgent({ name: 'New Agent' });
+        const newAgent = await client.createAgent({
+            jid: 'tg:123456789',
+            name: 'New Agent',
+            folder: 'main',
+            trigger: '@Agent'
+        });
 
         expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents', {
             method: 'POST',
@@ -49,12 +54,71 @@ describe('NanoClawClient', () => {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer test-token'
             },
-            body: JSON.stringify({ name: 'New Agent' })
+            body: JSON.stringify({ jid: 'tg:123456789', name: 'New Agent', folder: 'main', trigger: '@Agent' })
         });
 
-        expect(newAgent).toEqual({ id: '2', name: 'New Agent' });
+        expect(newAgent).toEqual({ id: '2', name: 'New Agent', folder: 'main' });
     });
-    
+
+    it('should translate claw-pilot format to NanoClaw format', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: async () => ({ id: 'cp-default-sonnet-4-6@claw-pilot', name: 'My Agent', folder: 'claw_production' })
+        } as Response);
+
+        const newAgent = await client.createAgent({
+            name: 'My Agent',
+            workspace: 'production',
+            model: 'claude-sonnet-4-6',
+            capabilities: ['code', 'browser']
+        });
+
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer test-token'
+            },
+            body: JSON.stringify({
+                jid: 'cp-production-sonnet-4-6@claw-pilot',
+                name: 'My Agent',
+                folder: 'claw_production',
+                trigger: '@code-browser',
+                isMain: undefined,
+                requiresTrigger: undefined
+            })
+        });
+
+        expect(newAgent).toEqual({ id: 'cp-default-sonnet-4-6@claw-pilot', name: 'My Agent', folder: 'claw_production' });
+    });
+
+    it('should use default values when creating agent with minimal claw-pilot format', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: async () => ({ id: '3', name: 'Minimal Agent', folder: 'claw_default' })
+        } as Response);
+
+        await client.createAgent({ name: 'Minimal Agent' });
+
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer test-token'
+            },
+            body: JSON.stringify({
+                jid: 'cp-default-sonnet-4-6@claw-pilot',
+                name: 'Minimal Agent',
+                folder: 'claw_default',
+                trigger: '@Agent',
+                isMain: undefined,
+                requiresTrigger: undefined
+            })
+        });
+    });
+
     it('should handle spawnTask with optional webhook', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
@@ -120,5 +184,74 @@ describe('NanoClawClient', () => {
 
         const result = await client.deleteAgent('1');
         expect(result).toEqual({});
+    });
+
+    it('should handle health check without auth', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'ok', timestamp: '2026-03-05T00:00:00.000Z' })
+        } as Response);
+
+        const health = await client.healthCheck();
+
+        // Health check doesn't send auth headers
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/health');
+
+        expect(health).toEqual({ status: 'ok', timestamp: '2026-03-05T00:00:00.000Z' });
+    });
+
+    it('should update agent with NanoClaw-native format', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: async () => ({ id: '1', name: 'Updated', folder: 'main' })
+        } as Response);
+
+        await client.updateAgent('1', {
+            name: 'Updated',
+            jid: 'tg:123456789',
+            trigger: '@NewAgent'
+        });
+
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents/1', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer test-token'
+            },
+            body: JSON.stringify({
+                jid: 'tg:123456789',
+                name: 'Updated',
+                trigger: '@NewAgent'
+            })
+        });
+    });
+
+    it('should update agent with claw-pilot format (translates workspace)', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: async () => ({ id: '1', name: 'Updated', folder: 'claw_staging' })
+        } as Response);
+
+        await client.updateAgent('1', {
+            name: 'Updated',
+            workspace: 'staging',
+            capabilities: ['shell', 'fs']
+        });
+
+        expect(mockFetch).toHaveBeenCalledWith('http://localhost:3000/api/agents/1', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer test-token'
+            },
+            body: JSON.stringify({
+                name: 'Updated',
+                folder: 'claw_staging',
+                trigger: '@shell-fs'
+            })
+        });
     });
 });

@@ -3,6 +3,148 @@ export interface WebhookConfig {
     headers?: Record<string, string>;
 }
 
+/**
+ * Agent interface as returned by NanoClaw API
+ */
+export interface Agent {
+    id: string;
+    name: string;
+    folder: string;
+    isMain?: boolean;
+    requiresTrigger?: boolean;
+}
+
+/**
+ * Claw-pilot style agent creation input.
+ * This provides an abstraction layer so consumers don't need to know
+ * about NanoClaw's internal constructs like jid, trigger, etc.
+ */
+export interface ClawPilotAgentInput {
+    /** Agent display name */
+    name: string;
+    /** Workspace/environment identifier (e.g., 'production', 'staging') */
+    workspace?: string;
+    /** Model to use (e.g., 'claude-sonnet-4-6') */
+    model?: string;
+    /** Agent capabilities (e.g., ['code', 'browser', 'shell']) */
+    capabilities?: string[];
+    /** Optional: Direct NanoClaw JID if you know it (bypasses translation) */
+    jid?: string;
+    /** Optional: Direct folder name if you know it (bypasses translation) */
+    folder?: string;
+    /** Optional: Direct trigger pattern if you know it (bypasses translation) */
+    trigger?: string;
+    /** Whether this is the main control group */
+    isMain?: boolean;
+    /** Whether messages require a trigger */
+    requiresTrigger?: boolean;
+}
+
+/**
+ * Internal NanoClaw agent creation data
+ */
+export interface NanoClawAgentData {
+    jid: string;
+    name: string;
+    folder: string;
+    trigger: string;
+    isMain?: boolean;
+    requiresTrigger?: boolean;
+}
+
+export interface Task {
+    id: string;
+    group_folder: string;
+    chat_jid: string;
+    prompt: string;
+    schedule_type: 'cron' | 'interval' | 'once';
+    schedule_value: string;
+    context_mode: 'group' | 'isolated';
+    next_run: string | null;
+    last_run: string | null;
+    last_result: string | null;
+    status: 'active' | 'paused' | 'completed';
+    created_at: string;
+}
+
+export interface Session {
+    folder: string;
+    sessionId: string;
+}
+
+export interface Model {
+    id: string;
+    name: string;
+}
+
+export interface GenerateConfigRequest {
+    prompt: string;
+    model?: string;
+}
+
+export interface GenerateConfigResponse {
+    config: {
+        model: string;
+        prompt: string;
+        generated_at: string;
+    };
+}
+
+/**
+ * Type guard to check if input is NanoClawAgentData (has jid)
+ */
+function isNanoClawAgentData(input: ClawPilotAgentInput | NanoClawAgentData): input is NanoClawAgentData {
+    return 'jid' in input && !!input.jid;
+}
+
+/**
+ * Translates claw-pilot style agent input to NanoClaw format.
+ * This maintains the abstraction layer so consumers can work with
+ * familiar concepts like 'workspace' and 'capabilities' without
+ * needing to construct fake jids or triggers.
+ */
+function translateAgentInput(input: ClawPilotAgentInput | NanoClawAgentData): NanoClawAgentData {
+    // If already in NanoClaw format (has jid), pass through
+    if (isNanoClawAgentData(input)) {
+        return {
+            jid: input.jid,
+            name: input.name,
+            folder: input.folder || 'main',
+            trigger: input.trigger || '@Agent',
+            isMain: input.isMain,
+            requiresTrigger: input.requiresTrigger
+        };
+    }
+
+    // Translate from claw-pilot format
+    const workspace = input.workspace || 'default';
+    const model = input.model || 'claude-sonnet-4-6';
+    const capabilities = input.capabilities || [];
+
+    // Generate a synthetic JID based on workspace and model
+    // Format: cp-{workspace}-{model-hash}@claw-pilot
+    const modelShort = model.split('-').slice(1).join('-') || model.substring(0, 8);
+    const jid = `cp-${workspace}-${modelShort}@claw-pilot`;
+
+    // Generate folder name from workspace
+    const folder = input.folder || `claw_${workspace}`;
+
+    // Generate trigger based on capabilities
+    let trigger = '@Agent';
+    if (capabilities.length > 0) {
+        trigger = `@${capabilities.join('-')}`;
+    }
+
+    return {
+        jid,
+        name: input.name,
+        folder,
+        trigger,
+        isMain: input.isMain,
+        requiresTrigger: input.requiresTrigger
+    };
+}
+
 export class NanoClawClient {
     private baseUrl: string;
     private token?: string;
@@ -46,47 +188,119 @@ export class NanoClawClient {
         }
     }
 
-    async getAgents(): Promise<any[]> {
-        return this.request<any[]>('GET', '/api/agents');
+    // === Agents ===
+
+    async getAgents(): Promise<Agent[]> {
+        return this.request<Agent[]>('GET', '/api/agents');
     }
 
-    async createAgent(data: any): Promise<any> {
-        return this.request<any>('POST', '/api/agents', data);
+    /**
+     * Create a new agent.
+     * Accepts either NanoClaw-native format (jid, folder, trigger)
+     * or claw-pilot abstraction (workspace, model, capabilities).
+     */
+    async createAgent(data: ClawPilotAgentInput | NanoClawAgentData): Promise<Agent> {
+        const translated = translateAgentInput(data);
+        return this.request<Agent>('POST', '/api/agents', translated);
     }
 
-    async updateAgent(id: string, data: any): Promise<any> {
-        return this.request<any>('PATCH', `/api/agents/${id}`, data);
+    /**
+     * Update an existing agent.
+     * Accepts either NanoClaw-native format or claw-pilot abstraction.
+     */
+    async updateAgent(
+        id: string,
+        data: Partial<ClawPilotAgentInput | NanoClawAgentData>
+    ): Promise<Agent> {
+        const translated: Partial<NanoClawAgentData> = {};
+
+        if ('jid' in data && data.jid) translated.jid = data.jid;
+        if (data.name) translated.name = data.name;
+        if ('folder' in data && data.folder) translated.folder = data.folder;
+        if ('trigger' in data && data.trigger) translated.trigger = data.trigger;
+        if (data.isMain !== undefined) translated.isMain = data.isMain;
+        if (data.requiresTrigger !== undefined) translated.requiresTrigger = data.requiresTrigger;
+
+        // Translate workspace if provided
+        if ('workspace' in data && data.workspace) {
+            translated.folder = `claw_${data.workspace}`;
+        }
+
+        // Translate capabilities to trigger if provided
+        if ('capabilities' in data && data.capabilities && data.capabilities.length > 0) {
+            translated.trigger = `@${data.capabilities.join('-')}`;
+        }
+
+        return this.request<Agent>('PATCH', `/api/agents/${id}`, translated);
     }
 
-    async deleteAgent(id: string): Promise<any> {
-        return this.request<any>('DELETE', `/api/agents/${id}`);
+    async deleteAgent(id: string): Promise<void> {
+        return this.request<void>('DELETE', `/api/agents/${id}`);
     }
 
-    async getSessions(): Promise<any[]> {
-        return this.request<any[]>('GET', '/api/sessions');
+    // === Sessions ===
+
+    async getSessions(): Promise<Session[]> {
+        return this.request<Session[]>('GET', '/api/sessions');
     }
 
-    async sendMessage(agentId: string, message: string): Promise<any> {
-        return this.request<any>('POST', `/api/agents/${agentId}/chat`, { message });
+    // === Messaging ===
+
+    async sendMessage(agentId: string, message: string): Promise<{ status: string; agentId: string }> {
+        return this.request<{ status: string; agentId: string }>('POST', `/api/agents/${agentId}/chat`, { message });
     }
 
-    async spawnTask(agentId: string, taskId: string, prompt: string, webhook?: WebhookConfig): Promise<any> {
-        return this.request<any>('POST', `/api/agents/${agentId}/tasks`, { taskId, prompt, webhook });
+    // === Tasks ===
+
+    async spawnTask(
+        agentId: string,
+        taskId: string,
+        prompt: string,
+        webhook?: WebhookConfig
+    ): Promise<{ status: string; taskId: string; agentId: string; webhookRegistered: boolean }> {
+        return this.request<{ status: string; taskId: string; agentId: string; webhookRegistered: boolean }>(
+            'POST',
+            `/api/agents/${agentId}/tasks`,
+            { taskId, prompt, webhook }
+        );
     }
 
-    async getAgentFile(agentId: string, fileName: string): Promise<any> {
-        return this.request<any>('GET', `/api/agents/${agentId}/files/${fileName}`);
+    async getTask(agentId: string, taskId: string): Promise<Task> {
+        return this.request<Task>('GET', `/api/agents/${agentId}/tasks/${taskId}`);
     }
 
-    async setAgentFile(agentId: string, fileName: string, content: string): Promise<any> {
-        return this.request<any>('PUT', `/api/agents/${agentId}/files/${fileName}`, { content });
+    async cancelTask(agentId: string, taskId: string): Promise<{ status: string; taskId: string }> {
+        return this.request<{ status: string; taskId: string }>('DELETE', `/api/agents/${agentId}/tasks/${taskId}`);
     }
 
-    async getModels(): Promise<any[]> {
-        return this.request<any[]>('GET', '/api/models');
+    // === Files ===
+
+    async getAgentFile(agentId: string, fileName: string): Promise<{ file: string; content: string }> {
+        return this.request<{ file: string; content: string }>('GET', `/api/agents/${agentId}/files/${fileName}`);
     }
 
-    async generateConfig(prompt: string, model?: string): Promise<any> {
-        return this.request<any>('POST', '/api/generate-config', { prompt, model });
+    async setAgentFile(agentId: string, fileName: string, content: string): Promise<{ status: string; file: string }> {
+        return this.request<{ status: string; file: string }>('PUT', `/api/agents/${agentId}/files/${fileName}`, { content });
+    }
+
+    // === Models ===
+
+    async getModels(): Promise<Model[]> {
+        return this.request<Model[]>('GET', '/api/models');
+    }
+
+    async generateConfig(prompt: string, model?: string): Promise<GenerateConfigResponse> {
+        return this.request<GenerateConfigResponse>('POST', '/api/generate-config', { prompt, model });
+    }
+
+    // === Health ===
+
+    async healthCheck(): Promise<{ status: string; timestamp: string }> {
+        // Health endpoint doesn't require auth
+        const response = await fetch(`${this.baseUrl}/api/health`);
+        if (!response.ok) {
+            throw new Error(`Health check failed (${response.status})`);
+        }
+        return response.json();
     }
 }
