@@ -83,7 +83,24 @@ export class NanoClawBackend implements GatewayBackend {
         webhook?: WebhookConfig,
     ): Promise<void> {
         try {
-            await client.spawnTask(agentId, taskId, prompt, webhook);
+            // Strip ClawPilot's "delivery instructions" — they're only relevant
+            // for OpenClaw (curl-based) agents, not NanoClaw tasks.
+            const message = prompt
+                .replace("IMPORTANT: Your final message will be automatically delivered to the user.", "")
+                .replace("You MUST start your final output with \"completed: \" followed by the full text, answer, or result. Do NOT abbreviate or summarize.", "")
+                .replace("If you encounter an unrecoverable error, start your message with \"error: \" followed by the description.", "");
+
+            // Spawn the task without a webhook — we poll for completion ourselves
+            // so ClawPilot is not dependent on the NanoClaw VPS calling us back.
+            await client.spawnTask(agentId, taskId, message);
+
+            // If a callback URL was requested, start a detached poller that watches
+            // the task and POSTs the result to the webhook once done.
+            if (webhook) {
+                client.pollTaskUntilComplete(agentId, taskId, webhook).catch((e) => {
+                    console.error("[nanoclaw] pollTaskUntilComplete failed:", e);
+                });
+            }
         } catch (e) {
             handleNetworkError("spawnTaskSession", e);
         }

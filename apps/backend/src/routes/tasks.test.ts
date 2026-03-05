@@ -245,6 +245,34 @@ describe("Task routes — integration", () => {
       });
       expect(res.statusCode).toBe(404);
     });
+
+    it("handles NanoClaw Native Task Webhook payload", async () => {
+      const { id } = (
+        await app.inject({
+          method: "POST",
+          url: "/api/tasks",
+          headers: AUTH,
+          payload: { title: "NanoClaw Webhook Test", status: "IN_PROGRESS" },
+        })
+      ).json<{ id: string }>();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/tasks/${id}/activity`,
+        headers: AUTH,
+        payload: {
+          type: "task_completed",
+          status: "success",
+          result: "Done with native webhook",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const activity = res.json<{ message: string }>();
+      expect(activity.message).toBe("completed: Done with native webhook");
+
+      expect((await getTask(id))?.status).toBe("REVIEW");
+    });
   });
 
   // -----------------------------------------------------------------------

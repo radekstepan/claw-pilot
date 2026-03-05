@@ -313,7 +313,15 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
 
   const ActivityPayloadSchema = z.object({
     agentId: z.string().optional(),
-    message: z.string(),
+    message: z.string().optional(),
+    // NanoClaw webhook payload fields
+    type: z.string().optional(),
+    taskId: z.string().optional(),
+    groupFolder: z.string().optional(),
+    chatJid: z.string().optional(),
+    status: z.string().optional(),
+    result: z.string().optional(),
+    timestamp: z.string().optional(),
   });
 
   fastify.post(
@@ -322,6 +330,19 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as z.infer<typeof ActivityPayloadSchema>;
+
+      let normalizedMessage = body.message;
+      if (body.type === "task_completed" && body.result) {
+        if (body.status === "success" || body.status === "completed") {
+          normalizedMessage = `completed: ${body.result}`;
+        } else {
+          normalizedMessage = `error: ${body.result}`;
+        }
+      }
+
+      if (!normalizedMessage) {
+        return reply.status(400).send({ error: "Missing message or valid task completion payload" });
+      }
 
       const taskRow = db
         .select()
@@ -339,7 +360,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       }
 
       const isCompleted = /^\s*(\*\*)?(completed|done):?\s*(\*\*)?/i.test(
-        body.message || "",
+        normalizedMessage || "",
       );
       if (isCompleted) {
         newStatus = "REVIEW";
@@ -359,7 +380,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
         id: randomUUID(),
         taskId: id,
         agentId: taskRow.agentId ?? null,
-        message: body.message,
+        message: normalizedMessage,
         timestamp: now,
         taskStatus: finalStatus,
       };

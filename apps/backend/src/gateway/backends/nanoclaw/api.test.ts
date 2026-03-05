@@ -9,6 +9,7 @@ const mockClientInstance = vi.hoisted(() => ({
     getSessions: vi.fn(),
     sendMessage: vi.fn(),
     spawnTask: vi.fn(),
+    pollTaskUntilComplete: vi.fn().mockResolvedValue(undefined),
     generateConfig: vi.fn(),
     createAgent: vi.fn(),
     updateAgent: vi.fn(),
@@ -100,10 +101,19 @@ describe('NanoClawBackend Adapter', () => {
         await expect(backend.getAgents()).rejects.toThrow(GatewayPairingRequiredError);
     });
 
-    it('should pass webhook down to spawnTask', async () => {
+    it('should spawn task without webhook and start polling when webhook provided', async () => {
         const webhook = { url: 'abc', headers: { 'Authorization': 'token' } };
         await backend.spawnTaskSession('agent1', 'task1', 'prompt', webhook);
-        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt', webhook);
+        // Webhook must NOT be forwarded to spawnTask — we poll ourselves
+        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt');
+        // Poller should be started
+        expect(mockClientInstance.pollTaskUntilComplete).toHaveBeenCalledWith('agent1', 'task1', webhook);
+    });
+
+    it('should spawn task without polling when no webhook', async () => {
+        await backend.spawnTaskSession('agent1', 'task1', 'prompt');
+        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt');
+        expect(mockClientInstance.pollTaskUntilComplete).not.toHaveBeenCalled();
     });
 
     it('should return empty string when getAgentFile fails', async () => {

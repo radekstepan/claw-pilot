@@ -269,6 +269,69 @@ export class NanoClawClient {
         return this.request<Task>('GET', `/api/agents/${agentId}/tasks/${taskId}`);
     }
 
+    /**
+     * Poll the task status until it completes, then POST the webhook callback
+     * ourselves. This makes ClawPilot resilient to NanoClaw not calling the
+     * webhook — we own the completion notification entirely on the client side.
+     *
+     * Runs detached (fire-and-forget) — does NOT block spawnTask.
+     */
+    async pollTaskUntilComplete(
+        agentId: string,
+        taskId: string,
+        webhook: WebhookConfig,
+        options?: { intervalMs?: number; maxAttempts?: number },
+    ): Promise<void> {
+        const intervalMs = options?.intervalMs ?? 5_000;
+        const maxAttempts = options?.maxAttempts ?? 720; // ~1 hour at 5s intervals
+
+        const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await sleep(intervalMs);
+
+            let task: Task;
+            try {
+                task = await this.getTask(agentId, taskId);
+            } catch {
+                // Gateway may be briefly unavailable — keep trying
+                continue;
+            }
+
+            if (task.status !== 'active') {
+                // Task is done (completed or paused/cancelled)
+                const payload = {
+                    type: 'task_completed',
+                    taskId,
+                    status: task.status === 'completed' ? 'success' : 'error',
+                    result: task.last_result ?? undefined,
+                    timestamp: new Date().toISOString(),
+                };
+
+                try {
+                    const res = await fetch(webhook.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...webhook.headers,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(`Webhook POST failed (${res.status}): ${text}`);
+                    }
+                } catch (e) {
+                    // Log and swallow — the task is done, nothing more we can do
+                    console.error('[nanoclaw-gateway] pollTaskUntilComplete: webhook delivery failed', e);
+                }
+                return;
+            }
+        }
+
+        console.warn('[nanoclaw-gateway] pollTaskUntilComplete: timed out waiting for task', taskId);
+    }
+
     async cancelTask(agentId: string, taskId: string): Promise<{ status: string; taskId: string }> {
         return this.request<{ status: string; taskId: string }>('DELETE', `/api/agents/${agentId}/tasks/${taskId}`);
     }
