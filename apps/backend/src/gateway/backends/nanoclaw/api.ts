@@ -107,12 +107,7 @@ export class NanoClawBackend implements GatewayBackend {
         capabilities?: string[],
     ): Promise<void> {
         try {
-            await client.createAgent({
-                jid: `tg:${Date.now()}`,
-                name,
-                folder: workspace,
-                trigger: `@${name.replace(/\\s+/g, '')}`
-            });
+            await client.createAgent({ name, workspace, model, capabilities });
         } catch (e) {
             handleNetworkError("createAgent", e);
         }
