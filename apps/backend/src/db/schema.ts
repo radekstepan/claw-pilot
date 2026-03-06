@@ -9,22 +9,22 @@ import type { WebhookConfig } from "../gateway/types.js";
 export type JobPayload =
   | { type: "chat"; data: { agentId: string; message: string } }
   | {
-      type: "task-route";
-      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
-    }
+    type: "task-route";
+    data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
+  }
   | { type: "activity-route"; data: { message: string } }
   | {
-      type: "review-reject";
-      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
-    }
+    type: "review-reject";
+    data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
+  }
   | {
-      type: "generate-config";
-      data: { requestId: string; prompt: string; model?: string };
-    }
+    type: "generate-config";
+    data: { requestId: string; prompt: string; model?: string };
+  }
   | {
-      type: "recurring-spawn";
-      data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
-    };
+    type: "recurring-spawn";
+    data: { taskId: string; agentId: string; prompt: string; webhook?: WebhookConfig };
+  };
 
 export type AiJobStatus =
   | "queued"
@@ -126,3 +126,20 @@ export const recurringTasks = sqliteTable("recurring_tasks", {
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// stream_logs
+// Persists live stdout chunks from running agent containers.
+// Separate from activities so the main log stays clean.
+// ---------------------------------------------------------------------------
+export const streamLogs = sqliteTable(
+  "stream_logs",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    chunk: text("chunk").notNull(),
+    timestamp: text("timestamp").notNull(),
+  },
+  (t) => [index("idx_stream_logs_task_id").on(t.taskId)],
+);
+

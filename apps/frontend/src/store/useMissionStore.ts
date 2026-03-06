@@ -11,6 +11,7 @@ import type {
   GeneratedAgentConfig,
 } from "@claw-pilot/shared-types";
 import { api } from "../api/client";
+import type { TaskStreamLogEntry } from "../api/client";
 
 export interface AppNotification {
   id: string;
@@ -23,6 +24,29 @@ export interface AppNotification {
 }
 
 const MAX_NOTIFICATIONS = 50;
+
+export interface StreamLogEntry extends TaskStreamLogEntry {
+  source: "stream" | "container";
+}
+
+function getStreamLogKey(entry: Pick<StreamLogEntry, "timestamp" | "chunk" | "source">): string {
+  return `${entry.source}:${entry.timestamp}:${entry.chunk}`;
+}
+
+function mergeStreamLogs(
+  existing: StreamLogEntry[],
+  incoming: StreamLogEntry[],
+): StreamLogEntry[] {
+  const merged = new Map<string, StreamLogEntry>();
+
+  for (const entry of [...existing, ...incoming]) {
+    merged.set(getStreamLogKey(entry), entry);
+  }
+
+  return Array.from(merged.values()).sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+}
 
 interface MissionState {
   tasks: Task[];
@@ -108,9 +132,11 @@ interface MissionState {
   refreshAgents: () => Promise<void>;
   // Notification Settings
   setNotificationSounds: (enabled: boolean) => void;
-  /** Live stdout stream log chunks keyed by taskId. Ephemeral — never persisted. */
-  streamLogs: Record<string, string[]>;
-  appendStreamLog: (taskId: string, chunk: string) => void;
+  /** Live stdout stream log chunks keyed by taskId. Hydrated from the backend on demand. */
+  streamLogs: Record<string, StreamLogEntry[]>;
+  appendStreamLog: (entry: StreamLogEntry) => void;
+  hydrateStreamLogs: (taskId: string, entries: StreamLogEntry[]) => void;
+  clearStreamLogs: (taskId: string) => void;
 }
 
 export const useMissionStore = create<MissionState>((set, get) => ({
@@ -119,12 +145,30 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   activities: [],
   recurringTasks: [],
   streamLogs: {},
-  appendStreamLog: (taskId, chunk) => set((state) => ({
-    streamLogs: {
-      ...state.streamLogs,
-      [taskId]: [...(state.streamLogs[taskId] ?? []), chunk],
-    },
-  })),
+  appendStreamLog: (entry) =>
+    set((state) => ({
+      streamLogs: {
+        ...state.streamLogs,
+        [entry.taskId]: mergeStreamLogs(
+          state.streamLogs[entry.taskId] ?? [],
+          [entry],
+        ),
+      },
+    })),
+  hydrateStreamLogs: (taskId, entries) =>
+    set((state) => ({
+      streamLogs: {
+        ...state.streamLogs,
+        [taskId]: mergeStreamLogs(state.streamLogs[taskId] ?? [], entries),
+      },
+    })),
+  clearStreamLogs: (taskId) =>
+    set((state) => ({
+      streamLogs: {
+        ...state.streamLogs,
+        [taskId]: [],
+      },
+    })),
   isLoading: false,
   error: null,
   isSocketConnected: false,
@@ -418,7 +462,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   },
 
   routeTask: async (taskId: string, agentId: string, prompt?: string) => {
-    const { tasks, updateTaskLocally } = get();
+    const { tasks, updateTaskLocally, clearStreamLogs } = get();
     const snapshot = tasks.find((t) => t.id === taskId);
     if (!snapshot) return;
     // Mark in-flight
@@ -431,6 +475,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       });
     // Optimistic update: mark as ASSIGNED with the chosen agent
     updateTaskLocally({ ...snapshot, agentId, status: "ASSIGNED" });
+    clearStreamLogs(taskId);
     try {
       await api.routeTask(taskId, agentId, prompt);
       toast.success("Task dispatched to agent.");

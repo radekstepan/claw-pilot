@@ -270,3 +270,16 @@ export class NanoClawBackend implements GatewayBackend {
         }
     }
 }
+
+/**
+ * Fetch the raw container log for a NanoClaw WS session.
+ * The sessionId is the part after "ws:" in the JID — e.g. "task:UUID".
+ * Returns null if the gateway is offline or the session/log doesn't exist.
+ */
+export async function getContainerLog(sessionId: string, lines = 500): Promise<string | null> {
+    try {
+        return await client.getSessionLogs(sessionId, lines);
+    } catch {
+        return null;
+    }
+}

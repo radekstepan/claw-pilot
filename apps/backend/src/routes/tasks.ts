@@ -3,6 +3,7 @@ import {
   db,
   tasks as tasksTable,
   activities as activitiesTable,
+  streamLogs as streamLogsTable,
   notArchived,
 } from "../db/index.js";
 import { eq, count, desc, and, lt, inArray } from "drizzle-orm";
@@ -24,6 +25,7 @@ import { env } from "../config/env.js";
 import { z } from "zod";
 import { enqueueAiJob, AI_PRIORITY_NORMAL } from "../services/aiQueue.js";
 import { validateTransition } from "../services/taskLifecycle.js";
+import { getContainerLog } from "../gateway/backends/nanoclaw/api.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -70,6 +72,13 @@ function activityRowToLog(row: {
     timestamp: row.timestamp,
     taskStatus: row.taskStatus as ActivityLog["taskStatus"],
   };
+}
+
+function isMissingStreamLogsTableError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("no such table: stream_logs")
+  );
 }
 
 const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
@@ -450,6 +459,48 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     return reply.send(activities);
   });
 
+  // GET /api/tasks/:id/stream-log — persisted stdout stream chunks, oldest first
+  fastify.get("/:id/stream-log", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const rows = db
+        .select()
+        .from(streamLogsTable)
+        .where(eq(streamLogsTable.taskId, id))
+        .orderBy(streamLogsTable.timestamp)
+        .all();
+      return reply.send(
+        rows.map((r) => ({
+          id: r.id,
+          taskId: r.taskId,
+          chunk: r.chunk,
+          timestamp: r.timestamp,
+        })),
+      );
+    } catch (error) {
+      if (isMissingStreamLogsTableError(error)) {
+        fastify.log.warn(
+          "[tasks] stream_logs table missing; returning empty stream history",
+        );
+        return reply.send([]);
+      }
+      throw error;
+    }
+  });
+
+  // GET /api/tasks/:id/container-log — raw NanoClaw container stdout, proxied from gateway
+  // The WS session JID for task routes is `ws:task:<taskId>`, so sessionId = `task:<taskId>`.
+  fastify.get("/:id/container-log", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const lines = parseInt((request.query as any)?.lines ?? '500');
+    const sessionId = `task:${id}`;
+    const log = await getContainerLog(sessionId, lines);
+    if (log === null) {
+      return reply.status(404).send({ error: 'Container log not available (gateway offline or session not found)' });
+    }
+    return reply.type('text/plain').send(log);
+  });
+
   // POST /api/tasks/:id/route — dispatch a task to an AI agent via spawnTaskSession
   const RouteTaskSchema = z.object({
     agentId: z.string(),
@@ -483,6 +534,14 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       }
 
       const now = new Date().toISOString();
+
+      try {
+        db.delete(streamLogsTable).where(eq(streamLogsTable.taskId, id)).run();
+      } catch (error) {
+        if (!isMissingStreamLogsTableError(error)) {
+          throw error;
+        }
+      }
 
       // Persist agentId + ASSIGNED status synchronously before returning
       const updatedRow = db
@@ -697,6 +756,14 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
           url: callbackUrl,
           headers: { Authorization: `Bearer ${env.API_KEY}` }
         };
+
+        try {
+          db.delete(streamLogsTable).where(eq(streamLogsTable.taskId, id)).run();
+        } catch (error) {
+          if (!isMissingStreamLogsTableError(error)) {
+            throw error;
+          }
+        }
 
         // Fetch the prior activity log (chronological order) so the agent
         // knows what it did in the previous attempt.

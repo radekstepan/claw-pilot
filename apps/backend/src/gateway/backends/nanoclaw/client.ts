@@ -169,6 +169,22 @@ export class NanoClawClient {
         return this.request<Agent[]>('GET', '/api/agents');
     }
 
+    /** Fetch the last `lines` lines of the most recent container log for a WS session.
+     *  Returns the raw log text, or null if NanoClaw couldn't find it (404). */
+    async getSessionLogs(sessionId: string, lines = 500): Promise<string | null> {
+        const headers: Record<string, string> = { 'Accept': 'text/plain' };
+        if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+        try {
+            const res = await fetch(`${this.baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/logs?lines=${lines}`, { headers });
+            if (res.status === 404) return null;
+            if (!res.ok) throw new Error(`NanoClaw container log error (${res.status}): ${await res.text()}`);
+            return res.text();
+        } catch (err) {
+            if (err instanceof Error && err.name === 'TypeError') return null; // gateway offline
+            throw err;
+        }
+    }
+
     async createAgent(data: ClawPilotAgentInput | NanoClawAgentData): Promise<Agent> {
         const translated = translateAgentInput(data);
         return this.request<Agent>('POST', '/api/agents', translated);

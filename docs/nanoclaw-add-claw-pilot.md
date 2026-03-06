@@ -471,6 +471,44 @@ curl http://localhost:8080/api/health
 ss -tlnp | grep 8081
 \`\`\`
 
+## Container Log Retrieval (for Claw-Pilot oversight)
+
+Add a route to `src/gateway/server.ts` so Claw-Pilot can fetch raw container logs for any session, even after the WS connection has closed:
+
+\`\`\`ts
+// GET /api/sessions/:sessionId/logs?lines=500
+// Returns the last N lines of the most recent container log file for a session.
+app.get('/api/sessions/:sessionId/logs', authenticate, async (req, res) => {
+  const { sessionId } = req.params as { sessionId: string };
+  const lines = parseInt((req.query as any).lines ?? '500');
+
+  // Map sessionId back to a group folder.
+  // WS sessions arrive as 'task:UUID' or bare UUIDs. Check both.
+  const groups = getRegisteredGroups();
+  const jid = `ws:${sessionId}`;
+  const group = groups[jid] ?? Object.values(groups).find(g => g.folder === sessionId);
+  if (!group) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  const logsDir = path.join(process.cwd(), 'groups', group.folder, 'logs');
+  try {
+    const files = (await fs.readdir(logsDir))
+      .filter(f => f.startsWith('container-') && f.endsWith('.log'))
+      .sort()
+      .reverse();
+    if (!files.length) return res.status(404).json({ error: 'No container logs found' });
+
+    const logPath = path.join(logsDir, files[0]);
+    const content = await fs.readFile(logPath, 'utf8');
+    const tail = content.split('\n').slice(-lines).join('\n');
+    return res.type('text/plain').send(tail);
+  } catch {
+    return res.status(404).json({ error: 'Log file not accessible' });
+  }
+});
+\`\`\`
+
 Apply these changes now.
 ````
 

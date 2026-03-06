@@ -12,9 +12,9 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:generate": "node --import tsx ../../node_modules/drizzle-kit/bin.cjs generate --config=drizzle.config.ts",
+    "db:migrate": "node --import tsx ../../node_modules/drizzle-kit/bin.cjs migrate --config=drizzle.config.ts",
+    "db:studio": "node --import tsx ../../node_modules/drizzle-kit/bin.cjs studio --config=drizzle.config.ts"
   },
   "dependencies": {
     "@claw-pilot/shared-types": "*",

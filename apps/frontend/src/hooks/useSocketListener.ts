@@ -105,7 +105,13 @@ export function useSocketListener() {
     socket.on("activity_added", (activity) => {
       console.log("Socket event: activity_added", activity);
       if (activity.type === "stream") {
-        useMissionStore.getState().appendStreamLog(activity.taskId, activity.message);
+        useMissionStore.getState().appendStreamLog({
+          id: activity.id,
+          taskId: activity.taskId,
+          chunk: activity.message,
+          timestamp: activity.timestamp,
+          source: "stream",
+        });
       } else {
         useMissionStore.setState((state) => ({
           activities: [activity, ...state.activities],

@@ -35,6 +35,7 @@ import { Select } from "../ui/Select";
 import { EmptyState } from "../ui/EmptyState";
 import { MarkdownContent } from "../ui/MarkdownContent";
 import { generateAvatarUrl } from "../../utils/avatar";
+import type { StreamLogEntry } from "../../store/useMissionStore";
 
 const updateFormSchema = z.object({
   title: z.string().min(1, "Title cannot be empty."),
@@ -68,6 +69,24 @@ function plainPreview(msg: string, maxLen = 160): string {
     .replace(/```[\s\S]*?```/g, "[code block]")
     .replace(/\n+/g, " ")
     .slice(0, maxLen);
+}
+
+function formatLogTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function normalizeContainerLog(taskId: string, chunk: string): StreamLogEntry {
+  return {
+    id: `container-${taskId}`,
+    taskId,
+    chunk,
+    timestamp: new Date().toISOString(),
+    source: "container",
+  };
 }
 
 interface ActivityEntryProps {
@@ -244,6 +263,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     deleteTask,
     toggleDeliverable,
     routeTask,
+    hydrateStreamLogs,
   } = useMissionStore();
 
   const storeActivities = useMissionStore((state) => state.activities);
@@ -263,7 +283,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
   const logEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [taskStreamLogs.length]);
+  }, [taskStreamLogs.at(-1)?.id]);
 
   useEffect(() => {
     if (!task) return;
@@ -273,7 +293,30 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
       .then(setTaskActivities)
       .catch(() => setTaskActivities([]))
       .finally(() => setActivitiesLoading(false));
-  }, [task?.id]);
+
+    // Seed the live log pane with any stream chunks already persisted to DB
+    // (covers: re-opening a modal, browser refresh, tasks that ran before this session)
+    api.getTaskStreamLog(task.id)
+      .then(async (rows) => {
+        if (rows.length > 0) {
+          hydrateStreamLogs(
+            task.id,
+            rows.map((row) => ({ ...row, source: "stream" as const })),
+          );
+          return;
+        }
+
+        if (!["IN_PROGRESS", "STUCK", "REVIEW"].includes(task.status)) {
+          return;
+        }
+
+        const log = await api.getTaskContainerLog(task.id, 1000);
+        if (log) {
+          hydrateStreamLogs(task.id, [normalizeContainerLog(task.id, log)]);
+        }
+      })
+      .catch(() => { /* ignore — stream log is best-effort */ });
+  }, [hydrateStreamLogs, task?.id, task?.status]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -809,27 +852,61 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                 )}
               </section>
 
-              {/* Live Log — only shown when stream chunks have arrived */}
-              {taskStreamLogs.length > 0 && (
+              {/* Live Log — shown for running/stuck tasks and whenever stream chunks exist */}
+              {(taskStreamLogs.length > 0 || task.status === "IN_PROGRESS" || task.status === "STUCK") && (
                 <section className="mb-8">
                   <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
                     <Terminal size={10} className="opacity-70" />
-                    Live Output
-                    <span className="ml-auto text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
-                      {taskStreamLogs.length} chunk{taskStreamLogs.length !== 1 ? "s" : ""}
-                    </span>
+                    Agent Output
+                    {taskStreamLogs.length > 0 && (
+                      <span className="ml-1 text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
+                        ({taskStreamLogs.length} update{taskStreamLogs.length !== 1 ? "s" : ""})
+                      </span>
+                    )}
+                    {taskStreamLogs.length > 0 && (
+                      <span className="ml-auto text-[9px] normal-case tracking-normal font-normal text-slate-500 dark:text-slate-600">
+                        Persists across reloads
+                      </span>
+                    )}
                   </h3>
                   <div className="relative rounded border border-black/[0.06] dark:border-white/[0.06] bg-slate-950 dark:bg-black/40 overflow-hidden">
-                    <pre
-                      className="text-[10.5px] leading-relaxed font-mono text-emerald-400 dark:text-emerald-300 p-3 overflow-y-auto"
-                      style={{ maxHeight: "260px", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-                    >
-                      {taskStreamLogs.join("")}
-                      <div ref={logEndRef} />
-                    </pre>
+                    {taskStreamLogs.length === 0 ? (
+                      <p className="text-[10px] font-mono text-slate-600 p-3 italic">
+                        No agent output captured yet.
+                      </p>
+                    ) : (
+                      <div
+                        className="overflow-y-auto"
+                        style={{ maxHeight: "260px" }}
+                      >
+                        {taskStreamLogs.map((entry) => (
+                          <div
+                            key={`${entry.source}-${entry.timestamp}-${entry.id}`}
+                            className="border-b border-white/5 last:border-b-0"
+                          >
+                            <div className="flex items-center justify-between gap-3 px-3 pt-3 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-600">
+                              <span>{formatLogTime(entry.timestamp)}</span>
+                              <span>
+                                {entry.source === "container"
+                                  ? "container backfill"
+                                  : "live stream"}
+                              </span>
+                            </div>
+                            <pre
+                              className="text-[10.5px] leading-relaxed font-mono text-emerald-400 dark:text-emerald-300 px-3 pb-3 overflow-x-auto"
+                              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                            >
+                              {entry.chunk}
+                            </pre>
+                          </div>
+                        ))}
+                        <div ref={logEndRef} />
+                      </div>
+                    )}
                   </div>
                 </section>
               )}
+
 
               {/* Deliverables */}
               <section className="mb-8">

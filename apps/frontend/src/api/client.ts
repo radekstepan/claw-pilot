@@ -33,6 +33,13 @@ export interface GatewayStatus {
   instructions?: string;
 }
 
+export interface TaskStreamLogEntry {
+  id: string;
+  taskId: string;
+  chunk: string;
+  timestamp: string;
+}
+
 const API_BASE_URL = `${env.VITE_API_URL}/api`;
 
 const apiClient = axios.create({
@@ -110,6 +117,25 @@ export const api = {
   getTaskActivities: async (taskId: string): Promise<ActivityLog[]> => {
     const response = await apiClient.get(`/tasks/${taskId}/activities`);
     return response.data;
+  },
+  getTaskStreamLog: async (taskId: string): Promise<TaskStreamLogEntry[]> => {
+    try {
+      const response = await apiClient.get(`/tasks/${taskId}/stream-log`);
+      return response.data;
+    } catch {
+      return [];
+    }
+  },
+  getTaskContainerLog: async (taskId: string, lines = 500): Promise<string | null> => {
+    try {
+      const response = await apiClient.get(`/tasks/${taskId}/container-log`, {
+        params: { lines },
+        responseType: 'text',
+      });
+      return response.data as string;
+    } catch {
+      return null;
+    }
   },
 
   // Deliverables

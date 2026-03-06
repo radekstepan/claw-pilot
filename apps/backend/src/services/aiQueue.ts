@@ -21,6 +21,7 @@ import {
   chatMessages as chatTable,
   tasks as tasksTable,
   activities as activitiesTable,
+  streamLogs,
 } from "../db/index.js";
 import type { JobPayload } from "../db/schema.js";
 import type { Task } from "@claw-pilot/shared-types";
@@ -30,6 +31,13 @@ import { markTaskStuck } from "./taskLifecycle.js";
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_MULTIPLIER = 2;
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
+
+function isMissingStreamLogsTableError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("no such table: stream_logs")
+  );
+}
 
 function calculateBackoff(attempts: number): number {
   const delay = BACKOFF_BASE_MS * Math.pow(BACKOFF_MULTIPLIER, attempts - 1);
@@ -225,6 +233,20 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
 
         const onStream = (chunk: string) => {
           const now = new Date().toISOString();
+          // Persist to DB for post-mortem inspection and modal reload
+          try {
+            db.insert(streamLogs)
+              .values({ id: randomUUID(), taskId, chunk, timestamp: now })
+              .run();
+          } catch (error) {
+            if (!isMissingStreamLogsTableError(error)) {
+              throw error;
+            }
+            fastifyInstance?.log.warn(
+              "[aiQueue] stream_logs table missing; skipping stream persistence",
+            );
+          }
+          // Emit live to any connected browser
           fastifyInstance?.io?.emit("activity_added", {
             id: `stream-${Date.now()}-${Math.random()}`,
             taskId,
