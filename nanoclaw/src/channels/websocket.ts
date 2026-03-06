@@ -2,11 +2,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
+import { logger } from '../logger.js';
 
 export class WebSocketChannel implements Channel {
   name = 'websocket';
   private wss: WebSocketServer | null = null;
   private connections = new Map<string, WebSocket>();
+  private pingIntervals = new Map<string, NodeJS.Timeout>();
   private opts!: ChannelOpts;
   private port: number;
 
@@ -23,6 +25,15 @@ export class WebSocketChannel implements Channel {
       const jid = `ws:${sessionId}`;
 
       this.connections.set(sessionId, ws);
+
+      // Setup ping interval to keep connection alive
+      const pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.ping();
+        }
+      }, 30000); // 30 seconds
+      this.pingIntervals.set(sessionId, pingInterval);
+
       ws.on('message', (data: Buffer) => {
         try {
           const payload = JSON.parse(data.toString());
@@ -41,8 +52,19 @@ export class WebSocketChannel implements Channel {
         }
       });
 
-      ws.on('close', () => this.connections.delete(sessionId));
-      ws.on('error', () => this.connections.delete(sessionId));
+      const cleanup = () => {
+        if (this.connections.get(sessionId) === ws) {
+          this.connections.delete(sessionId);
+          const interval = this.pingIntervals.get(sessionId);
+          if (interval) {
+            clearInterval(interval);
+            this.pingIntervals.delete(sessionId);
+          }
+        }
+      };
+
+      ws.on('close', cleanup);
+      ws.on('error', cleanup);
     });
   }
 
@@ -52,6 +74,8 @@ export class WebSocketChannel implements Channel {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ response: text, status: 'done' }));
+    } else {
+      logger.error({ jid }, '[WS] Failed to deliver response: connection closed or missing');
     }
   }
 
@@ -59,12 +83,18 @@ export class WebSocketChannel implements Channel {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ status: 'error', error }));
+    } else {
+      logger.error({ jid, error }, '[WS] Failed to deliver error: connection closed or missing');
     }
   }
 
   isConnected(): boolean { return this.wss !== null; }
   async disconnect(): Promise<void> {
     if (this.wss) {
+      for (const interval of this.pingIntervals.values()) {
+        clearInterval(interval);
+      }
+      this.pingIntervals.clear();
       for (const ws of this.connections.values()) ws.close();
       this.connections.clear();
     }

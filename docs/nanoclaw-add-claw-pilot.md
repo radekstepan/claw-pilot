@@ -42,11 +42,26 @@ export function getRegisteredGroups(): Record<string, RegisteredGroup> {
 export { registerGroup };
 \`\`\`
 - And somewhere near the end, import and call `startGateway()`:
-\`\`\`ts
+```ts
+import { registerGroup } from './index.js';
 import { startGateway } from './gateway/server.js';
 // ...
+  // Register gateway_main agent for Claw-Pilot integration if not already registered
+  const groups = getRegisteredGroups();
+  const gatewayMainJid = 'gateway:main';
+  if (!groups[gatewayMainJid]) {
+    registerGroup(gatewayMainJid, {
+      name: 'Gateway Main Agent',
+      folder: 'gateway_main',
+      trigger: '@Agent',
+      added_at: new Date().toISOString(),
+      requiresTrigger: false,
+      isMain: false,
+    });
+  }
+
 startGateway();
-\`\`\`
+```
 
 3. Create `src/gateway/server.ts`:
 \`\`\`ts
@@ -218,11 +233,13 @@ import { registerChannel, ChannelOpts } from './registry.js';
 import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
 import { getRegisteredGroups, registerGroup } from '../index.js';
+import { logger } from '../logger.js';
 
 export class WebSocketChannel implements Channel {
   name = 'websocket';
   private wss: WebSocketServer | null = null;
   private connections = new Map<string, WebSocket>();
+  private pingIntervals = new Map<string, NodeJS.Timeout>();
   private opts!: ChannelOpts;
   private port: number;
 
@@ -264,6 +281,15 @@ export class WebSocketChannel implements Channel {
       }
 
       this.connections.set(sessionId, ws);
+
+      // Set up ping to keep connection alive
+      const pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.ping();
+        }
+      }, 30000);
+      this.pingIntervals.set(sessionId, pingInterval);
+
       ws.on('message', (data: Buffer) => {
         try {
           const payload = JSON.parse(data.toString());
@@ -284,8 +310,20 @@ export class WebSocketChannel implements Channel {
         }
       });
 
-      ws.on('close', () => this.connections.delete(sessionId));
-      ws.on('error', () => this.connections.delete(sessionId));
+      const cleanup = () => {
+        // Only delete if this specific socket is still the one in the map
+        if (this.connections.get(sessionId) === ws) {
+          this.connections.delete(sessionId);
+          const interval = this.pingIntervals.get(sessionId);
+          if (interval) {
+            clearInterval(interval);
+            this.pingIntervals.delete(sessionId);
+          }
+        }
+      };
+
+      ws.on('close', cleanup);
+      ws.on('error', cleanup);
     });
   }
 
@@ -295,6 +333,8 @@ export class WebSocketChannel implements Channel {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ response: text, status: 'done' }));
+    } else {
+      logger.error({ jid }, '[WS] Failed to deliver response: connection closed or missing');
     }
   }
 
@@ -302,6 +342,8 @@ export class WebSocketChannel implements Channel {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ status: 'error', error }));
+    } else {
+      logger.error({ jid, error }, '[WS] Failed to deliver error: connection closed or missing');
     }
   }
 
@@ -310,6 +352,10 @@ export class WebSocketChannel implements Channel {
     if (this.wss) {
       for (const ws of this.connections.values()) ws.close();
       this.connections.clear();
+      for (const interval of this.pingIntervals.values()) {
+        clearInterval(interval);
+      }
+      this.pingIntervals.clear();
       this.wss.close();
       this.wss = null;
     }

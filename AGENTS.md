@@ -10,7 +10,13 @@ Read these rules carefully before writing or modifying any code.
 - **`apps/backend`**: Node.js, Fastify, Socket.io, **Drizzle ORM + SQLite** (`better-sqlite3`, WAL mode). The database file lives at `apps/backend/data/claw-pilot.db`. Do NOT use raw SQL strings — use the Drizzle query builder.
 - **`apps/frontend`**: React (Vite), TypeScript, TailwindCSS, Zustand.
 
-## 2. The OpenClaw Gateway Client (CRITICAL)
+## 2. Component Architecture (Where is What)
+- **Claw-Pilot**: The Mission Control frontend (React/Vite) and backend (Node/Fastify) running in a Turborepo locally (or deployed). This serves the dashboard UI, handles SQLite persistence, manages task lifecycles, and triggers the AI via RPC.
+- **NanoClaw / OpenClaw Gateway**: The background daemon (often running on a remote VPS or a separate local process) that actually spawns the AI agents inside isolated Docker containers. It orchestrates agent loops, handles tool execution, and manages WebSocket channels in real time.
+- **Skills (`nanoclaw/skills/`)**: YAML/Markdown scripts read *by NanoClaw (OpenClaw)* to enhance the agent dynamically. These run *inside the NanoClaw container orchestration layer*, not on Claw-Pilot.
+- **WebSocket (`src/channels/websocket.ts` in NanoClaw)**: The transport layer inside NanoClaw connecting external ad-hoc requests (from Claw-Pilot or other clients) into the agent's message loop in real time.
+
+## 3. The OpenClaw Gateway Client (CRITICAL)
 - **DO NOT** attempt to import an `openclaw` npm package. OpenClaw is a Python CLI tool with a **WebSocket RPC gateway**.
 - Claw-Pilot communicates with OpenClaw EXCLUSIVELY via WebSocket JSON-RPC, using the `gatewayCall` helper in `apps/backend/src/openclaw/cli.ts`.
 - **Never use `child_process` / `execFile`** to shell out to the `openclaw` binary.

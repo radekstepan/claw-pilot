@@ -292,12 +292,12 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (output.newSessionId) {
-          sessions[group.folder] = output.newSessionId;
-          setSession(group.folder, output.newSessionId);
-        }
-        await onOutput(output);
+      if (output.newSessionId) {
+        sessions[group.folder] = output.newSessionId;
+        setSession(group.folder, output.newSessionId);
       }
+      await onOutput(output);
+    }
     : undefined;
 
   try {
@@ -466,6 +466,19 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
+  // Register gateway_main agent for Claw-Pilot integration if not already registered
+  const gatewayMainJid = 'gateway:main';
+  if (!registeredGroups[gatewayMainJid]) {
+    registerGroup(gatewayMainJid, {
+      name: 'Gateway Main Agent',
+      folder: 'gateway_main',
+      trigger: '@Agent',
+      added_at: new Date().toISOString(),
+      requiresTrigger: false,
+      isMain: false,
+    });
+  }
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
@@ -576,7 +589,7 @@ async function main(): Promise<void> {
 const isDirectRun =
   process.argv[1] &&
   new URL(import.meta.url).pathname ===
-    new URL(`file://${process.argv[1]}`).pathname;
+  new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {
