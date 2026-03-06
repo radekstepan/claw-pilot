@@ -8,18 +8,15 @@ WORKDIR /app
 # Install only the dependencies needed for the frontend build.
 COPY package.json yarn.lock turbo.json ./
 COPY packages/shared-types/package.json   ./packages/shared-types/
-COPY packages/nanoclaw-gateway/package.json ./packages/nanoclaw-gateway/
 COPY apps/frontend/package.json            ./apps/frontend/
 
 RUN yarn install --frozen-lockfile --non-interactive
 
 COPY packages/shared-types/ ./packages/shared-types/
-COPY packages/nanoclaw-gateway/ ./packages/nanoclaw-gateway/
 COPY apps/frontend/          ./apps/frontend/
 
 # Build shared-types first (frontend imports from it).
 RUN yarn workspace @claw-pilot/shared-types build 2>/dev/null || true
-RUN yarn workspace @claw-pilot/nanoclaw-gateway build 2>/dev/null || true
 RUN yarn workspace frontend build
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -31,17 +28,14 @@ WORKDIR /app
 
 COPY package.json yarn.lock turbo.json ./
 COPY packages/shared-types/package.json   ./packages/shared-types/
-COPY packages/nanoclaw-gateway/package.json ./packages/nanoclaw-gateway/
 COPY apps/backend/package.json             ./apps/backend/
 
 RUN yarn install --frozen-lockfile --non-interactive
 
 COPY packages/shared-types/ ./packages/shared-types/
-COPY packages/nanoclaw-gateway/ ./packages/nanoclaw-gateway/
 COPY apps/backend/           ./apps/backend/
 
 RUN yarn workspace @claw-pilot/shared-types build 2>/dev/null || true
-RUN yarn workspace @claw-pilot/nanoclaw-gateway build 2>/dev/null || true
 RUN yarn workspace backend build
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,7 +48,6 @@ WORKDIR /app
 # Install only production dependencies.
 COPY package.json yarn.lock turbo.json ./
 COPY packages/shared-types/package.json   ./packages/shared-types/
-COPY packages/nanoclaw-gateway/package.json ./packages/nanoclaw-gateway/
 COPY apps/backend/package.json             ./apps/backend/
 
 RUN yarn install --frozen-lockfile --non-interactive --production
@@ -62,7 +55,6 @@ RUN yarn install --frozen-lockfile --non-interactive --production
 # Copy compiled backend.
 COPY --from=backend-builder  /app/apps/backend/dist   ./apps/backend/dist
 COPY --from=backend-builder  /app/packages/shared-types/dist ./packages/shared-types/dist
-COPY --from=backend-builder  /app/packages/nanoclaw-gateway/dist ./packages/nanoclaw-gateway/dist
 
 # Copy compiled frontend into the path that @fastify/static expects.
 # apps/backend/dist/index.js resolves __dirname to apps/backend/dist/,

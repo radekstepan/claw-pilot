@@ -34,8 +34,8 @@ vi.mock('../../../config/env.js', () => ({
     },
 }));
 
-// Mock the NanoClawClient and NanoClawChannelClient
-vi.mock('@claw-pilot/nanoclaw-gateway', () => {
+// Mock the internal NanoClawClient and NanoClawChannelClient
+vi.mock('./client.js', () => {
     return {
         NanoClawClient: vi.fn(() => mockClientInstance),
         NanoClawChannelClient: vi.fn(() => mockChannelInstance),

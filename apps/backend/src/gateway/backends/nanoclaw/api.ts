@@ -1,8 +1,8 @@
 import type { Agent } from "@claw-pilot/shared-types";
 import type { GatewayBackend, LiveSession, WebhookConfig } from "../../types.js";
 import { env } from "../../../config/env.js";
-import { NanoClawClient, NanoClawChannelClient } from "@claw-pilot/nanoclaw-gateway";
-import type { ChannelResponse } from "@claw-pilot/nanoclaw-gateway";
+import { NanoClawClient, NanoClawChannelClient } from "./client.js";
+import type { ChannelResponse } from "./client.js";
 import { GatewayOfflineError, GatewayPairingRequiredError } from "../../errors.js";
 
 // GATEWAY_URL → NanoClaw's HTTP API (agents, sessions, files, models)
