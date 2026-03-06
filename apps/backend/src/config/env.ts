@@ -79,7 +79,7 @@ const EnvSchema = z
     GATEWAY_WS_TIMEOUT: z.coerce.number().int().positive().default(15_000),
 
     /** Timeout (ms) for heavy AI gateway calls (chat routing, session spawn, agent generation). */
-    GATEWAY_AI_TIMEOUT: z.coerce.number().int().positive().default(120_000),
+    GATEWAY_AI_TIMEOUT: z.coerce.number().int().positive().default(1_800_000),
 
     /**
      * Path to the device identity file (Ed25519 key pair + deviceToken).

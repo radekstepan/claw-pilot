@@ -29,7 +29,7 @@ vi.mock('../../../config/env.js', () => ({
     env: {
         GATEWAY_URL: 'http://localhost:8080',
         GATEWAY_TOKEN: 'test-token',
-        GATEWAY_AI_TIMEOUT: 120_000,
+        GATEWAY_AI_TIMEOUT: 1_800_000,
         NANOCLAW_WS_URL: 'ws://localhost:9090',
     },
 }));
@@ -114,7 +114,7 @@ describe('NanoClawBackend Adapter', () => {
 
         await backend.spawnTaskSession('agent1', 'task1', 'prompt');
 
-        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'task:task1', 'prompt', 120_000);
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'task:task1', 'prompt', 1_800_000);
     });
 
     it('should route chat via WS channel', async () => {
@@ -122,7 +122,7 @@ describe('NanoClawBackend Adapter', () => {
 
         const result = await backend.routeChatToAgent('agent1', 'hello');
 
-        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'chat:agent1', 'hello', 120_000);
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'chat:agent1', 'hello', 1_800_000);
         expect(result).toEqual({ message: 'hello back' });
     });
 

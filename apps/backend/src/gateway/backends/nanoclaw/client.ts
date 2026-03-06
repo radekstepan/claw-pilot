@@ -274,7 +274,7 @@ export class NanoClawChannelClient {
         agentId: string,
         sessionId: string,
         task: string,
-        timeoutMs = 120_000,
+        timeoutMs = 1_800_000,
     ): Promise<ChannelResponse> {
         if (this.pending.has(sessionId)) {
             throw new Error(`Session '${sessionId}' already has a pending request`);
