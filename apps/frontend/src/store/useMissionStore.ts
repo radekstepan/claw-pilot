@@ -108,6 +108,9 @@ interface MissionState {
   refreshAgents: () => Promise<void>;
   // Notification Settings
   setNotificationSounds: (enabled: boolean) => void;
+  /** Live stdout stream log chunks keyed by taskId. Ephemeral — never persisted. */
+  streamLogs: Record<string, string[]>;
+  appendStreamLog: (taskId: string, chunk: string) => void;
 }
 
 export const useMissionStore = create<MissionState>((set, get) => ({
@@ -115,6 +118,13 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   agents: [],
   activities: [],
   recurringTasks: [],
+  streamLogs: {},
+  appendStreamLog: (taskId, chunk) => set((state) => ({
+    streamLogs: {
+      ...state.streamLogs,
+      [taskId]: [...(state.streamLogs[taskId] ?? []), chunk],
+    },
+  })),
   isLoading: false,
   error: null,
   isSocketConnected: false,

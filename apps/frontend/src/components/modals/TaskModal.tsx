@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -246,6 +247,8 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
   } = useMissionStore();
 
   const storeActivities = useMissionStore((state) => state.activities);
+  const streamLogs = useMissionStore((state) => state.streamLogs);
+  const taskStreamLogs = task ? (streamLogs[task.id] ?? []) : [];
 
   // Combine activities loaded from API with any that arrived live via WebSocket into the store
   const combinedActivities = [...taskActivities];
@@ -255,6 +258,12 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     }
   }
   combinedActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  // Auto-scroll the log pane to the bottom when new stream chunks arrive
+  const logEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [taskStreamLogs.length]);
 
   useEffect(() => {
     if (!task) return;
@@ -800,6 +809,29 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                 )}
               </section>
 
+              {/* Live Log — only shown when stream chunks have arrived */}
+              {taskStreamLogs.length > 0 && (
+                <section className="mb-8">
+                  <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
+                    <Terminal size={10} className="opacity-70" />
+                    Live Output
+                    <span className="ml-auto text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
+                      {taskStreamLogs.length} chunk{taskStreamLogs.length !== 1 ? "s" : ""}
+                    </span>
+                  </h3>
+                  <div className="relative rounded border border-black/[0.06] dark:border-white/[0.06] bg-slate-950 dark:bg-black/40 overflow-hidden">
+                    <pre
+                      className="text-[10.5px] leading-relaxed font-mono text-emerald-400 dark:text-emerald-300 p-3 overflow-y-auto"
+                      style={{ maxHeight: "260px", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+                    >
+                      {taskStreamLogs.join("")}
+                      <div ref={logEndRef} />
+                    </pre>
+                  </div>
+                </section>
+              )}
+
+              {/* Deliverables */}
               <section className="mb-8">
                 <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">
                   Deliverables

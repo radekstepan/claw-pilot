@@ -225,25 +225,14 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
 
         const onStream = (chunk: string) => {
           const now = new Date().toISOString();
-          const activityId = randomUUID();
-
-          db.insert(activitiesTable)
-            .values({
-              id: activityId,
-              taskId,
-              agentId: taskAgentId,
-              message: chunk,
-              timestamp: now,
-            })
-            .run();
-
           fastifyInstance?.io?.emit("activity_added", {
-            id: activityId,
+            id: `stream-${Date.now()}-${Math.random()}`,
             taskId,
             agentId: taskAgentId,
             message: chunk,
             timestamp: now,
             taskStatus: "IN_PROGRESS",
+            type: "stream",
           });
         };
 

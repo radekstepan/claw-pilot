@@ -108,6 +108,7 @@ export const ActivityLogSchema = z.object({
   message: z.string(),
   timestamp: z.string(),
   taskStatus: TaskStatusEnum.optional(),
+  type: z.enum(["stream", "log"]).optional(),
 });
 export type ActivityLog = z.infer<typeof ActivityLogSchema>;
 

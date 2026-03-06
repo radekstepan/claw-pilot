@@ -104,9 +104,13 @@ export function useSocketListener() {
 
     socket.on("activity_added", (activity) => {
       console.log("Socket event: activity_added", activity);
-      useMissionStore.setState((state) => ({
-        activities: [activity, ...state.activities],
-      }));
+      if (activity.type === "stream") {
+        useMissionStore.getState().appendStreamLog(activity.taskId, activity.message);
+      } else {
+        useMissionStore.setState((state) => ({
+          activities: [activity, ...state.activities],
+        }));
+      }
     });
 
     socket.on("agent_status_changed", (agent) => {
