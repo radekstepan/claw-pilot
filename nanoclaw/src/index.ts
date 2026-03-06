@@ -85,7 +85,7 @@ function saveState(): void {
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
-function registerGroup(jid: string, group: RegisteredGroup): void {
+export function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
   try {
     groupDir = resolveGroupFolderPath(group.folder);
@@ -584,3 +584,10 @@ if (isDirectRun) {
     process.exit(1);
   });
 }
+
+export function getRegisteredGroups(): Record<string, RegisteredGroup> {
+  return registeredGroups;
+}
+
+import { startGateway } from './gateway/server.js';
+startGateway();

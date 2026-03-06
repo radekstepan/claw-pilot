@@ -114,7 +114,7 @@ describe('NanoClawBackend Adapter', () => {
 
         await backend.spawnTaskSession('agent1', 'task1', 'prompt');
 
-        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('task:task1', 'prompt', 120_000);
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'task:task1', 'prompt', 120_000);
     });
 
     it('should route chat via WS channel', async () => {
@@ -122,7 +122,7 @@ describe('NanoClawBackend Adapter', () => {
 
         const result = await backend.routeChatToAgent('agent1', 'hello');
 
-        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('chat:agent1', 'hello', 120_000);
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('agent1', 'chat:agent1', 'hello', 120_000);
         expect(result).toEqual({ message: 'hello back' });
     });
 

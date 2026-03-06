@@ -271,6 +271,7 @@ export class NanoClawChannelClient {
     }
 
     async sendTask(
+        agentId: string,
         sessionId: string,
         task: string,
         timeoutMs = 120_000,
@@ -279,7 +280,7 @@ export class NanoClawChannelClient {
             throw new Error(`Session '${sessionId}' already has a pending request`);
         }
 
-        const ws = await this.getOrCreateConnection(sessionId);
+        const ws = await this.getOrCreateConnection(sessionId, agentId);
 
         return new Promise<ChannelResponse>((resolve, reject) => {
             const timer = setTimeout(() => {
@@ -289,11 +290,11 @@ export class NanoClawChannelClient {
 
             this.pending.set(sessionId, { resolve, reject, timer });
 
-            ws.send(JSON.stringify({ task, sessionId }));
+            ws.send(JSON.stringify({ task, sessionId, agentId }));
         });
     }
 
-    private getOrCreateConnection(sessionId: string): Promise<WebSocket> {
+    private getOrCreateConnection(sessionId: string, agentId?: string): Promise<WebSocket> {
         const existing = this.connections.get(sessionId);
         if (existing && existing.readyState === WebSocket.OPEN) {
             return Promise.resolve(existing);
@@ -305,9 +306,11 @@ export class NanoClawChannelClient {
         }
 
         return new Promise<WebSocket>((resolve, reject) => {
-            const url = this.token
-                ? `${this.wsUrl}?session=${sessionId}&token=${this.token}`
-                : `${this.wsUrl}?session=${sessionId}`;
+            const parsedUrl = new URL(this.wsUrl);
+            parsedUrl.searchParams.set('session', sessionId);
+            if (this.token) parsedUrl.searchParams.set('token', this.token);
+            if (agentId) parsedUrl.searchParams.set('agentId', agentId);
+            const url = parsedUrl.toString();
             const ws = new WebSocket(url);
 
             ws.on('open', () => {

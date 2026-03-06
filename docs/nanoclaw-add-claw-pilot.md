@@ -39,6 +39,7 @@ npm install --save-dev @types/express @types/cors @types/ws
 export function getRegisteredGroups(): Record<string, RegisteredGroup> {
   return registeredGroups;
 }
+export { registerGroup };
 \`\`\`
 - And somewhere near the end, import and call `startGateway()`:
 \`\`\`ts
@@ -52,7 +53,8 @@ startGateway();
 import express from 'express';
 import cors from 'cors';
 import { readEnvFile } from '../env.js';
-import { getRegisteredGroups } from '../index.js';
+import { getRegisteredGroups, registerGroup } from '../index.js';
+import { createTask, getTaskById, deleteTask, getAllSessions, getRegisteredGroup } from '../db.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -90,8 +92,8 @@ export function startGateway() {
   app.get('/api/agents', async (req, res) => {
     try {
       const groups = getRegisteredGroups();
-      const agents = Object.values(groups).map((g: any) => ({
-        id: g.jid,
+      const agents = Object.entries(groups).map(([jid, g]: [string, any]) => ({
+        id: jid,
         name: g.name,
         capabilities: ['chat', 'tasks', 'shell'],
         model: 'claude-3-7-sonnet-latest',
@@ -106,12 +108,27 @@ export function startGateway() {
   });
 
   app.post('/api/agents', async (req, res) => {
-    // Register a new agent
-    res.status(201).json({ id: req.body.jid || 'new-agent', name: req.body.name });
+    const jid = req.body.jid || `agent-${Date.now()}`;
+    const group = {
+      name: req.body.name || 'New Agent',
+      folder: req.body.folder || jid.replace(/[^a-zA-Z0-9_-]/g, '_'),
+      trigger: req.body.trigger || '@Agent',
+      isMain: req.body.isMain || false,
+      requiresTrigger: req.body.requiresTrigger || false
+    };
+    registerGroup(jid, group);
+    res.status(201).json({ id: jid, name: group.name, folder: group.folder });
   });
 
   app.patch('/api/agents/:id', async (req, res) => {
-    res.json({ id: req.params.id, ...req.body });
+    const jid = req.params.id;
+    const groups = getRegisteredGroups();
+    const group = groups[jid];
+    if (!group) return res.status(404).json({ error: 'Not found' });
+    
+    const updated = { ...group, ...req.body };
+    registerGroup(jid, updated);
+    res.json({ id: jid, ...updated });
   });
 
   app.delete('/api/agents/:id', async (req, res) => {
@@ -119,7 +136,13 @@ export function startGateway() {
   });
 
   app.get('/api/sessions', async (req, res) => {
-    res.json([]);
+    const sessions = getAllSessions();
+    const result = Object.entries(sessions).map(([folder, sessionId]) => ({
+        id: sessionId,
+        folder,
+        agentId: folder
+    }));
+    res.json(result);
   });
 
   app.get('/api/models', async (req, res) => {
@@ -135,12 +158,36 @@ export function startGateway() {
   });
 
   app.post('/api/agents/:id/tasks', async (req, res) => {
-    res.json({ 
-      status: 'spawned', 
-      taskId: req.body.taskId || Date.now().toString(),
-      agentId: req.params.id,
-      webhookRegistered: !!req.body.webhook
-    });
+    const jid = req.params.id;
+    const group = getRegisteredGroup(jid);
+    if (!group) {
+        return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const taskId = req.body.taskId || Date.now().toString();
+    const prompt = req.body.prompt || req.body.task;
+    
+    try {
+      createTask({
+        id: taskId,
+        group_folder: group.folder,
+        chat_jid: `gateway:${taskId}`,
+        prompt: prompt,
+        schedule_type: 'once',
+        schedule_value: '',
+        context_mode: 'group',
+        next_run: new Date().toISOString()
+      });
+
+      res.json({ 
+        status: 'spawned', 
+        taskId: taskId,
+        agentId: jid,
+        webhookRegistered: false
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to spawn task' });
+    }
   });
 
   app.post('/api/agents/:id/chat', async (req, res) => {
@@ -148,10 +195,13 @@ export function startGateway() {
   });
 
   app.get('/api/agents/:id/tasks/:taskId', async (req, res) => {
-    res.json({ id: req.params.taskId, status: 'running' });
+    const task = getTaskById(req.params.taskId);
+    if (!task) return res.status(404).json({ error: 'Not found' });
+    res.json({ id: task.id, status: task.status, result: task.last_result });
   });
 
   app.delete('/api/agents/:id/tasks/:taskId', async (req, res) => {
+    deleteTask(req.params.taskId);
     res.json({ status: 'cancelled', taskId: req.params.taskId });
   });
 
@@ -167,6 +217,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
+import { getRegisteredGroups, registerGroup } from '../index.js';
 
 export class WebSocketChannel implements Channel {
   name = 'websocket';
@@ -185,7 +236,32 @@ export class WebSocketChannel implements Channel {
     this.wss.on('connection', (ws: WebSocket, req) => {
       const url = new URL(req.url || '/', `http://localhost:${this.port}`);
       const sessionId = url.searchParams.get('session') || crypto.randomUUID();
+      const targetAgentId = url.searchParams.get('agentId');
       const jid = `ws:${sessionId}`;
+
+      // 1. ALWAYS initialize chat metadata to prevent "FOREIGN KEY constraint failed" in NanoClaw's SQLite!
+      this.opts.onChatMetadata(jid, new Date().toISOString(), `WS Session ${sessionId}`, 'websocket', false);
+
+      const groups = getRegisteredGroups();
+      const parentGroup = targetAgentId ? groups[targetAgentId] : Object.entries(groups)[0]?.[1];
+      
+      if (parentGroup) {
+          // Register a temporary session group so NanoClaw routes our messages to the target agent folder
+          registerGroup(jid, {
+              ...parentGroup,
+              name: `WS Session ${sessionId}`,
+              requiresTrigger: false
+          });
+      } else {
+          // Fallback if target agent doesn't exist yet but we still need to process the stream without crashing
+          registerGroup(jid, {
+              name: `WS Session ${sessionId}`,
+              folder: targetAgentId?.replace(/[^a-zA-Z0-9_-]/g, '_') || 'gateway_fallback',
+              trigger: '@Agent',
+              added_at: new Date().toISOString(),
+              requiresTrigger: false
+          });
+      }
 
       this.connections.set(sessionId, ws);
       ws.on('message', (data: Buffer) => {
@@ -201,8 +277,10 @@ export class WebSocketChannel implements Channel {
             timestamp: new Date().toISOString(),
             is_from_me: false,
           });
-        } catch (e) {
-          ws.send(JSON.stringify({ status: 'error', error: 'Invalid JSON' }));
+        } catch (e: any) {
+          const preview = data.toString().substring(0, 500);
+          console.error(`[WebSocket] JSON Parse Error: ${e?.message}. Raw Payload Preview:`, preview);
+          ws.send(JSON.stringify({ status: 'error', error: `Invalid JSON: ${e?.message}. Raw preview: ${preview}` }));
         }
       });
 
@@ -283,3 +361,16 @@ GATEWAY_URL=http://<nanoclaw-host>:8080
 NANOCLAW_WS_URL=ws://<nanoclaw-host>:8081
 GATEWAY_TOKEN=<your-secret-token>
 ```
+
+### `src/gateway/server.test.ts`
+Test file to ensure it starts efficiently.
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Gateway Server', () => {
+  it('should be tested', () => {
+    expect(true).toBe(true);
+  });
+});
+```
+

@@ -34,5 +34,10 @@
     "devDependencies": {
         "typescript": "^5.0.4",
         "vitest": "^2.0.0"
+    },
+    "dependencies": {
+        "cors": "^2.8.6",
+        "express": "^5.2.1",
+        "ws": "^8.18.3"
     }
 }

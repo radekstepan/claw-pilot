@@ -47,15 +47,24 @@ export class NanoClawBackend implements GatewayBackend {
     async getAgents(): Promise<Agent[]> {
         try {
             const agents = await client.getAgents();
-            return agents.map((a: any) => ({
-                id: a.id,
-                name: a.name,
-                status: "OFFLINE" as const,
-                capabilities: a.capabilities || [],
-                model: a.model,
-                role: a.role,
-                workspace: a.workspace,
-            }));
+            console.log("[nanoclaw/api] getAgents raw response:", agents);
+            
+            if (!Array.isArray(agents)) {
+                console.error("[nanoclaw/api] Expected agents to be an array, got:", typeof agents);
+                return [];
+            }
+            
+            return agents
+                .filter((a: any) => !a.id || !a.id.startsWith("ws:"))
+                .map((a: any) => ({
+                    id: a.id,
+                    name: a.name,
+                    status: "OFFLINE" as const,
+                    capabilities: a.capabilities || [],
+                    model: a.model,
+                    role: a.role,
+                    workspace: a.workspace,
+                }));
         } catch (e) {
             handleNetworkError("getAgents", e);
         }
@@ -79,7 +88,7 @@ export class NanoClawBackend implements GatewayBackend {
         try {
             if (channel) {
                 const sessionId = `chat:${agentId}`;
-                const result = await channel.sendTask(sessionId, message, env.GATEWAY_AI_TIMEOUT);
+                const result = await channel.sendTask(agentId, sessionId, message, env.GATEWAY_AI_TIMEOUT);
                 if (result.status === 'error') {
                     throw new Error(result.error);
                 }
@@ -117,7 +126,7 @@ export class NanoClawBackend implements GatewayBackend {
         const sessionId = `task:${taskId}`;
 
         // Fire-and-forget: send task over WS channel, deliver webhook when done
-        channel.sendTask(sessionId, message, env.GATEWAY_AI_TIMEOUT)
+        channel.sendTask(agentId, sessionId, message, env.GATEWAY_AI_TIMEOUT)
             .then(async (result: ChannelResponse) => {
                 if (!webhook) return;
 
@@ -147,8 +156,27 @@ export class NanoClawBackend implements GatewayBackend {
                     console.error('[nanoclaw] webhook delivery error:', e);
                 }
             })
-            .catch((e: unknown) => {
+            .catch(async (e: unknown) => {
                 console.error('[nanoclaw] channel sendTask failed:', e);
+                if (!webhook) return;
+                try {
+                    await fetch(webhook.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...webhook.headers,
+                        },
+                        body: JSON.stringify({
+                            type: 'task_completed',
+                            taskId,
+                            status: 'error',
+                            error: String(e),
+                            timestamp: new Date().toISOString(),
+                        }),
+                    });
+                } catch (we) {
+                    console.error('[nanoclaw] webhook delivery for error failed:', we);
+                }
             });
     }
 

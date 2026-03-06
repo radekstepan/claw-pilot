@@ -321,6 +321,7 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
     chatJid: z.string().optional(),
     status: z.string().optional(),
     result: z.string().optional(),
+    error: z.string().optional(),
     timestamp: z.string().optional(),
   });
 
@@ -332,11 +333,12 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const body = request.body as z.infer<typeof ActivityPayloadSchema>;
 
       let normalizedMessage = body.message;
-      if (body.type === "task_completed" && body.result) {
+      if (body.type === "task_completed") {
+        const payloadContent = body.result || body.error || "No output provided";
         if (body.status === "success" || body.status === "completed") {
-          normalizedMessage = `completed: ${body.result}`;
+          normalizedMessage = `completed: ${payloadContent}`;
         } else {
-          normalizedMessage = `error: ${body.result}`;
+          normalizedMessage = `error: ${payloadContent}`;
         }
       }
 
@@ -362,7 +364,13 @@ const taskRoutes: FastifyPluginAsyncZod = async (fastify, opts) => {
       const isCompleted = /^\s*(\*\*)?(completed|done):?\s*(\*\*)?/i.test(
         normalizedMessage || "",
       );
-      if (isCompleted) {
+      const isError = /^\s*(\*\*)?(error|failed|stuck):?\s*(\*\*)?/i.test(
+        normalizedMessage || "",
+      );
+
+      if (isError) {
+        newStatus = "STUCK";
+      } else if (isCompleted) {
         newStatus = "REVIEW";
         enqueueAiJob(
           "activity-route",
