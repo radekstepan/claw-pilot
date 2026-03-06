@@ -34,6 +34,7 @@ export interface GatewayBackend {
     taskId: string,
     prompt: string,
     webhook?: WebhookConfig,
+    onStream?: (chunk: string) => void,
   ): Promise<void>;
   agentIdToSessionKey(agentId: string): string;
 

@@ -222,7 +222,32 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
       case "review-reject":
       case "recurring-spawn": {
         const { taskId, agentId: taskAgentId, prompt, webhook } = payload.data;
-        await gw.spawnTaskSession(taskAgentId, taskId, prompt, webhook);
+
+        const onStream = (chunk: string) => {
+          const now = new Date().toISOString();
+          const activityId = randomUUID();
+
+          db.insert(activitiesTable)
+            .values({
+              id: activityId,
+              taskId,
+              agentId: taskAgentId,
+              message: chunk,
+              timestamp: now,
+            })
+            .run();
+
+          fastifyInstance?.io?.emit("activity_added", {
+            id: activityId,
+            taskId,
+            agentId: taskAgentId,
+            message: chunk,
+            timestamp: now,
+            taskStatus: "IN_PROGRESS",
+          });
+        };
+
+        await gw.spawnTaskSession(taskAgentId, taskId, prompt, webhook, onStream);
 
         // Transition task to IN_PROGRESS and log activity
         const successNow = new Date().toISOString();

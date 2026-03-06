@@ -300,6 +300,12 @@ async function runAgent(
     }
     : undefined;
 
+  // Stream intermediate terminal chunks out to the channel if supported
+  const channel = findChannel(channels, chatJid);
+  const onStreamChunk = channel && 'streamOutput' in channel
+    ? (chunk: string) => { (channel as any).streamOutput(chatJid, chunk); }
+    : undefined;
+
   try {
     const output = await runContainerAgent(
       group,
@@ -314,6 +320,7 @@ async function runAgent(
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
+      onStreamChunk,
     );
 
     if (output.newSessionId) {

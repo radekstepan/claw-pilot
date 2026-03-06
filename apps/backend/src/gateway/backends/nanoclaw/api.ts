@@ -48,12 +48,12 @@ export class NanoClawBackend implements GatewayBackend {
         try {
             const agents = await client.getAgents();
             console.log("[nanoclaw/api] getAgents raw response:", agents);
-            
+
             if (!Array.isArray(agents)) {
                 console.error("[nanoclaw/api] Expected agents to be an array, got:", typeof agents);
                 return [];
             }
-            
+
             return agents
                 .filter((a: any) => !a.id || !a.id.startsWith("ws:"))
                 .map((a: any) => ({
@@ -91,6 +91,9 @@ export class NanoClawBackend implements GatewayBackend {
                 const result = await channel.sendTask(agentId, sessionId, message, env.GATEWAY_AI_TIMEOUT);
                 if (result.status === 'error') {
                     throw new Error(result.error);
+                } else if (result.status === 'stream') {
+                    // Chat currently doesn't support streaming, wait for done
+                    return { message: "Streaming not supported via routeChatToAgent yet." };
                 }
                 return { message: result.response };
             }
@@ -105,6 +108,7 @@ export class NanoClawBackend implements GatewayBackend {
         taskId: string,
         prompt: string,
         webhook?: WebhookConfig,
+        onStream?: (chunk: string) => void,
     ): Promise<void> {
         // Strip ClawPilot's "delivery instructions" — they're only relevant
         // for OpenClaw (curl-based) agents, not NanoClaw channel tasks.
@@ -126,7 +130,7 @@ export class NanoClawBackend implements GatewayBackend {
         const sessionId = `task:${taskId}`;
 
         // Fire-and-forget: send task over WS channel, deliver webhook when done
-        channel.sendTask(agentId, sessionId, message, env.GATEWAY_AI_TIMEOUT)
+        channel.sendTask(agentId, sessionId, message, env.GATEWAY_AI_TIMEOUT, onStream)
             .then(async (result: ChannelResponse) => {
                 if (!webhook) return;
 

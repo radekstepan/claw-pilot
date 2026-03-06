@@ -245,6 +245,17 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     routeTask,
   } = useMissionStore();
 
+  const storeActivities = useMissionStore((state) => state.activities);
+
+  // Combine activities loaded from API with any that arrived live via WebSocket into the store
+  const combinedActivities = [...taskActivities];
+  for (const storeAct of storeActivities) {
+    if (storeAct.taskId === task?.id && !combinedActivities.some(a => a.id === storeAct.id)) {
+      combinedActivities.push(storeAct);
+    }
+  }
+  combinedActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
   useEffect(() => {
     if (!task) return;
     setActivitiesLoading(true);
@@ -510,7 +521,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                     </h3>
                   </div>
                   {(() => {
-                    const lastError = taskActivities.find((a) =>
+                    const lastError = combinedActivities.find((a) =>
                       a.message.startsWith("error:"),
                     );
                     return lastError ? (
@@ -698,9 +709,9 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
               <section className="mb-8">
                 <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">
                   Activity Log
-                  {taskActivities.length > 0 && (
+                  {combinedActivities.length > 0 && (
                     <span className="ml-2 text-slate-300 dark:text-slate-600 normal-case tracking-normal font-normal">
-                      ({taskActivities.length})
+                      ({combinedActivities.length})
                     </span>
                   )}
                 </h3>
@@ -708,7 +719,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                   <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
                     <Loader2 size={12} className="animate-spin" /> Loading…
                   </div>
-                ) : taskActivities.length === 0 ? (
+                ) : combinedActivities.length === 0 ? (
                   <EmptyState
                     icon={ScrollText}
                     title="No activity yet"
@@ -716,7 +727,7 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                   />
                 ) : (
                   <div className="space-y-2">
-                    {taskActivities.map((a) => (
+                    {combinedActivities.map((a) => (
                       <ActivityEntry key={a.id} activity={a} />
                     ))}
                   </div>

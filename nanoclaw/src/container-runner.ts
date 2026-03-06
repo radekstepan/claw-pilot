@@ -260,6 +260,7 @@ export async function runContainerAgent(
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  onStreamChunk?: (chunk: string) => void,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -321,6 +322,8 @@ export async function runContainerAgent(
     let newSessionId: string | undefined;
     let outputChain = Promise.resolve();
 
+    let isInsideInternalBlock = false;
+
     container.stdout.on('data', (data) => {
       const chunk = data.toString();
 
@@ -336,6 +339,37 @@ export async function runContainerAgent(
           );
         } else {
           stdout += chunk;
+        }
+      }
+
+      if (onStreamChunk) {
+        // Strip out <internal>...</internal> blocks so the frontend UI doesn't see the internal reasoning 
+        // stringified JSON and instead only sees the raw AI text thinking chunks.
+        let streamText = chunk;
+        if (isInsideInternalBlock) {
+          const endIdx = streamText.indexOf('</internal>');
+          if (endIdx !== -1) {
+            isInsideInternalBlock = false;
+            streamText = streamText.slice(endIdx + '</internal>'.length);
+          } else {
+            streamText = '';
+          }
+        }
+
+        while (streamText.includes('<internal>')) {
+          const startIdx = streamText.indexOf('<internal>');
+          const endIdx = streamText.indexOf('</internal>', startIdx);
+
+          if (endIdx !== -1) {
+            streamText = streamText.slice(0, startIdx) + streamText.slice(endIdx + '</internal>'.length);
+          } else {
+            isInsideInternalBlock = true;
+            streamText = streamText.slice(0, startIdx);
+          }
+        }
+
+        if (streamText.trim()) {
+          onStreamChunk(streamText);
         }
       }
 

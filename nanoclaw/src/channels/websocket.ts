@@ -79,6 +79,13 @@ export class WebSocketChannel implements Channel {
     }
   }
 
+  async streamOutput(jid: string, chunk: string): Promise<void> {
+    const ws = this.connections.get(jid.replace('ws:', ''));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ chunk, status: 'stream' }));
+    }
+  }
+
   async sendError(jid: string, error: string): Promise<void> {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {

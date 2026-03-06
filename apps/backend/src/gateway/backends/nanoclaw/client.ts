@@ -74,7 +74,8 @@ export interface GenerateConfigResponse {
 
 export type ChannelResponse =
     | { status: 'done'; response: string }
-    | { status: 'error'; error: string };
+    | { status: 'error'; error: string }
+    | { status: 'stream'; chunk: string };
 
 function isNanoClawAgentData(input: ClawPilotAgentInput | NanoClawAgentData): input is NanoClawAgentData {
     return 'jid' in input && !!input.jid;
@@ -275,12 +276,13 @@ export class NanoClawChannelClient {
         sessionId: string,
         task: string,
         timeoutMs = 1_800_000,
+        onStream?: (chunk: string) => void
     ): Promise<ChannelResponse> {
         if (this.pending.has(sessionId)) {
             throw new Error(`Session '${sessionId}' already has a pending request`);
         }
 
-        const ws = await this.getOrCreateConnection(sessionId, agentId);
+        const ws = await this.getOrCreateConnection(sessionId, agentId, onStream);
 
         return new Promise<ChannelResponse>((resolve, reject) => {
             const timer = setTimeout(() => {
@@ -294,9 +296,17 @@ export class NanoClawChannelClient {
         });
     }
 
-    private getOrCreateConnection(sessionId: string, agentId?: string): Promise<WebSocket> {
+    private getOrCreateConnection(
+        sessionId: string,
+        agentId?: string,
+        onStream?: (chunk: string) => void
+    ): Promise<WebSocket> {
         const existing = this.connections.get(sessionId);
         if (existing && existing.readyState === WebSocket.OPEN) {
+            // Update the connection's stream handler if one was provided
+            if (onStream) {
+                (existing as any).__onStream = onStream;
+            }
             return Promise.resolve(existing);
         }
 
@@ -314,6 +324,9 @@ export class NanoClawChannelClient {
             const ws = new WebSocket(url);
 
             ws.on('open', () => {
+                if (onStream) {
+                    (ws as any).__onStream = onStream;
+                }
                 this.connections.set(sessionId, ws);
                 resolve(ws);
             });
@@ -322,7 +335,13 @@ export class NanoClawChannelClient {
                 try {
                     const msg = JSON.parse(data.toString());
                     const pending = this.pending.get(sessionId);
-                    if (pending && (msg.status === 'done' || msg.status === 'error')) {
+
+                    if (msg.status === 'stream' && typeof msg.chunk === 'string') {
+                        const existingWs = this.connections.get(sessionId) as any;
+                        if (existingWs && existingWs.__onStream) {
+                            existingWs.__onStream(msg.chunk);
+                        }
+                    } else if (pending && (msg.status === 'done' || msg.status === 'error')) {
                         clearTimeout(pending.timer);
                         this.pending.delete(sessionId);
                         pending.resolve(msg as ChannelResponse);

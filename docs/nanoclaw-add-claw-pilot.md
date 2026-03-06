@@ -226,13 +226,93 @@ export function startGateway() {
 }
 \`\`\`
 
-3. Create `src/channels/websocket.ts`:
+3. Update `src/channels/registry.ts` — add `registerGroup` to the `ChannelOpts` interface so channels can register ephemeral session groups without a circular import:
+\`\`\`ts
+export interface ChannelOpts {
+  onMessage: OnInboundMessage;
+  onChatMetadata: OnChatMetadata;
+  registeredGroups: () => Record<string, RegisteredGroup>;
+  registerGroup: (jid: string, group: RegisteredGroup) => void;  // NEW
+}
+\`\`\`
+
+4. Update `src/index.ts` — **two changes**:
+
+   **4a.** In the `channelOpts` object (where `onChatMetadata` is already set), add `registerGroup`:
+\`\`\`ts
+registerGroup: (jid: string, group: RegisteredGroup) => registerGroup(jid, group),
+\`\`\`
+
+   **4b.** In the `runAgent` function (just before the `try { const output = await runContainerAgent(...)` block), add the stream wiring so stdout chunks get forwarded to the WS connection:
+\`\`\`ts
+  // Stream intermediate stdout chunks out to the channel if it supports it
+  const channel = findChannel(channels, chatJid);
+  const onStreamChunk = channel && 'streamOutput' in channel
+    ? (chunk: string) => { (channel as any).streamOutput(chatJid, chunk); }
+    : undefined;
+\`\`\`
+   Then pass `onStreamChunk` as the **last argument** to `runContainerAgent(...)`:
+\`\`\`ts
+  const output = await runContainerAgent(
+    group,
+    { prompt, sessionId, groupFolder: group.folder, chatJid, isMain, assistantName: ASSISTANT_NAME },
+    (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
+    wrappedOnOutput,
+    onStreamChunk,   // <-- ADD THIS
+  );
+\`\`\`
+
+5. Update `src/container-runner.ts` — add `onStreamChunk` parameter and stdout streaming logic:
+
+   **5a.** Add `onStreamChunk` as optional last parameter of `runContainerAgent`:
+\`\`\`ts
+export async function runContainerAgent(
+  group: RegisteredGroup,
+  input: ContainerInput,
+  onProcess: (proc: ChildProcess, containerName: string) => void,
+  onOutput?: (output: ContainerOutput) => Promise<void>,
+  onStreamChunk?: (chunk: string) => void,   // <-- ADD THIS
+): Promise<ContainerOutput> {
+\`\`\`
+
+   **5b.** Inside the `container.stdout.on('data', (data) => { ... })` handler (after the existing `stdout +=` accumulation block), add the streaming emit logic:
+\`\`\`ts
+      if (onStreamChunk) {
+        // Strip <internal>...</internal> blocks — these are internal JSON reasoning
+        // markers that should not be shown to the user.
+        let streamText = chunk;
+        if (isInsideInternalBlock) {
+          const endIdx = streamText.indexOf('</internal>');
+          if (endIdx !== -1) {
+            isInsideInternalBlock = false;
+            streamText = streamText.slice(endIdx + '</internal>'.length);
+          } else {
+            streamText = '';
+          }
+        }
+        while (streamText.includes('<internal>')) {
+          const startIdx = streamText.indexOf('<internal>');
+          const endIdx = streamText.indexOf('</internal>', startIdx);
+          if (endIdx !== -1) {
+            streamText = streamText.slice(0, startIdx) + streamText.slice(endIdx + '</internal>'.length);
+          } else {
+            isInsideInternalBlock = true;
+            streamText = streamText.slice(0, startIdx);
+          }
+        }
+        if (streamText.trim()) {
+          onStreamChunk(streamText);
+        }
+      }
+\`\`\`
+   Also declare `let isInsideInternalBlock = false;` before the `container.stdout.on(...)` call.
+
+5. Create `src/channels/websocket.ts`:
 \`\`\`ts
 import { WebSocketServer, WebSocket } from 'ws';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
-import { getRegisteredGroups, registerGroup } from '../index.js';
 import { logger } from '../logger.js';
 
 export class WebSocketChannel implements Channel {
@@ -253,41 +333,36 @@ export class WebSocketChannel implements Channel {
     this.wss.on('connection', (ws: WebSocket, req) => {
       const url = new URL(req.url || '/', `http://localhost:${this.port}`);
       const sessionId = url.searchParams.get('session') || crypto.randomUUID();
-      const targetAgentId = url.searchParams.get('agentId');
+      const agentId = url.searchParams.get('agentId');
       const jid = `ws:${sessionId}`;
 
-      // 1. ALWAYS initialize chat metadata to prevent "FOREIGN KEY constraint failed" in NanoClaw's SQLite!
+      // CRITICAL: Initialize chat metadata in DB — prevents FK constraint failures in SQLite.
       this.opts.onChatMetadata(jid, new Date().toISOString(), `WS Session ${sessionId}`, 'websocket', false);
 
-      const groups = getRegisteredGroups();
-      const parentGroup = targetAgentId ? groups[targetAgentId] : Object.entries(groups)[0]?.[1];
-      
+      // CRITICAL: Register an ephemeral group for this session.
+      // Without this, the NanoClaw message loop has no entry for this JID and silently
+      // drops all incoming tasks — the agent is never invoked.
+      const groups = this.opts.registeredGroups();
+      const parentGroup = agentId ? groups[agentId] : Object.values(groups)[0];
       if (parentGroup) {
-          // Register a temporary session group so NanoClaw routes our messages to the target agent folder
-          registerGroup(jid, {
-              ...parentGroup,
-              name: `WS Session ${sessionId}`,
-              requiresTrigger: false
-          });
+        this.opts.registerGroup(jid, {
+          ...parentGroup,
+          name: `WS Session ${sessionId}`,
+          requiresTrigger: false,
+          added_at: new Date().toISOString(),
+        });
       } else {
-          // Fallback if target agent doesn't exist yet but we still need to process the stream without crashing
-          registerGroup(jid, {
-              name: `WS Session ${sessionId}`,
-              folder: targetAgentId?.replace(/[^a-zA-Z0-9_-]/g, '_') || 'gateway_fallback',
-              trigger: '@Agent',
-              added_at: new Date().toISOString(),
-              requiresTrigger: false
-          });
+        logger.warn({ jid, agentId }, '[WS] No parent group found for session — agent may not be registered yet');
       }
 
       this.connections.set(sessionId, ws);
 
-      // Set up ping to keep connection alive
+      // Setup ping interval to keep connection alive
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.ping();
         }
-      }, 30000);
+      }, 30000); // 30 seconds
       this.pingIntervals.set(sessionId, pingInterval);
 
       ws.on('message', (data: Buffer) => {
@@ -303,15 +378,12 @@ export class WebSocketChannel implements Channel {
             timestamp: new Date().toISOString(),
             is_from_me: false,
           });
-        } catch (e: any) {
-          const preview = data.toString().substring(0, 500);
-          console.error(`[WebSocket] JSON Parse Error: ${e?.message}. Raw Payload Preview:`, preview);
-          ws.send(JSON.stringify({ status: 'error', error: `Invalid JSON: ${e?.message}. Raw preview: ${preview}` }));
+        } catch (e) {
+          ws.send(JSON.stringify({ status: 'error', error: 'Invalid JSON' }));
         }
       });
 
       const cleanup = () => {
-        // Only delete if this specific socket is still the one in the map
         if (this.connections.get(sessionId) === ws) {
           this.connections.delete(sessionId);
           const interval = this.pingIntervals.get(sessionId);
@@ -338,6 +410,14 @@ export class WebSocketChannel implements Channel {
     }
   }
 
+  // Sends a live stdout chunk back to Claw-Pilot while the container is still running.
+  async streamOutput(jid: string, chunk: string): Promise<void> {
+    const ws = this.connections.get(jid.replace('ws:', ''));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ chunk, status: 'stream' }));
+    }
+  }
+
   async sendError(jid: string, error: string): Promise<void> {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -350,15 +430,14 @@ export class WebSocketChannel implements Channel {
   isConnected(): boolean { return this.wss !== null; }
   async disconnect(): Promise<void> {
     if (this.wss) {
-      for (const ws of this.connections.values()) ws.close();
-      this.connections.clear();
       for (const interval of this.pingIntervals.values()) {
         clearInterval(interval);
       }
       this.pingIntervals.clear();
-      this.wss.close();
-      this.wss = null;
+      for (const ws of this.connections.values()) ws.close();
+      this.connections.clear();
     }
+    this.wss = null;
   }
 }
 
@@ -369,12 +448,12 @@ registerChannel('websocket', (opts: ChannelOpts) => {
 });
 \`\`\`
 
-4. Update `src/channels/index.ts` to include the WebSocket channel:
+6. Update `src/channels/index.ts` to include the WebSocket channel:
 \`\`\`ts
 import './websocket.js';
 \`\`\`
 
-5. Add to `.env`:
+7. Add to `.env`:
 \`\`\`bash
 GATEWAY_PORT=8080
 GATEWAY_HOST=0.0.0.0
