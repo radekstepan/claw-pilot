@@ -374,3 +374,17 @@ describe('Gateway Server', () => {
 });
 ```
 
+And to debug issues use this prompt:
+
+```
+❯ "Please help me diagnose why my recent task for agent 'tg:8529863458' (or 'gateway:main') timed out without returning over the WebSocket.           
+                                                                                                                                                  
+  1. First, check the main NanoClaw worker logs:                                                                                                      
+  Run tail -n 200 logs/nanoclaw.error.log and tail -n 200 logs/nanoclaw.log and look for any mentions of 'websocket', 'api', or                       
+  'task:52b414f8...'.                                                                                                                                 
+                                                                                                                                                  
+  2. Then, check the AI container logs for the folder it was routed to:                                                                           
+  Run ls -lat groups/*/logs/ | head -n 10 to find the most recently modified group log directory.                                                 
+  Then look inside that directory's most recent container-*.log file to see if the Python AI agent actually booted up successfully and if it      
+  threw any LLM timeout errors or crashed while processing my prompt."
+```
