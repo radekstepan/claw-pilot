@@ -1,17 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   X,
-  CheckCircle2,
-  Circle,
   ThumbsUp,
   ThumbsDown,
   Loader2,
   AlertTriangle,
   Trash2,
-  Package,
   Zap,
   ScrollText,
   ChevronDown,
@@ -20,12 +17,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  Agent,
-  Task,
-  ActivityLog,
-  Deliverable,
-} from "@claw-pilot/shared-types";
+import type { Agent, Task, ActivityLog } from "@claw-pilot/shared-types";
 import { Badge } from "../ui/Badge";
 import { COLUMN_TITLES } from "../../constants";
 import { useMissionStore } from "../../store/useMissionStore";
@@ -151,7 +143,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             </button>
             <button
               onClick={() =>
-                navigator.clipboard.writeText(a.message).catch(() => { })
+                navigator.clipboard.writeText(a.message).catch(() => {})
               }
               className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
@@ -169,7 +161,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() =>
-                  navigator.clipboard.writeText(a.message).catch(() => { })
+                  navigator.clipboard.writeText(a.message).catch(() => {})
                 }
                 className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
@@ -198,84 +190,45 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
   );
 }
 
-interface SortableDeliverableItemProps {
-  deliverable: Deliverable;
-  taskId: string;
-  onToggle: (deliverableId: string, taskId: string) => void;
-}
-
-function SortableDeliverableItem({
-  deliverable: d,
-  taskId,
-  onToggle,
-}: SortableDeliverableItemProps) {
-  return (
-    <div className="flex items-center gap-2 bg-slate-50 dark:bg-white/[0.02] border border-black/[0.04] dark:border-white/[0.04] rounded hover:border-[var(--accent-scroll-hover)] transition-all">
-      <button
-        type="button"
-        onClick={() => onToggle(d.id, taskId)}
-        className="flex-1 flex items-center gap-3 py-2 px-2 text-left focus-visible:outline-none"
-      >
-        <div className="w-4 h-4 flex-shrink-0 text-emerald-600 dark:text-emerald-500">
-          {d.status === "COMPLETED" ? (
-            <CheckCircle2 size={14} />
-          ) : (
-            <Circle size={14} className="text-slate-300 dark:text-slate-600" />
-          )}
-        </div>
-        <span
-          className={`text-xs ${d.status === "COMPLETED" ? "line-through text-slate-400 dark:text-slate-600" : "text-slate-600 dark:text-slate-300"}`}
-        >
-          {d.title}
-        </span>
-      </button>
-    </div>
-  );
-}
-
 interface TaskModalProps {
-  task: Task | null;
+  taskId: string;
   onClose: () => void;
   agents: Agent[];
 }
 
-export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
+export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
+  const tasks = useMissionStore((state) => state.tasks);
+  const task = tasks.find((t) => t.id === taskId) ?? null;
+
   const [feedback, setFeedback] = useState("");
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRouting, setIsRouting] = useState(false);
-  const [routeAgentId, setRouteAgentId] = useState<string>(
-    task?.agentId ?? task?.assignee_id ?? "",
-  );
+  const [routeAgentId, setRouteAgentId] = useState<string>("");
   const [taskActivities, setTaskActivities] = useState<ActivityLog[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [descPreview, setDescPreview] = useState(false);
   const [showRetryPrompt, setShowRetryPrompt] = useState(false);
-  const [retryPrompt, setRetryPrompt] = useState(() =>
-    task ? `${task.title}\n\n${task.description || ""}`.trim() : "",
-  );
+  const [retryPrompt, setRetryPrompt] = useState("");
   const [showRejectPrompt, setShowRejectPrompt] = useState(false);
-  const [rejectPrompt, setRejectPrompt] = useState(() =>
-    task
-      ? `A human reviewer rejected your previous attempt with this feedback:\n\nPlease redo the task taking this feedback into account.\n\nOriginal task:\n${task.title}\n${task.description || ""}`
-      : "",
-  );
+  const [rejectPrompt, setRejectPrompt] = useState("");
 
   const {
     register,
     handleSubmit,
     control,
     watch,
+    reset,
     formState: { errors },
   } = useForm<UpdateFormValues>({
     resolver: zodResolver(updateFormSchema),
     defaultValues: {
-      title: task?.title ?? "",
-      description: task?.description ?? "",
-      priority: task?.priority || NONE_VALUE,
-      assignee_id: task?.assignee_id || NONE_VALUE,
+      title: "",
+      description: "",
+      priority: NONE_VALUE,
+      assignee_id: NONE_VALUE,
     },
   });
 
@@ -283,42 +236,47 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
     updateTaskLocally,
     updateTask,
     deleteTask,
-    toggleDeliverable,
     routeTask,
     hydrateStreamLogs,
   } = useMissionStore();
 
   const storeActivities = useMissionStore((state) => state.activities);
   const streamLogs = useMissionStore((state) => state.streamLogs);
-  const taskStreamLogs = task ? (streamLogs[task.id] ?? []) : [];
 
-  // Combine activities loaded from API with any that arrived live via WebSocket into the store
-  const combinedActivities = [...taskActivities];
-  for (const storeAct of storeActivities) {
-    if (storeAct.taskId === task?.id && !combinedActivities.some(a => a.id === storeAct.id)) {
-      combinedActivities.push(storeAct);
-    }
-  }
-  combinedActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  // Auto-scroll the log pane to the bottom when new stream chunks arrive
-  const logEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [taskStreamLogs.at(-1)?.id]);
+    if (taskId && !task) {
+      onClose();
+    }
+  }, [task, taskId, onClose]);
+
+  useEffect(() => {
+    if (task) {
+      reset({
+        title: task.title ?? "",
+        description: task.description ?? "",
+        priority: task.priority ?? NONE_VALUE,
+        assignee_id: task.assignee_id ?? NONE_VALUE,
+      });
+      setRouteAgentId(task.agentId ?? task.assignee_id ?? "");
+      setRetryPrompt(`${task.title}\n\n${task.description || ""}`.trim());
+      setRejectPrompt(
+        `A human reviewer rejected your previous attempt with this feedback:\n\nPlease redo the task taking this feedback into account.\n\nOriginal task:\n${task.title}\n${task.description || ""}`,
+      );
+    }
+  }, [task, reset]);
 
   useEffect(() => {
     if (!task) return;
     setActivitiesLoading(true);
+
     api
       .getTaskActivities(task.id)
       .then(setTaskActivities)
       .catch(() => setTaskActivities([]))
       .finally(() => setActivitiesLoading(false));
 
-    // Seed the live log pane with any stream chunks already persisted to DB
-    // (covers: re-opening a modal, browser refresh, tasks that ran before this session)
-    api.getTaskStreamLog(task.id)
+    api
+      .getTaskStreamLog(task.id)
       .then(async (rows) => {
         if (rows.length > 0) {
           hydrateStreamLogs(
@@ -344,7 +302,9 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
           hydrateStreamLogs(task.id, [normalizeContainerLog(task.id, log)]);
         }
       })
-      .catch(() => { /* ignore — stream log is best-effort */ });
+      .catch(() => {
+        /* ignore — stream log is best-effort */
+      });
   }, [hydrateStreamLogs, task?.id, task?.status]);
 
   useEffect(() => {
@@ -356,6 +316,21 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
   }, [onClose]);
 
   if (!task) return null;
+
+  const taskStreamLogs = streamLogs[task.id] ?? [];
+
+  const combinedActivities = [...taskActivities];
+  for (const storeAct of storeActivities) {
+    if (
+      storeAct.taskId === task.id &&
+      !combinedActivities.some((a) => a.id === storeAct.id)
+    ) {
+      combinedActivities.push(storeAct);
+    }
+  }
+  combinedActivities.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
 
   const agentOptions = [
     { value: NONE_VALUE, label: "— Unassigned —" },
@@ -825,20 +800,22 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       <button
                         type="button"
                         onClick={() => setDescPreview(false)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
-                          ? "bg-[var(--accent-600)] text-white"
-                          : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                          }`}
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
+                          !descPreview
+                            ? "bg-[var(--accent-600)] text-white"
+                            : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                        }`}
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setDescPreview(true)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
-                          ? "bg-[var(--accent-600)] text-white"
-                          : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                          }`}
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
+                          descPreview
+                            ? "bg-[var(--accent-600)] text-white"
+                            : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                        }`}
                       >
                         Preview
                       </button>
@@ -861,8 +838,9 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                       rows={5}
                       {...register("description")}
                       placeholder="No description…"
-                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${descPreview ? "hidden" : ""
-                        }`}
+                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${
+                        descPreview ? "hidden" : ""
+                      }`}
                     />
                     {descPreview && (
                       <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
@@ -882,14 +860,17 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
               </section>
 
               {/* Live Log — shown for running/stuck tasks and whenever stream chunks exist */}
-              {(taskStreamLogs.length > 0 || task.status === "IN_PROGRESS" || task.status === "STUCK") && (
+              {(taskStreamLogs.length > 0 ||
+                task.status === "IN_PROGRESS" ||
+                task.status === "STUCK") && (
                 <section className="mb-8">
                   <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
                     <Terminal size={10} className="opacity-70" />
                     Agent Output
                     {taskStreamLogs.length > 0 && (
                       <span className="ml-1 text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
-                        ({taskStreamLogs.length} update{taskStreamLogs.length !== 1 ? "s" : ""})
+                        ({taskStreamLogs.length} update
+                        {taskStreamLogs.length !== 1 ? "s" : ""})
                       </span>
                     )}
                     {taskStreamLogs.length > 0 && (
@@ -924,61 +905,27 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                               </span>
                             </div>
                             <pre
-                              className={`text-[10.5px] leading-relaxed font-mono px-3 pb-3 overflow-x-auto ${entry.source === "stderr"
-                                ? "text-amber-300 dark:text-amber-200"
-                                : entry.source === "container"
-                                  ? "text-sky-300 dark:text-sky-200"
-                                  : "text-emerald-400 dark:text-emerald-300"
-                                }`}
-                              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                              className={`text-[10.5px] leading-relaxed font-mono px-3 pb-3 overflow-x-auto ${
+                                entry.source === "stderr"
+                                  ? "text-amber-300 dark:text-amber-200"
+                                  : entry.source === "container"
+                                    ? "text-sky-300 dark:text-sky-200"
+                                    : "text-emerald-400 dark:text-emerald-300"
+                              }`}
+                              style={{
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                              }}
                             >
                               {entry.chunk}
                             </pre>
                           </div>
                         ))}
-                        <div ref={logEndRef} />
                       </div>
                     )}
                   </div>
                 </section>
               )}
-
-
-              {/* Deliverables */}
-              <section className="mb-8">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3">
-                  Deliverables
-                  {task.deliverables && task.deliverables.length > 0 && (
-                    <span className="ml-2 text-slate-300 dark:text-slate-600 normal-case tracking-normal font-normal">
-                      (
-                      {
-                        task.deliverables.filter(
-                          (d) => d.status === "COMPLETED",
-                        ).length
-                      }
-                      /{task.deliverables.length})
-                    </span>
-                  )}
-                </h3>
-                {!task.deliverables || task.deliverables.length === 0 ? (
-                  <EmptyState
-                    icon={Package}
-                    title="No deliverables"
-                    description="No deliverables defined for this task."
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {task.deliverables.map((d) => (
-                      <SortableDeliverableItem
-                        key={d.id}
-                        deliverable={d}
-                        taskId={task.id}
-                        onToggle={toggleDeliverable}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
             </div>
           </div>
         </div>
@@ -994,10 +941,11 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
             <button
               onClick={handleSubmit(handleUpdateTask)}
               disabled={isSubmitting}
-              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${watch("assignee_id") !== NONE_VALUE
-                ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
-                : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
-                }`}
+              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${
+                watch("assignee_id") !== NONE_VALUE
+                  ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
+                  : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
+              }`}
             >
               {isSubmitting && <Loader2 size={12} className="animate-spin" />}
               Update Task

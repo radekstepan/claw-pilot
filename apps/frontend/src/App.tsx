@@ -87,7 +87,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<"kanban" | "recurring">(
     "kanban",
   );
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -156,7 +156,7 @@ export default function App() {
   };
 
   const handleTaskClick = (task: Task) => {
-    setActiveTask(task);
+    setActiveTaskId(task.id);
     // Mark this task's current swimlane position as "read"
     setReadSet((prev) => new Set([...prev, `${task.id}:${task.status}`]));
     // Dismiss any notifications associated with this task
@@ -250,10 +250,10 @@ export default function App() {
         </div>
       </main>
 
-      {activeTask && (
+      {activeTaskId && (
         <TaskModal
-          task={activeTask}
-          onClose={() => setActiveTask(null)}
+          taskId={activeTaskId}
+          onClose={() => setActiveTaskId(null)}
           agents={agents}
         />
       )}

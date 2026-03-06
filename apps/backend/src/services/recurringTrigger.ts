@@ -47,7 +47,7 @@ export async function triggerRecurringTemplate(
         status: newTask.status,
         priority: newTask.priority ?? null,
         tags: null,
-        assignee_id: null,
+        assignee_id: assignedAgentId,
         agentId: assignedAgentId,
         deliverables: null,
         createdAt: now,
