@@ -6,48 +6,6 @@ Claw-Pilot is a real-time Kanban and chat interface built in a Yarn/Turborepo mo
 
 ![Screenshot](./screenshot.png)
 
----
-
-## Architecture
-
-```mermaid
-graph LR
-    subgraph Browser
-        UI["React + Zustand\n(Vite, Tailwind)"]
-    end
-
-    subgraph "Node.js Server (Fastify)"
-        API["REST API\n/api/*"]
-        WS["Socket.io\nreal-time events"]
-        DB["SQLite\n(Drizzle ORM)"]
-        MON["Background Monitors\nsessionMonitor · stuckTaskMonitor\nbackupMonitor · pruningMonitor\nrecurringSchedulerMonitor"]
-        CRON["Recurring Tasks\n(templates → Tasks)"]
-    end
-
-    subgraph "OpenClaw (Python)"
-        GW["WebSocket Gateway\nws://localhost:18789"]
-        CFG["Agent Config\nRPC: config.get / agents.*"]
-        AGENT["Agent Session\n(Remote or Local)"]
-    end
-
-    UI -- "fetch + Bearer token" --> API
-    UI -- "socket.io-client" --> WS
-    API --> DB
-    MON --> DB
-    MON --> WS
-    CRON --> DB
-    CRON -- "POST /recurring/:id/trigger" --> API
-    API -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
-    MON -- "WebSocket JSON-RPC\n(gatewayCall)" --> GW
-    GW --> CFG
-    GW -- "sessions.patch + chat.send" --> AGENT
-    AGENT -- "POST /api/tasks/:id/activity\n(Webhook Callback)" --> API
-```
-
-Data flow summary: The React UI communicates with the Fastify server via REST (Bearer-token auth) and Socket.io. The server communicates with OpenClaw agents through the WebSocket gateway RPC API. Each RPC call opens a fresh WebSocket connection, performs a handshake, fires one JSON-RPC method, and closes. Background monitors run on server-side intervals and push real-time events to the UI via Socket.io. Agents can report progress or completion by calling back to the backend REST API, triggering status transitions in the Kanban board.
-
----
-
 ## Features
 
 - Real-time Kanban board for task management.
