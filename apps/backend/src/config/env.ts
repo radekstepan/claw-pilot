@@ -62,6 +62,14 @@ const EnvSchema = z
     GATEWAY_TOKEN: z.string().optional(),
 
     /**
+     * WebSocket URL of the NanoClaw channel endpoint.
+     * Only used when BACKEND_TYPE=nanoclaw. The HTTP API and WS channel run
+     * on different ports, so this cannot share GATEWAY_URL.
+     * Example: ws://nanoclaw-host:8080
+     */
+    NANOCLAW_WS_URL: z.string().url().optional(),
+
+    /**
      * Logical identifier for this gateway instance.
      * Used to construct the main-agent session key: mc-gateway:{id}:main
      */

@@ -1,11 +1,18 @@
 import type { Agent } from "@claw-pilot/shared-types";
 import type { GatewayBackend, LiveSession, WebhookConfig } from "../../types.js";
 import { env } from "../../../config/env.js";
-import { NanoClawClient } from "@claw-pilot/nanoclaw-gateway";
+import { NanoClawClient, NanoClawChannelClient } from "@claw-pilot/nanoclaw-gateway";
+import type { ChannelResponse } from "@claw-pilot/nanoclaw-gateway";
 import { GatewayOfflineError, GatewayPairingRequiredError } from "../../errors.js";
 
+// GATEWAY_URL → NanoClaw's HTTP API (agents, sessions, files, models)
 const httpUrl = env.GATEWAY_URL.replace(/^ws(s?):\/\//, 'http$1://');
 const client = new NanoClawClient(httpUrl, env.GATEWAY_TOKEN);
+
+// NANOCLAW_WS_URL → NanoClaw's WebSocket channel (task/chat routing)
+const channel = env.NANOCLAW_WS_URL
+    ? new NanoClawChannelClient(env.NANOCLAW_WS_URL, env.GATEWAY_TOKEN)
+    : null;
 
 function handleNetworkError(method: string, e: unknown): never {
     if (e instanceof Error && e.name === 'NetworkError') {
@@ -70,6 +77,14 @@ export class NanoClawBackend implements GatewayBackend {
 
     async routeChatToAgent(agentId: string, message: string): Promise<unknown> {
         try {
+            if (channel) {
+                const sessionId = `chat:${agentId}`;
+                const result = await channel.sendTask(sessionId, message, env.GATEWAY_AI_TIMEOUT);
+                if (result.status === 'error') {
+                    throw new Error(result.error);
+                }
+                return { message: result.response };
+            }
             return await client.sendMessage(agentId, message);
         } catch (e) {
             handleNetworkError("routeChatToAgent", e);
@@ -82,28 +97,59 @@ export class NanoClawBackend implements GatewayBackend {
         prompt: string,
         webhook?: WebhookConfig,
     ): Promise<void> {
-        try {
-            // Strip ClawPilot's "delivery instructions" — they're only relevant
-            // for OpenClaw (curl-based) agents, not NanoClaw tasks.
-            const message = prompt
-                .replace("IMPORTANT: Your final message will be automatically delivered to the user.", "")
-                .replace("You MUST start your final output with \"completed: \" followed by the full text, answer, or result. Do NOT abbreviate or summarize.", "")
-                .replace("If you encounter an unrecoverable error, start your message with \"error: \" followed by the description.", "");
+        // Strip ClawPilot's "delivery instructions" — they're only relevant
+        // for OpenClaw (curl-based) agents, not NanoClaw channel tasks.
+        const message = prompt
+            .replace("IMPORTANT: Your final message will be automatically delivered to the user.", "")
+            .replace("You MUST start your final output with \"completed: \" followed by the full text, answer, or result. Do NOT abbreviate or summarize.", "")
+            .replace("If you encounter an unrecoverable error, start your message with \"error: \" followed by the description.", "");
 
-            // Spawn the task without a webhook — we poll for completion ourselves
-            // so ClawPilot is not dependent on the NanoClaw VPS calling us back.
-            await client.spawnTask(agentId, taskId, message);
-
-            // If a callback URL was requested, start a detached poller that watches
-            // the task and POSTs the result to the webhook once done.
-            if (webhook) {
-                client.pollTaskUntilComplete(agentId, taskId, webhook).catch((e) => {
-                    console.error("[nanoclaw] pollTaskUntilComplete failed:", e);
-                });
+        if (!channel) {
+            // No WS channel configured — fall back to HTTP task API
+            try {
+                await client.spawnTask(agentId, taskId, message, webhook);
+            } catch (e) {
+                handleNetworkError("spawnTaskSession", e);
             }
-        } catch (e) {
-            handleNetworkError("spawnTaskSession", e);
+            return;
         }
+
+        const sessionId = `task:${taskId}`;
+
+        // Fire-and-forget: send task over WS channel, deliver webhook when done
+        channel.sendTask(sessionId, message, env.GATEWAY_AI_TIMEOUT)
+            .then(async (result: ChannelResponse) => {
+                if (!webhook) return;
+
+                const payload = {
+                    type: 'task_completed',
+                    taskId,
+                    status: result.status === 'done' ? 'success' : 'error',
+                    result: result.status === 'done' ? result.response : undefined,
+                    error: result.status === 'error' ? result.error : undefined,
+                    timestamp: new Date().toISOString(),
+                };
+
+                try {
+                    const res = await fetch(webhook.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...webhook.headers,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        console.error('[nanoclaw] webhook delivery failed:', res.status, text);
+                    }
+                } catch (e) {
+                    console.error('[nanoclaw] webhook delivery error:', e);
+                }
+            })
+            .catch((e: unknown) => {
+                console.error('[nanoclaw] channel sendTask failed:', e);
+            });
     }
 
     async generateAgentConfig(

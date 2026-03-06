@@ -2,21 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NanoClawBackend } from './api.js';
 import { GatewayOfflineError, GatewayPairingRequiredError } from '../../errors.js';
 
-// We must declare the mock instance outside so vi.mock can capture it.
-// To avoid "Cannot access 'mockClientInstance' before initialization", we use vi.hoisted
-const mockClientInstance = vi.hoisted(() => ({
-    getAgents: vi.fn(),
-    getSessions: vi.fn(),
-    sendMessage: vi.fn(),
-    spawnTask: vi.fn(),
-    pollTaskUntilComplete: vi.fn().mockResolvedValue(undefined),
-    generateConfig: vi.fn(),
-    createAgent: vi.fn(),
-    updateAgent: vi.fn(),
-    deleteAgent: vi.fn(),
-    getAgentFile: vi.fn(),
-    setAgentFile: vi.fn(),
-    getModels: vi.fn(),
+// We must declare the mock instances outside so vi.mock can capture them.
+// To avoid "Cannot access before initialization", we use vi.hoisted
+const { mockClientInstance, mockChannelInstance } = vi.hoisted(() => ({
+    mockClientInstance: {
+        getAgents: vi.fn(),
+        getSessions: vi.fn(),
+        sendMessage: vi.fn(),
+        spawnTask: vi.fn(),
+        generateConfig: vi.fn(),
+        createAgent: vi.fn(),
+        updateAgent: vi.fn(),
+        deleteAgent: vi.fn(),
+        getAgentFile: vi.fn(),
+        setAgentFile: vi.fn(),
+        getModels: vi.fn(),
+    },
+    mockChannelInstance: {
+        sendTask: vi.fn(),
+        close: vi.fn(),
+    },
 }));
 
 // Mock the env configuration
@@ -24,13 +29,16 @@ vi.mock('../../../config/env.js', () => ({
     env: {
         GATEWAY_URL: 'http://localhost:8080',
         GATEWAY_TOKEN: 'test-token',
+        GATEWAY_AI_TIMEOUT: 120_000,
+        NANOCLAW_WS_URL: 'ws://localhost:9090',
     },
 }));
 
-// Mock the NanoClawClient
+// Mock the NanoClawClient and NanoClawChannelClient
 vi.mock('@claw-pilot/nanoclaw-gateway', () => {
     return {
         NanoClawClient: vi.fn(() => mockClientInstance),
+        NanoClawChannelClient: vi.fn(() => mockChannelInstance),
     };
 });
 
@@ -101,19 +109,21 @@ describe('NanoClawBackend Adapter', () => {
         await expect(backend.getAgents()).rejects.toThrow(GatewayPairingRequiredError);
     });
 
-    it('should spawn task without webhook and start polling when webhook provided', async () => {
-        const webhook = { url: 'abc', headers: { 'Authorization': 'token' } };
-        await backend.spawnTaskSession('agent1', 'task1', 'prompt', webhook);
-        // Webhook must NOT be forwarded to spawnTask — we poll ourselves
-        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt');
-        // Poller should be started
-        expect(mockClientInstance.pollTaskUntilComplete).toHaveBeenCalledWith('agent1', 'task1', webhook);
+    it('should spawn task via WS channel (fire-and-forget)', async () => {
+        mockChannelInstance.sendTask.mockResolvedValueOnce({ status: 'done', response: 'result' });
+
+        await backend.spawnTaskSession('agent1', 'task1', 'prompt');
+
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('task:task1', 'prompt', 120_000);
     });
 
-    it('should spawn task without polling when no webhook', async () => {
-        await backend.spawnTaskSession('agent1', 'task1', 'prompt');
-        expect(mockClientInstance.spawnTask).toHaveBeenCalledWith('agent1', 'task1', 'prompt');
-        expect(mockClientInstance.pollTaskUntilComplete).not.toHaveBeenCalled();
+    it('should route chat via WS channel', async () => {
+        mockChannelInstance.sendTask.mockResolvedValueOnce({ status: 'done', response: 'hello back' });
+
+        const result = await backend.routeChatToAgent('agent1', 'hello');
+
+        expect(mockChannelInstance.sendTask).toHaveBeenCalledWith('chat:agent1', 'hello', 120_000);
+        expect(result).toEqual({ message: 'hello back' });
     });
 
     it('should return empty string when getAgentFile fails', async () => {

@@ -1,3 +1,5 @@
+import WebSocket from 'ws';
+
 export interface WebhookConfig {
     url: string;
     headers?: Record<string, string>;
@@ -89,6 +91,10 @@ export interface GenerateConfigResponse {
         generated_at: string;
     };
 }
+
+export type ChannelResponse =
+    | { status: 'done'; response: string }
+    | { status: 'error'; error: string };
 
 /**
  * Type guard to check if input is NanoClawAgentData (has jid)
@@ -269,69 +275,6 @@ export class NanoClawClient {
         return this.request<Task>('GET', `/api/agents/${agentId}/tasks/${taskId}`);
     }
 
-    /**
-     * Poll the task status until it completes, then POST the webhook callback
-     * ourselves. This makes ClawPilot resilient to NanoClaw not calling the
-     * webhook — we own the completion notification entirely on the client side.
-     *
-     * Runs detached (fire-and-forget) — does NOT block spawnTask.
-     */
-    async pollTaskUntilComplete(
-        agentId: string,
-        taskId: string,
-        webhook: WebhookConfig,
-        options?: { intervalMs?: number; maxAttempts?: number },
-    ): Promise<void> {
-        const intervalMs = options?.intervalMs ?? 5_000;
-        const maxAttempts = options?.maxAttempts ?? 720; // ~1 hour at 5s intervals
-
-        const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            await sleep(intervalMs);
-
-            let task: Task;
-            try {
-                task = await this.getTask(agentId, taskId);
-            } catch {
-                // Gateway may be briefly unavailable — keep trying
-                continue;
-            }
-
-            if (task.status !== 'active') {
-                // Task is done (completed or paused/cancelled)
-                const payload = {
-                    type: 'task_completed',
-                    taskId,
-                    status: task.status === 'completed' ? 'success' : 'error',
-                    result: task.last_result ?? undefined,
-                    timestamp: new Date().toISOString(),
-                };
-
-                try {
-                    const res = await fetch(webhook.url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...webhook.headers,
-                        },
-                        body: JSON.stringify(payload),
-                    });
-                    if (!res.ok) {
-                        const text = await res.text();
-                        throw new Error(`Webhook POST failed (${res.status}): ${text}`);
-                    }
-                } catch (e) {
-                    // Log and swallow — the task is done, nothing more we can do
-                    console.error('[nanoclaw-gateway] pollTaskUntilComplete: webhook delivery failed', e);
-                }
-                return;
-            }
-        }
-
-        console.warn('[nanoclaw-gateway] pollTaskUntilComplete: timed out waiting for task', taskId);
-    }
-
     async cancelTask(agentId: string, taskId: string): Promise<{ status: string; taskId: string }> {
         return this.request<{ status: string; taskId: string }>('DELETE', `/api/agents/${agentId}/tasks/${taskId}`);
     }
@@ -365,5 +308,117 @@ export class NanoClawClient {
             throw new Error(`Health check failed (${response.status})`);
         }
         return response.json();
+    }
+}
+
+export class NanoClawChannelClient {
+    private wsUrl: string;
+    private token?: string;
+    private connections = new Map<string, WebSocket>();
+    private pending = new Map<string, {
+        resolve: (v: ChannelResponse) => void;
+        reject: (e: Error) => void;
+        timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    constructor(wsUrl: string, token?: string) {
+        this.wsUrl = wsUrl.replace(/\/$/, '');
+        this.token = token;
+    }
+
+    async sendTask(
+        sessionId: string,
+        task: string,
+        timeoutMs = 120_000,
+    ): Promise<ChannelResponse> {
+        if (this.pending.has(sessionId)) {
+            throw new Error(`Session '${sessionId}' already has a pending request`);
+        }
+
+        const ws = await this.getOrCreateConnection(sessionId);
+
+        return new Promise<ChannelResponse>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.pending.delete(sessionId);
+                reject(new Error(`Channel request timed out after ${timeoutMs}ms for session '${sessionId}'`));
+            }, timeoutMs);
+
+            this.pending.set(sessionId, { resolve, reject, timer });
+
+            ws.send(JSON.stringify({ task, sessionId }));
+        });
+    }
+
+    private getOrCreateConnection(sessionId: string): Promise<WebSocket> {
+        const existing = this.connections.get(sessionId);
+        if (existing && existing.readyState === WebSocket.OPEN) {
+            return Promise.resolve(existing);
+        }
+
+        // Clean up old connection if exists
+        if (existing) {
+            this.connections.delete(sessionId);
+            try { existing.close(); } catch { /* ignore */ }
+        }
+
+        return new Promise<WebSocket>((resolve, reject) => {
+            const url = this.token
+                ? `${this.wsUrl}?session=${sessionId}&token=${this.token}`
+                : `${this.wsUrl}?session=${sessionId}`;
+            const ws = new WebSocket(url);
+
+            ws.on('open', () => {
+                this.connections.set(sessionId, ws);
+                resolve(ws);
+            });
+
+            ws.on('message', (data: Buffer) => {
+                try {
+                    const msg = JSON.parse(data.toString());
+                    const pending = this.pending.get(sessionId);
+                    if (pending && (msg.status === 'done' || msg.status === 'error')) {
+                        clearTimeout(pending.timer);
+                        this.pending.delete(sessionId);
+                        pending.resolve(msg as ChannelResponse);
+                    }
+                } catch {
+                    // Ignore malformed messages
+                }
+            });
+
+            ws.on('error', (err) => {
+                const pending = this.pending.get(sessionId);
+                if (pending) {
+                    clearTimeout(pending.timer);
+                    this.pending.delete(sessionId);
+                    pending.reject(err instanceof Error ? err : new Error(String(err)));
+                }
+                this.connections.delete(sessionId);
+                reject(err);
+            });
+
+            ws.on('close', () => {
+                const pending = this.pending.get(sessionId);
+                if (pending) {
+                    clearTimeout(pending.timer);
+                    this.pending.delete(sessionId);
+                    pending.reject(new Error(`WebSocket closed for session '${sessionId}'`));
+                }
+                this.connections.delete(sessionId);
+            });
+        });
+    }
+
+    close(): void {
+        for (const [sessionId, ws] of this.connections) {
+            try { ws.close(); } catch { /* ignore */ }
+            const pending = this.pending.get(sessionId);
+            if (pending) {
+                clearTimeout(pending.timer);
+                pending.reject(new Error('Channel client closed'));
+            }
+        }
+        this.connections.clear();
+        this.pending.clear();
     }
 }
