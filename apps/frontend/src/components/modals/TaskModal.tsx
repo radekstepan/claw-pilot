@@ -332,6 +332,10 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 
+  const wasRejectedFromReview =
+    task.status === "IN_PROGRESS" &&
+    combinedActivities.some((a) => a.message?.startsWith("Review rejected"));
+
   const agentOptions = [
     { value: NONE_VALUE, label: "— Unassigned —" },
     ...agents
@@ -539,7 +543,11 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
                       onValueChange={field.onChange}
                       options={agentOptions}
                       placeholder="— Unassigned —"
-                      disabled={task.status === "DONE"}
+                      disabled={
+                        task.status === "DONE" ||
+                        (task.status === "IN_PROGRESS" &&
+                          !wasRejectedFromReview)
+                      }
                     />
                   )}
                 />
@@ -558,7 +566,11 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
                       onValueChange={field.onChange}
                       options={PRIORITY_OPTIONS}
                       placeholder="— None —"
-                      disabled={task.status === "DONE"}
+                      disabled={
+                        task.status === "DONE" ||
+                        (task.status === "IN_PROGRESS" &&
+                          !wasRejectedFromReview)
+                      }
                     />
                   )}
                 />
