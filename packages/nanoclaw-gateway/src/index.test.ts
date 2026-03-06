@@ -1,5 +1,67 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NanoClawClient } from './index';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { NanoClawClient, NanoClawChannelClient, ChannelResponse } from './index';
+
+// ---------------------------------------------------------------------------
+// WebSocket mock
+// ---------------------------------------------------------------------------
+// MockWebSocket is defined via vi.hoisted() so it exists before vi.mock hoisting.
+
+const mockState = vi.hoisted(() => {
+    type WsEventMap = Record<string, Array<(...args: any[]) => void>>;
+
+    class MockWebSocket {
+        static OPEN = 1;
+        static CLOSED = 3;
+
+        readyState = 1; // OPEN
+        url: string;
+        private _listeners: WsEventMap = {};
+        sent: string[] = [];
+
+        constructor(url: string) {
+            this.url = url;
+            // Emit 'open' asynchronously so the constructor completes first
+            setTimeout(() => this._emit('open'), 0);
+        }
+
+        on(event: string, cb: (...args: any[]) => void) {
+            (this._listeners[event] = this._listeners[event] || []).push(cb);
+            return this;
+        }
+
+        send(data: string) { this.sent.push(data); }
+        ping() { /* noop */ }
+
+        close() {
+            this.readyState = 3; // CLOSED
+            this._emit('close');
+        }
+
+        _emit(event: string, ...args: any[]) {
+            (this._listeners[event] || []).forEach(cb => cb(...args));
+        }
+
+        _triggerMessage(obj: object) {
+            this._emit('message', Buffer.from(JSON.stringify(obj)));
+        }
+    }
+
+    // Mutable box so tests can access the latest WS instance
+    const state: { lastMockWs: MockWebSocket | null } = { lastMockWs: null };
+
+    return { MockWebSocket, state };
+});
+
+vi.mock('ws', () => {
+    const WS = vi.fn().mockImplementation((url: string) => {
+        const ws = new mockState.MockWebSocket(url);
+        mockState.state.lastMockWs = ws;
+        return ws;
+    });
+    (WS as any).OPEN = 1;
+    (WS as any).CLOSED = 3;
+    return { default: WS };
+});
 
 // Mock the global fetch
 const mockFetch = vi.fn();
@@ -9,7 +71,7 @@ describe('NanoClawClient', () => {
     let client: NanoClawClient;
 
     beforeEach(() => {
-        vi.resetAllMocks();
+        vi.clearAllMocks();
         client = new NanoClawClient('http://localhost:3000', 'test-token');
     });
 
@@ -253,5 +315,151 @@ describe('NanoClawClient', () => {
                 trigger: '@shell-fs'
             })
         });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// NanoClawChannelClient tests
+// ---------------------------------------------------------------------------
+
+describe('NanoClawChannelClient', () => {
+    let channelClient: NanoClawChannelClient;
+
+    beforeEach(() => {
+        mockState.state.lastMockWs = null;
+        channelClient = new NanoClawChannelClient('ws://localhost:8081', 'test-token');
+    });
+
+    afterEach(() => {
+        channelClient.close();
+        vi.clearAllTimers();
+    });
+
+    it('connects to the correct URL with session and token', async () => {
+        const { default: WS } = await import('ws');
+
+        const promise = channelClient.sendTask('session-1', 'hello');
+
+        // Wait for open event to fire
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(WS).toHaveBeenCalledWith(
+            'ws://localhost:8081?session=session-1&token=test-token'
+        );
+
+        // Resolve the pending task
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'ok' });
+        await promise;
+    });
+
+    it('resolves with done response when agent finishes', async () => {
+        const promise = channelClient.sendTask('session-done', 'do work');
+
+        await new Promise(r => setTimeout(r, 10));
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'task complete' });
+
+        const result = await promise;
+        expect(result).toEqual({ status: 'done', response: 'task complete' });
+    });
+
+    it('resolves with error response when agent responds with error status', async () => {
+        const promise = channelClient.sendTask('session-err', 'bad task');
+
+        await new Promise(r => setTimeout(r, 10));
+        mockState.state.lastMockWs!._triggerMessage({ status: 'error', error: 'something went wrong' });
+
+        const result = await promise;
+        expect(result).toEqual({ status: 'error', error: 'something went wrong' });
+    });
+
+    it('calls onStream for stream chunks before done', async () => {
+        const chunks: string[] = [];
+        const promise = channelClient.sendTask('session-stream', 'stream me', 5000, (chunk) => {
+            chunks.push(chunk);
+        });
+
+        await new Promise(r => setTimeout(r, 10));
+
+        mockState.state.lastMockWs!._triggerMessage({ status: 'stream', chunk: 'chunk1' });
+        mockState.state.lastMockWs!._triggerMessage({ status: 'stream', chunk: 'chunk2' });
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'final' });
+
+        await promise;
+        expect(chunks).toEqual(['chunk1', 'chunk2']);
+    });
+
+    it('sends the task JSON over the websocket', async () => {
+        const promise = channelClient.sendTask('session-send', 'my task');
+
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(mockState.state.lastMockWs!.sent).toHaveLength(1);
+        expect(JSON.parse(mockState.state.lastMockWs!.sent[0])).toEqual({
+            task: 'my task',
+            sessionId: 'session-send',
+        });
+
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'ok' });
+        await promise;
+    });
+
+    it('rejects when the WebSocket closes before a response', async () => {
+        const promise = channelClient.sendTask('session-close', 'task');
+
+        await new Promise(r => setTimeout(r, 10));
+        mockState.state.lastMockWs!.close();
+
+        await expect(promise).rejects.toThrow("WebSocket closed for session 'session-close'");
+    });
+
+    it('rejects when a WebSocket error occurs', async () => {
+        const promise = channelClient.sendTask('session-wserr', 'task');
+
+        await new Promise(r => setTimeout(r, 10));
+        mockState.state.lastMockWs!._emit('error', new Error('tcp reset'));
+
+        await expect(promise).rejects.toThrow('tcp reset');
+    });
+
+    it('rejects immediately when a duplicate sendTask on the same session is started', async () => {
+        const promise1 = channelClient.sendTask('session-dup', 'first');
+        await new Promise(r => setTimeout(r, 10));
+
+        await expect(
+            channelClient.sendTask('session-dup', 'second')
+        ).rejects.toThrow("Session 'session-dup' already has a pending request");
+
+        // Clean up first promise
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'ok' });
+        await promise1;
+    });
+
+    it('rejects all pending tasks and closes connections on close()', async () => {
+        const promise = channelClient.sendTask('session-shutdown', 'task');
+
+        await new Promise(r => setTimeout(r, 10));
+
+        channelClient.close();
+
+        // When close() calls ws.close(), the WS 'close' event fires synchronously
+        // before the close() cleanup loop runs. The pending promise is therefore
+        // rejected by the WS close handler with the session message.
+        await expect(promise).rejects.toThrow("session 'session-shutdown'");
+    });
+
+    it('works without a token — omits token from URL', async () => {
+        const { default: WS } = await import('ws');
+        const noTokenClient = new NanoClawChannelClient('ws://localhost:8081');
+
+        const promise = noTokenClient.sendTask('session-noauth', 'task');
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(WS).toHaveBeenLastCalledWith(
+            'ws://localhost:8081?session=session-noauth'
+        );
+
+        mockState.state.lastMockWs!._triggerMessage({ status: 'done', response: 'ok' });
+        await promise;
+        noTokenClient.close();
     });
 });

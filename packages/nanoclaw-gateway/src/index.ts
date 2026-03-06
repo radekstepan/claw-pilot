@@ -86,9 +86,12 @@ export interface GenerateConfigRequest {
 
 export interface GenerateConfigResponse {
     config: {
+        /** Agent name — from gateway stub: 'generated-agent' */
+        name: string;
+        /** Agent role — from gateway stub: 'Worker' */
+        role: string;
+        /** Model identifier — e.g. 'claude-3-7-sonnet-latest' */
         model: string;
-        prompt: string;
-        generated_at: string;
     };
 }
 

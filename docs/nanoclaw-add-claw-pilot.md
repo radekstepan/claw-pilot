@@ -531,10 +531,42 @@ import './websocket.js';
 
 9. Add to `.env`:
 \`\`\`bash
+TELEGRAM_BOT_TOKEN=
 GATEWAY_PORT=8080
 GATEWAY_HOST=0.0.0.0
 GATEWAY_TOKEN=your-secret-token
 WS_PORT=8081
+\`\`\`
+
+10. Update `container/agent-runner/src/index.ts` — model override via secret and startup logging:
+
+   **10a.** Near the top of `main()` (after reading `sdkEnv`), add model override from container secrets:
+\`\`\`ts
+  // Allow Claw-Pilot to override the model per task via the CLAUDE_CODE_MODEL secret.
+  if (containerInput.secrets?.CLAUDE_CODE_MODEL) {
+    sdkEnv.ANTHROPIC_MODEL = containerInput.secrets.CLAUDE_CODE_MODEL;
+  }
+\`\`\`
+
+   **10b.** After the model is resolved, log it so it appears in the live stream:
+\`\`\`ts
+  log(`[agent-runner] USING MODEL: ${sdkEnv.ANTHROPIC_MODEL} (fallback: ${sdkEnv.ANTHROPIC_SMALL_FAST_MODEL || sdkEnv.ANTHROPIC_MODEL})`);
+\`\`\`
+
+   **10c.** Pass `model` and `fallbackModel` from `sdkEnv` when creating the SDK client/query:
+\`\`\`ts
+      model: sdkEnv.ANTHROPIC_MODEL,
+      fallbackModel: sdkEnv.ANTHROPIC_SMALL_FAST_MODEL || sdkEnv.ANTHROPIC_MODEL,
+\`\`\`
+
+   Also update `readSecrets()` to expose these environment variables:
+\`\`\`ts
+  const {
+    CLAUDE_CODE_MODEL,
+    ANTHROPIC_MODEL,
+    ANTHROPIC_SMALL_FAST_MODEL,
+    // ... existing secrets ...
+  } = secrets;
 \`\`\`
 
 ## Verify it's working
