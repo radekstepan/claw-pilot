@@ -13,6 +13,11 @@ export interface WebhookConfig {
   headers?: Record<string, string>;
 }
 
+export interface TaskStreamChunk {
+  chunk: string;
+  source: "stdout" | "stderr";
+}
+
 export interface GatewayBackend {
   getAgents(): Promise<Agent[]>;
   createAgent(
@@ -34,7 +39,7 @@ export interface GatewayBackend {
     taskId: string,
     prompt: string,
     webhook?: WebhookConfig,
-    onStream?: (chunk: string) => void,
+    onStream?: (payload: TaskStreamChunk) => void,
   ): Promise<void>;
   agentIdToSessionKey(agentId: string): string;
 

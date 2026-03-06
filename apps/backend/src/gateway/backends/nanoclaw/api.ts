@@ -1,8 +1,14 @@
 import type { Agent } from "@claw-pilot/shared-types";
-import type { GatewayBackend, LiveSession, WebhookConfig } from "../../types.js";
+import type {
+    GatewayBackend,
+    LiveSession,
+    TaskStreamChunk,
+    WebhookConfig,
+} from "../../types.js";
 import { env } from "../../../config/env.js";
 import { NanoClawClient, NanoClawChannelClient } from "./client.js";
 import type { ChannelResponse } from "./client.js";
+import type { StreamSource } from "./client.js";
 import { GatewayOfflineError, GatewayPairingRequiredError } from "../../errors.js";
 
 // GATEWAY_URL → NanoClaw's HTTP API (agents, sessions, files, models)
@@ -108,7 +114,7 @@ export class NanoClawBackend implements GatewayBackend {
         taskId: string,
         prompt: string,
         webhook?: WebhookConfig,
-        onStream?: (chunk: string) => void,
+        onStream?: (payload: TaskStreamChunk) => void,
     ): Promise<void> {
         // Strip ClawPilot's "delivery instructions" — they're only relevant
         // for OpenClaw (curl-based) agents, not NanoClaw channel tasks.

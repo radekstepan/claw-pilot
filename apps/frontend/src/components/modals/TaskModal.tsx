@@ -89,6 +89,28 @@ function normalizeContainerLog(taskId: string, chunk: string): StreamLogEntry {
   };
 }
 
+function parsePersistedStreamChunk(chunk: string): {
+  chunk: string;
+  source: StreamLogEntry["source"];
+} {
+  try {
+    const parsed = JSON.parse(chunk) as { chunk?: unknown; source?: unknown };
+    if (typeof parsed.chunk === "string") {
+      return {
+        chunk: parsed.chunk,
+        source:
+          parsed.source === "stderr" || parsed.source === "container"
+            ? parsed.source
+            : "stdout",
+      };
+    }
+  } catch {
+    // legacy plain-text rows
+  }
+
+  return { chunk, source: "stdout" };
+}
+
 interface ActivityEntryProps {
   activity: ActivityLog;
 }
@@ -301,7 +323,14 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
         if (rows.length > 0) {
           hydrateStreamLogs(
             task.id,
-            rows.map((row) => ({ ...row, source: "stream" as const })),
+            rows.map((row) => {
+              const parsed = parsePersistedStreamChunk(row.chunk);
+              return {
+                ...row,
+                chunk: parsed.chunk,
+                source: parsed.source,
+              };
+            }),
           );
           return;
         }
@@ -889,11 +918,18 @@ export const TaskModal = ({ task, onClose, agents }: TaskModalProps) => {
                               <span>
                                 {entry.source === "container"
                                   ? "container backfill"
-                                  : "live stream"}
+                                  : entry.source === "stderr"
+                                    ? "runner trace"
+                                    : "model output"}
                               </span>
                             </div>
                             <pre
-                              className="text-[10.5px] leading-relaxed font-mono text-emerald-400 dark:text-emerald-300 px-3 pb-3 overflow-x-auto"
+                              className={`text-[10.5px] leading-relaxed font-mono px-3 pb-3 overflow-x-auto ${entry.source === "stderr"
+                                ? "text-amber-300 dark:text-amber-200"
+                                : entry.source === "container"
+                                  ? "text-sky-300 dark:text-sky-200"
+                                  : "text-emerald-400 dark:text-emerald-300"
+                                }`}
                               style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
                             >
                               {entry.chunk}

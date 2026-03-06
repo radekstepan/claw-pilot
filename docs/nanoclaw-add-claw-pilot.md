@@ -14,7 +14,7 @@ Save the block below as `.claude/skills/add-claw-pilot/SKILL.md` inside your Nan
 # Skill: Add Claw-Pilot Integration (Gateway & WS Channel)
 
 ## Goal
-Add an HTTP Gateway and WebSocket channel for Claw-Pilot integration.
+Add an HTTP Gateway and WebSocket channel for Claw-Pilot integration, including richer live execution tracing.
 
 ## Requirements
 - Install dependencies: `express`, `cors`, `ws`
@@ -243,12 +243,14 @@ export interface ChannelOpts {
 registerGroup: (jid: string, group: RegisteredGroup) => registerGroup(jid, group),
 \`\`\`
 
-   **4b.** In the `runAgent` function (just before the `try { const output = await runContainerAgent(...)` block), add the stream wiring so stdout chunks get forwarded to the WS connection:
+   **4b.** In the `runAgent` function (just before the `try { const output = await runContainerAgent(...)` block), add the stream wiring so both `stdout` and `stderr` chunks get forwarded to the WS connection with a source label:
 \`\`\`ts
-  // Stream intermediate stdout chunks out to the channel if it supports it
+  // Stream intermediate terminal chunks out to the channel if supported
   const channel = findChannel(channels, chatJid);
   const onStreamChunk = channel && 'streamOutput' in channel
-    ? (chunk: string) => { (channel as any).streamOutput(chatJid, chunk); }
+    ? (payload: { chunk: string; source: 'stdout' | 'stderr' }) => {
+      (channel as any).streamOutput(chatJid, payload.chunk, payload.source);
+    }
     : undefined;
 \`\`\`
    Then pass `onStreamChunk` as the **last argument** to `runContainerAgent(...)`:
@@ -262,7 +264,7 @@ registerGroup: (jid: string, group: RegisteredGroup) => registerGroup(jid, group
   );
 \`\`\`
 
-5. Update `src/container-runner.ts` — add `onStreamChunk` parameter and stdout streaming logic:
+5. Update `src/container-runner.ts` — add `onStreamChunk` parameter, stream both `stdout` and `stderr`, strip internal reasoning, and suppress the final output marker payload from the live trace:
 
    **5a.** Add `onStreamChunk` as optional last parameter of `runContainerAgent`:
 \`\`\`ts
@@ -271,15 +273,20 @@ export async function runContainerAgent(
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
-  onStreamChunk?: (chunk: string) => void,   // <-- ADD THIS
+  onStreamChunk?: (payload: { chunk: string; source: 'stdout' | 'stderr' }) => void,
 ): Promise<ContainerOutput> {
 \`\`\`
 
-   **5b.** Inside the `container.stdout.on('data', (data) => { ... })` handler (after the existing `stdout +=` accumulation block), add the streaming emit logic:
+   **5b.** Before the `container.stdout.on(...)` handler, declare:
+\`\`\`ts
+let isInsideInternalBlock = false;
+let isInsideOutputBlock = false;
+\`\`\`
+
+   **5c.** Inside the `container.stdout.on('data', (data) => { ... })` handler (after the existing `stdout +=` accumulation block), add the streaming emit logic:
 \`\`\`ts
       if (onStreamChunk) {
-        // Strip <internal>...</internal> blocks — these are internal JSON reasoning
-        // markers that should not be shown to the user.
+        // Strip <internal>...</internal> blocks so the UI does not show internal reasoning.
         let streamText = chunk;
         if (isInsideInternalBlock) {
           const endIdx = streamText.indexOf('</internal>');
@@ -300,20 +307,61 @@ export async function runContainerAgent(
             streamText = streamText.slice(0, startIdx);
           }
         }
+
+        // Remove the structured output markers and JSON payload from the live trace.
+        if (isInsideOutputBlock) {
+          const endIdx = streamText.indexOf(OUTPUT_END_MARKER);
+          if (endIdx !== -1) {
+            isInsideOutputBlock = false;
+            streamText = streamText.slice(endIdx + OUTPUT_END_MARKER.length);
+          } else {
+            streamText = '';
+          }
+        }
+
+        while (streamText.includes(OUTPUT_START_MARKER)) {
+          const startIdx = streamText.indexOf(OUTPUT_START_MARKER);
+          const endIdx = streamText.indexOf(OUTPUT_END_MARKER, startIdx);
+
+          if (endIdx !== -1) {
+            streamText =
+              streamText.slice(0, startIdx) +
+              streamText.slice(endIdx + OUTPUT_END_MARKER.length);
+          } else {
+            isInsideOutputBlock = true;
+            streamText = streamText.slice(0, startIdx);
+          }
+        }
+
         if (streamText.trim()) {
-          onStreamChunk(streamText);
+          onStreamChunk({ chunk: streamText, source: 'stdout' });
         }
       }
 \`\`\`
-   Also declare `let isInsideInternalBlock = false;` before the `container.stdout.on(...)` call.
 
-5. Create `src/channels/websocket.ts`:
+   **5d.** Inside the `container.stderr.on('data', ...)` handler, also forward `stderr` live:
+\`\`\`ts
+      if (onStreamChunk && chunk.trim()) {
+        onStreamChunk({ chunk, source: 'stderr' });
+      }
+\`\`\`
+
+   **5e.** When writing the summary container log for non-error runs, include `stderr` too so Claw-Pilot can backfill it later:
+\`\`\`ts
+          `=== Stderr${stderrTruncated ? ' (TRUNCATED)' : ''} ===`,
+          stderr,
+          ``,
+\`\`\`
+
+6. Create `src/channels/websocket.ts`:
 \`\`\`ts
 import { WebSocketServer, WebSocket } from 'ws';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
 import { logger } from '../logger.js';
+
+type StreamSource = 'stdout' | 'stderr';
 
 export class WebSocketChannel implements Channel {
   name = 'websocket';
@@ -410,11 +458,15 @@ export class WebSocketChannel implements Channel {
     }
   }
 
-  // Sends a live stdout chunk back to Claw-Pilot while the container is still running.
-  async streamOutput(jid: string, chunk: string): Promise<void> {
+  // Sends a live terminal chunk back to Claw-Pilot while the container is still running.
+  async streamOutput(
+    jid: string,
+    chunk: string,
+    source: StreamSource = 'stdout',
+  ): Promise<void> {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ chunk, status: 'stream' }));
+      ws.send(JSON.stringify({ chunk, status: 'stream', source }));
     }
   }
 
@@ -448,12 +500,36 @@ registerChannel('websocket', (opts: ChannelOpts) => {
 });
 \`\`\`
 
-6. Update `src/channels/index.ts` to include the WebSocket channel:
+7. Update the existing `createSanitizeBashHook()` in `container/agent-runner/src/index.ts` so Bash tool executions appear in the live trace:
+\`\`\`ts
+function createSanitizeBashHook(): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    const preInput = input as PreToolUseHookInput;
+    const command = (preInput.tool_input as { command?: string })?.command;
+    if (!command) return {};
+
+    log(`Bash tool: ${command}`);
+
+    const unsetPrefix = `unset ${SECRET_ENV_VARS.join(' ')} 2>/dev/null; `;
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        updatedInput: {
+          ...(preInput.tool_input as Record<string, unknown>),
+          command: unsetPrefix + command,
+        },
+      },
+    };
+  };
+}
+\`\`\`
+
+8. Update `src/channels/index.ts` to include the WebSocket channel:
 \`\`\`ts
 import './websocket.js';
 \`\`\`
 
-7. Add to `.env`:
+9. Add to `.env`:
 \`\`\`bash
 GATEWAY_PORT=8080
 GATEWAY_HOST=0.0.0.0
@@ -471,6 +547,13 @@ curl http://localhost:8080/api/health
 ss -tlnp | grep 8081
 \`\`\`
 
+## Expected tracing behavior
+
+- You should see live `stdout` chunks as normal model output.
+- You should also see `stderr` chunks, including runner diagnostics and `Bash tool: ...` lines.
+- You should NOT see the hidden `<internal>...</internal>` reasoning blocks.
+- You should NOT see the raw `---NANOCLAW_OUTPUT_START---` / `---NANOCLAW_OUTPUT_END---` marker payload in the live trace.
+
 ## Container Log Retrieval (for Claw-Pilot oversight)
 
 Add a route to `src/gateway/server.ts` so Claw-Pilot can fetch raw container logs for any session, even after the WS connection has closed:
@@ -478,12 +561,15 @@ Add a route to `src/gateway/server.ts` so Claw-Pilot can fetch raw container log
 \`\`\`ts
 // GET /api/sessions/:sessionId/logs?lines=500
 // Returns the last N lines of the most recent container log file for a session.
-app.get('/api/sessions/:sessionId/logs', authenticate, async (req, res) => {
+// This route already sits behind the app-wide auth middleware defined above,
+// so do NOT add a separate `authenticate` handler here.
+app.get('/api/sessions/:sessionId/logs', async (req, res) => {
   const { sessionId } = req.params as { sessionId: string };
   const lines = parseInt((req.query as any).lines ?? '500');
 
   // Map sessionId back to a group folder.
-  // WS sessions arrive as 'task:UUID' or bare UUIDs. Check both.
+  // Claw-Pilot task WS sessions use `task:<taskId>`, so the registered JID is
+  // `ws:task:<taskId>`. Keep the folder fallback for older/custom sessions.
   const groups = getRegisteredGroups();
   const jid = `ws:${sessionId}`;
   const group = groups[jid] ?? Object.values(groups).find(g => g.folder === sessionId);

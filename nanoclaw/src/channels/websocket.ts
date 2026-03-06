@@ -4,6 +4,8 @@ import { readEnvFile } from '../env.js';
 import { Channel, NewMessage } from '../types.js';
 import { logger } from '../logger.js';
 
+type StreamSource = 'stdout' | 'stderr';
+
 export class WebSocketChannel implements Channel {
   name = 'websocket';
   private wss: WebSocketServer | null = null;
@@ -79,10 +81,14 @@ export class WebSocketChannel implements Channel {
     }
   }
 
-  async streamOutput(jid: string, chunk: string): Promise<void> {
+  async streamOutput(
+    jid: string,
+    chunk: string,
+    source: StreamSource = 'stdout',
+  ): Promise<void> {
     const ws = this.connections.get(jid.replace('ws:', ''));
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ chunk, status: 'stream' }));
+      ws.send(JSON.stringify({ chunk, status: 'stream', source }));
     }
   }
 

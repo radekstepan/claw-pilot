@@ -72,10 +72,12 @@ export interface GenerateConfigResponse {
     };
 }
 
+export type StreamSource = 'stdout' | 'stderr';
+
 export type ChannelResponse =
     | { status: 'done'; response: string }
     | { status: 'error'; error: string }
-    | { status: 'stream'; chunk: string };
+    | { status: 'stream'; chunk: string; source?: StreamSource };
 
 function isNanoClawAgentData(input: ClawPilotAgentInput | NanoClawAgentData): input is NanoClawAgentData {
     return 'jid' in input && !!input.jid;
@@ -292,7 +294,7 @@ export class NanoClawChannelClient {
         sessionId: string,
         task: string,
         timeoutMs = 1_800_000,
-        onStream?: (chunk: string) => void
+        onStream?: (payload: { chunk: string; source: StreamSource }) => void
     ): Promise<ChannelResponse> {
         if (this.pending.has(sessionId)) {
             throw new Error(`Session '${sessionId}' already has a pending request`);
@@ -315,7 +317,7 @@ export class NanoClawChannelClient {
     private getOrCreateConnection(
         sessionId: string,
         agentId?: string,
-        onStream?: (chunk: string) => void
+        onStream?: (payload: { chunk: string; source: StreamSource }) => void
     ): Promise<WebSocket> {
         const existing = this.connections.get(sessionId);
         if (existing && existing.readyState === WebSocket.OPEN) {
@@ -355,7 +357,10 @@ export class NanoClawChannelClient {
                     if (msg.status === 'stream' && typeof msg.chunk === 'string') {
                         const existingWs = this.connections.get(sessionId) as any;
                         if (existingWs && existingWs.__onStream) {
-                            existingWs.__onStream(msg.chunk);
+                            existingWs.__onStream({
+                                chunk: msg.chunk,
+                                source: msg.source === 'stderr' ? 'stderr' : 'stdout',
+                            });
                         }
                     } else if (pending && (msg.status === 'done' || msg.status === 'error')) {
                         clearTimeout(pending.timer);

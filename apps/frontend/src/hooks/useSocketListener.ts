@@ -110,7 +110,7 @@ export function useSocketListener() {
           taskId: activity.taskId,
           chunk: activity.message,
           timestamp: activity.timestamp,
-          source: "stream",
+          source: activity.streamSource === "stderr" ? "stderr" : "stdout",
         });
       } else {
         useMissionStore.setState((state) => ({

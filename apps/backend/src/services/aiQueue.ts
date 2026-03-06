@@ -231,12 +231,19 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
       case "recurring-spawn": {
         const { taskId, agentId: taskAgentId, prompt, webhook } = payload.data;
 
-        const onStream = (chunk: string) => {
+        const onStream = ({
+          chunk,
+          source,
+        }: {
+          chunk: string;
+          source: "stdout" | "stderr";
+        }) => {
           const now = new Date().toISOString();
+          const persistedChunk = JSON.stringify({ chunk, source });
           // Persist to DB for post-mortem inspection and modal reload
           try {
             db.insert(streamLogs)
-              .values({ id: randomUUID(), taskId, chunk, timestamp: now })
+              .values({ id: randomUUID(), taskId, chunk: persistedChunk, timestamp: now })
               .run();
           } catch (error) {
             if (!isMissingStreamLogsTableError(error)) {
@@ -255,6 +262,7 @@ async function processJob(job: Record<string, unknown>): Promise<void> {
             timestamp: now,
             taskStatus: "IN_PROGRESS",
             type: "stream",
+            streamSource: source,
           });
         };
 

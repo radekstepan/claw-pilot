@@ -260,7 +260,7 @@ export async function runContainerAgent(
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
-  onStreamChunk?: (chunk: string) => void,
+  onStreamChunk?: (payload: { chunk: string; source: 'stdout' | 'stderr' }) => void,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -323,6 +323,7 @@ export async function runContainerAgent(
     let outputChain = Promise.resolve();
 
     let isInsideInternalBlock = false;
+    let isInsideOutputBlock = false;
 
     container.stdout.on('data', (data) => {
       const chunk = data.toString();
@@ -368,8 +369,32 @@ export async function runContainerAgent(
           }
         }
 
+        if (isInsideOutputBlock) {
+          const endIdx = streamText.indexOf(OUTPUT_END_MARKER);
+          if (endIdx !== -1) {
+            isInsideOutputBlock = false;
+            streamText = streamText.slice(endIdx + OUTPUT_END_MARKER.length);
+          } else {
+            streamText = '';
+          }
+        }
+
+        while (streamText.includes(OUTPUT_START_MARKER)) {
+          const startIdx = streamText.indexOf(OUTPUT_START_MARKER);
+          const endIdx = streamText.indexOf(OUTPUT_END_MARKER, startIdx);
+
+          if (endIdx !== -1) {
+            streamText =
+              streamText.slice(0, startIdx) +
+              streamText.slice(endIdx + OUTPUT_END_MARKER.length);
+          } else {
+            isInsideOutputBlock = true;
+            streamText = streamText.slice(0, startIdx);
+          }
+        }
+
         if (streamText.trim()) {
-          onStreamChunk(streamText);
+          onStreamChunk({ chunk: streamText, source: 'stdout' });
         }
       }
 
@@ -426,6 +451,10 @@ export async function runContainerAgent(
         );
       } else {
         stderr += chunk;
+      }
+
+      if (onStreamChunk && chunk.trim()) {
+        onStreamChunk({ chunk, source: 'stderr' });
       }
     });
 
@@ -563,6 +592,9 @@ export async function runContainerAgent(
           mounts
             .map((m) => `${m.containerPath}${m.readonly ? ' (ro)' : ''}`)
             .join('\n'),
+          ``,
+          `=== Stderr${stderrTruncated ? ' (TRUNCATED)' : ''} ===`,
+          stderr,
           ``,
         );
       }

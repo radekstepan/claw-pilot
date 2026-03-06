@@ -26,7 +26,7 @@ export interface AppNotification {
 const MAX_NOTIFICATIONS = 50;
 
 export interface StreamLogEntry extends TaskStreamLogEntry {
-  source: "stream" | "container";
+  source: "stdout" | "stderr" | "container";
 }
 
 function getStreamLogKey(entry: Pick<StreamLogEntry, "timestamp" | "chunk" | "source">): string {

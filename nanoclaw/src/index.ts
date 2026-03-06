@@ -303,7 +303,9 @@ async function runAgent(
   // Stream intermediate terminal chunks out to the channel if supported
   const channel = findChannel(channels, chatJid);
   const onStreamChunk = channel && 'streamOutput' in channel
-    ? (chunk: string) => { (channel as any).streamOutput(chatJid, chunk); }
+    ? (payload: { chunk: string; source: 'stdout' | 'stderr' }) => {
+      (channel as any).streamOutput(chatJid, payload.chunk, payload.source);
+    }
     : undefined;
 
   try {
