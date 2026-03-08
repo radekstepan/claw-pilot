@@ -102,6 +102,11 @@ export function useSocketListener() {
       deleteTaskLocally(payload.id);
     });
 
+    socket.on("task_reviewed", (payload) => {
+      console.log("Socket event: task_reviewed", payload);
+      useMissionStore.getState().markTaskNotificationsRead(payload.id);
+    });
+
     socket.on("activity_added", (activity) => {
       console.log("Socket event: activity_added", activity);
       if (activity.type === "stream") {

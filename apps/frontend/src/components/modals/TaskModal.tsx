@@ -143,7 +143,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             </button>
             <button
               onClick={() =>
-                navigator.clipboard.writeText(a.message).catch(() => {})
+                navigator.clipboard.writeText(a.message).catch(() => { })
               }
               className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
@@ -161,7 +161,7 @@ function ActivityEntry({ activity: a }: ActivityEntryProps) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() =>
-                  navigator.clipboard.writeText(a.message).catch(() => {})
+                  navigator.clipboard.writeText(a.message).catch(() => { })
                 }
                 className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
@@ -238,6 +238,7 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
     deleteTask,
     routeTask,
     hydrateStreamLogs,
+    markTaskNotificationsRead,
   } = useMissionStore();
 
   const storeActivities = useMissionStore((state) => state.activities);
@@ -386,6 +387,7 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
     setIsSubmitting(true);
     const snapshot = { ...task };
     updateTaskLocally({ ...task, status: "DONE" });
+    markTaskNotificationsRead(task.id);
     try {
       await api.reviewTask(task.id, "approve");
       toast.success("Task approved and moved to DONE.");
@@ -414,6 +416,7 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
     setIsSubmitting(true);
     const snapshot = { ...task };
     updateTaskLocally({ ...task, status: "IN_PROGRESS" });
+    markTaskNotificationsRead(task.id);
     try {
       await api.reviewTask(
         task.id,
@@ -812,22 +815,20 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
                       <button
                         type="button"
                         onClick={() => setDescPreview(false)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                          !descPreview
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${!descPreview
                             ? "bg-[var(--accent-600)] text-white"
                             : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                        }`}
+                          }`}
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setDescPreview(true)}
-                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${
-                          descPreview
+                        className={`px-2 py-0.5 text-[9px] uppercase tracking-wider font-bold transition-colors ${descPreview
                             ? "bg-[var(--accent-600)] text-white"
                             : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                        }`}
+                          }`}
                       >
                         Preview
                       </button>
@@ -850,9 +851,8 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
                       rows={5}
                       {...register("description")}
                       placeholder="No description…"
-                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${
-                        descPreview ? "hidden" : ""
-                      }`}
+                      className={`w-full bg-transparent border border-black/[0.04] dark:border-white/[0.04] rounded p-2 text-slate-600 dark:text-slate-300 text-sm leading-relaxed resize-none focus:border-[var(--accent-500)] outline-none ${descPreview ? "hidden" : ""
+                        }`}
                     />
                     {descPreview && (
                       <div className="min-h-[7rem] border border-black/[0.04] dark:border-white/[0.04] rounded p-2">
@@ -875,69 +875,68 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
               {(taskStreamLogs.length > 0 ||
                 task.status === "IN_PROGRESS" ||
                 task.status === "STUCK") && (
-                <section className="mb-8">
-                  <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
-                    <Terminal size={10} className="opacity-70" />
-                    Agent Output
-                    {taskStreamLogs.length > 0 && (
-                      <span className="ml-1 text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
-                        ({taskStreamLogs.length} update
-                        {taskStreamLogs.length !== 1 ? "s" : ""})
-                      </span>
-                    )}
-                    {taskStreamLogs.length > 0 && (
-                      <span className="ml-auto text-[9px] normal-case tracking-normal font-normal text-slate-500 dark:text-slate-600">
-                        Persists across reloads
-                      </span>
-                    )}
-                  </h3>
-                  <div className="relative rounded border border-black/[0.06] dark:border-white/[0.06] bg-slate-950 dark:bg-black/40 overflow-hidden">
-                    {taskStreamLogs.length === 0 ? (
-                      <p className="text-[10px] font-mono text-slate-600 p-3 italic">
-                        No agent output captured yet.
-                      </p>
-                    ) : (
-                      <div
-                        className="overflow-y-auto"
-                        style={{ maxHeight: "260px" }}
-                      >
-                        {taskStreamLogs.map((entry) => (
-                          <div
-                            key={`${entry.source}-${entry.timestamp}-${entry.id}`}
-                            className="border-b border-white/5 last:border-b-0"
-                          >
-                            <div className="flex items-center justify-between gap-3 px-3 pt-3 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-600">
-                              <span>{formatLogTime(entry.timestamp)}</span>
-                              <span>
-                                {entry.source === "container"
-                                  ? "container backfill"
-                                  : entry.source === "stderr"
-                                    ? "runner trace"
-                                    : "model output"}
-                              </span>
-                            </div>
-                            <pre
-                              className={`text-[10.5px] leading-relaxed font-mono px-3 pb-3 overflow-x-auto ${
-                                entry.source === "stderr"
-                                  ? "text-amber-300 dark:text-amber-200"
-                                  : entry.source === "container"
-                                    ? "text-sky-300 dark:text-sky-200"
-                                    : "text-emerald-400 dark:text-emerald-300"
-                              }`}
-                              style={{
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-word",
-                              }}
+                  <section className="mb-8">
+                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
+                      <Terminal size={10} className="opacity-70" />
+                      Agent Output
+                      {taskStreamLogs.length > 0 && (
+                        <span className="ml-1 text-[9px] normal-case tracking-normal font-normal text-slate-300 dark:text-slate-600">
+                          ({taskStreamLogs.length} update
+                          {taskStreamLogs.length !== 1 ? "s" : ""})
+                        </span>
+                      )}
+                      {taskStreamLogs.length > 0 && (
+                        <span className="ml-auto text-[9px] normal-case tracking-normal font-normal text-slate-500 dark:text-slate-600">
+                          Persists across reloads
+                        </span>
+                      )}
+                    </h3>
+                    <div className="relative rounded border border-black/[0.06] dark:border-white/[0.06] bg-slate-950 dark:bg-black/40 overflow-hidden">
+                      {taskStreamLogs.length === 0 ? (
+                        <p className="text-[10px] font-mono text-slate-600 p-3 italic">
+                          No agent output captured yet.
+                        </p>
+                      ) : (
+                        <div
+                          className="overflow-y-auto"
+                          style={{ maxHeight: "260px" }}
+                        >
+                          {taskStreamLogs.map((entry) => (
+                            <div
+                              key={`${entry.source}-${entry.timestamp}-${entry.id}`}
+                              className="border-b border-white/5 last:border-b-0"
                             >
-                              {entry.chunk}
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
+                              <div className="flex items-center justify-between gap-3 px-3 pt-3 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-600">
+                                <span>{formatLogTime(entry.timestamp)}</span>
+                                <span>
+                                  {entry.source === "container"
+                                    ? "container backfill"
+                                    : entry.source === "stderr"
+                                      ? "runner trace"
+                                      : "model output"}
+                                </span>
+                              </div>
+                              <pre
+                                className={`text-[10.5px] leading-relaxed font-mono px-3 pb-3 overflow-x-auto ${entry.source === "stderr"
+                                    ? "text-amber-300 dark:text-amber-200"
+                                    : entry.source === "container"
+                                      ? "text-sky-300 dark:text-sky-200"
+                                      : "text-emerald-400 dark:text-emerald-300"
+                                  }`}
+                                style={{
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {entry.chunk}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
             </div>
           </div>
         </div>
@@ -953,11 +952,10 @@ export const TaskModal = ({ taskId, onClose, agents }: TaskModalProps) => {
             <button
               onClick={handleSubmit(handleUpdateTask)}
               disabled={isSubmitting}
-              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${
-                watch("assignee_id") !== NONE_VALUE
+              className={`flex items-center gap-1.5 px-5 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${watch("assignee_id") !== NONE_VALUE
                   ? "border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5"
                   : "bg-[var(--accent-600)] text-white hover:bg-[var(--accent-500)] disabled:opacity-50"
-              }`}
+                }`}
             >
               {isSubmitting && <Loader2 size={12} className="animate-spin" />}
               Update Task

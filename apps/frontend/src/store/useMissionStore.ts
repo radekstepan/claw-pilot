@@ -114,6 +114,7 @@ interface MissionState {
     n: Omit<AppNotification, "id" | "timestamp" | "read">,
   ) => void;
   markAllNotificationsRead: () => void;
+  markTaskNotificationsRead: (taskId: string) => void;
   dismissNotification: (id: string) => void;
   // Recurring
   fetchRecurring: () => Promise<void>;
@@ -516,6 +517,14 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   markAllNotificationsRead: () => {
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  },
+
+  markTaskNotificationsRead: (taskId) => {
+    set((s) => ({
+      notifications: s.notifications.map((n) =>
+        n.taskId === taskId ? { ...n, read: true } : n,
+      ),
     }));
   },
 
